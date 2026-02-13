@@ -1,0 +1,19 @@
+// Prisma schema template
+// https://www.prisma.io/docs/concepts/components/prisma-schema
+
+// generator client {
+//   provider = "prisma-client-js"
+// }
+
+// datasource db {
+//   provider = "postgresql"
+//   url      = env("DATABASE_URL")
+// }
+
+// model User {
+//   id        String   @id @default(cuid())
+//   email     String   @unique
+//   name      String?
+//   createdAt DateTime @default(now())
+//   updatedAt DateTime @updatedAt
+// }
