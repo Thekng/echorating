@@ -55,9 +55,6 @@ const config: Config = {
       },
     },
   },
-  corePlugins: {
-    preflight: false,
-  },
   plugins: [require('tailwindcss-animate')],
 }
 

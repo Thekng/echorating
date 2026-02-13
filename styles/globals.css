@@ -1,6 +1,8 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../tailwind.config.ts";
+@source "../app/**/*.{js,ts,jsx,tsx,mdx}";
+@source "../components/**/*.{js,ts,jsx,tsx,mdx}";
+@source "../features/**/*.{js,ts,jsx,tsx,mdx}";
 
 @layer base {
   :root {
@@ -50,11 +52,11 @@
   }
 
   * {
-    border-color: hsl(var(--border) / <alpha-value>);
+    border-color: hsl(var(--border));
   }
 
   body {
-    background-color: hsl(var(--background) / <alpha-value>);
-    color: hsl(var(--foreground) / <alpha-value>);
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
   }
 }
