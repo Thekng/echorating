@@ -155,10 +155,15 @@ create or replace function public.current_company_id()
 returns uuid
 language sql
 stable
+security definer
+set search_path = public
 as $$
   select company_id
   from public.profiles
-  where user_id = auth.uid();
+  where user_id = auth.uid()
+    and is_active = true
+    and deleted_at is null
+  limit 1;
 $$;
 
 ---
@@ -169,16 +174,23 @@ create or replace function public.current_user_role()
 returns text
 language sql
 stable
+security definer
+set search_path = public
 as $$
   select role
   from public.profiles
-  where user_id = auth.uid();
+  where user_id = auth.uid()
+    and is_active = true
+    and deleted_at is null
+  limit 1;
 $$;
 
 create or replace function public.is_owner_or_manager()
 returns boolean
 language sql
 stable
+security definer
+set search_path = public
 as $$
   select exists (
     select 1
@@ -307,7 +319,7 @@ create table if not exists public.metrics (
   code text not null, -- stable slug e.g. 'talk_time_min'
   description text null,
 
-  data_type text not null check (data_type in ('number','currency','percent')),
+  data_type text not null check (data_type in ('number','currency','percent','boolean','duration')),
   unit text not null, -- 'count','min','usd','pct'
   direction text not null check (direction in ('higher_is_better','lower_is_better')),
 
@@ -351,6 +363,44 @@ create index if not exists idx_metrics_company_dept_active
 
 create index if not exists idx_metrics_company_code
   on public.metrics (company_id, code) where deleted_at is null;
+
+-- Default boolean KPI used by Daily Log forms.
+insert into public.metrics (
+  company_id,
+  department_id,
+  name,
+  code,
+  description,
+  data_type,
+  unit,
+  direction,
+  input_mode,
+  precision_scale,
+  is_active
+)
+select
+  d.company_id,
+  d.department_id,
+  'Follow-Ups Completed',
+  'follow_ups_completed',
+  'Daily follow-up completion flag',
+  'boolean',
+  'bool',
+  'higher_is_better',
+  'manual',
+  0,
+  true
+from public.departments d
+where d.is_active = true
+  and d.deleted_at is null
+  and not exists (
+    select 1
+    from public.metrics m
+    where m.company_id = d.company_id
+      and m.department_id = d.department_id
+      and m.code = 'follow_ups_completed'
+      and m.deleted_at is null
+  );
 
 ---
 -- 6) Metric formulas (with versioning)
@@ -536,6 +586,28 @@ create index if not exists idx_dept_rules_company
   on public.department_rules (company_id);
 
 ---
+-- 8b) Daily log key metrics (department history columns)
+---
+
+create table if not exists public.department_log_key_metrics (
+  department_id uuid not null references public.departments(department_id) on delete cascade,
+  slot smallint not null check (slot between 1 and 3),
+  metric_id uuid not null references public.metrics(metric_id) on delete cascade,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (department_id, slot),
+  constraint uq_department_log_key_metrics_metric unique (department_id, metric_id)
+);
+
+drop trigger if exists trg_department_log_key_metrics_updated_at on public.department_log_key_metrics;
+create trigger trg_department_log_key_metrics_updated_at
+  before update on public.department_log_key_metrics
+  for each row execute function public.set_updated_at();
+
+create index if not exists idx_department_log_key_metrics_metric
+  on public.department_log_key_metrics (metric_id);
+
+---
 -- 9) Daily entries (header) - Prepared for partitioning
 ---
 
@@ -549,6 +621,7 @@ create table if not exists public.daily_entries (
 
   status text not null default 'submitted' check (status in ('draft','submitted')),
   submitted_at timestamptz null,
+  notes text null,
   
   -- Optimistic locking for concurrency control
   version int not null default 1,
@@ -588,6 +661,9 @@ create index if not exists idx_entries_company_user_date
 
 create index if not exists idx_entries_status_date
   on public.daily_entries (status, entry_date) where status = 'draft';
+
+create index if not exists idx_daily_entries_company_updated_at
+  on public.daily_entries (company_id, updated_at desc);
 
 ---
 -- 10) Entry values (manual + calculated mirror)
@@ -919,6 +995,7 @@ alter table public.metric_formulas enable row level security;
 alter table public.metric_formula_dependencies enable row level security;
 alter table public.targets enable row level security;
 alter table public.department_rules enable row level security;
+alter table public.department_log_key_metrics enable row level security;
 alter table public.daily_entries enable row level security;
 alter table public.entry_values enable row level security;
 alter table public.calculated_values enable row level security;
@@ -930,6 +1007,8 @@ create or replace function public.is_same_company(target_company_id uuid)
 returns boolean
 language sql
 stable
+security definer
+set search_path = public
 as $$
   select exists (
     select 1
@@ -1227,6 +1306,63 @@ create policy "department_rules_update_owner_manager"
     and public.is_owner_or_manager()
   )
   with check (company_id = public.current_company_id());
+
+-- Daily log key metrics
+drop policy if exists "department_log_key_metrics_select" on public.department_log_key_metrics;
+create policy "department_log_key_metrics_select"
+  on public.department_log_key_metrics for select
+  using (
+    exists (
+      select 1
+      from public.departments d
+      where d.department_id = department_log_key_metrics.department_id
+        and d.company_id = public.current_company_id()
+        and d.deleted_at is null
+    )
+  );
+
+drop policy if exists "department_log_key_metrics_insert_owner_manager" on public.department_log_key_metrics;
+create policy "department_log_key_metrics_insert_owner_manager"
+  on public.department_log_key_metrics for insert
+  with check (
+    public.is_owner_or_manager()
+    and exists (
+      select 1
+      from public.departments d
+      where d.department_id = department_log_key_metrics.department_id
+        and d.company_id = public.current_company_id()
+        and d.deleted_at is null
+    )
+  );
+
+drop policy if exists "department_log_key_metrics_update_owner_manager" on public.department_log_key_metrics;
+create policy "department_log_key_metrics_update_owner_manager"
+  on public.department_log_key_metrics for update
+  using (
+    public.is_owner_or_manager()
+    and exists (
+      select 1
+      from public.departments d
+      where d.department_id = department_log_key_metrics.department_id
+        and d.company_id = public.current_company_id()
+        and d.deleted_at is null
+    )
+  )
+  with check (true);
+
+drop policy if exists "department_log_key_metrics_delete_owner_manager" on public.department_log_key_metrics;
+create policy "department_log_key_metrics_delete_owner_manager"
+  on public.department_log_key_metrics for delete
+  using (
+    public.is_owner_or_manager()
+    and exists (
+      select 1
+      from public.departments d
+      where d.department_id = department_log_key_metrics.department_id
+        and d.company_id = public.current_company_id()
+        and d.deleted_at is null
+    )
+  );
 
 ---
 -- DAILY LOG: Members can create/update daily_entries and entry_values for ANYONE in the same company

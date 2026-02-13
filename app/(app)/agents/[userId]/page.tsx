@@ -1,12 +1,14 @@
-export default function AgentProfilePage({
+export default async function AgentProfilePage({
   params,
 }: {
-  params: { userId: string }
+  params: Promise<{ userId: string }>
 }) {
+  const { userId } = await params
+
   return (
     <div>
       <h1 className="text-3xl font-bold mb-8">Agent Profile</h1>
-      <p>User ID: {params.userId}</p>
+      <p>User ID: {userId}</p>
       {/* Agent profile tabs here */}
     </div>
   )

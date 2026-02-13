@@ -28,7 +28,7 @@ export const PERMISSIONS = {
 }
 
 export const rolePermissions: Record<string, string[]> = {
-  admin: Object.values(PERMISSIONS),
+  owner: Object.values(PERMISSIONS),
   manager: [
     PERMISSIONS.VIEW_COMPANY,
     PERMISSIONS.VIEW_MEMBERS,
@@ -39,7 +39,7 @@ export const rolePermissions: Record<string, string[]> = {
     PERMISSIONS.VIEW_LEADERBOARD,
     PERMISSIONS.VIEW_REPORTS,
   ],
-  agent: [
+  member: [
     PERMISSIONS.VIEW_DASHBOARD,
     PERMISSIONS.VIEW_LEADERBOARD,
   ],

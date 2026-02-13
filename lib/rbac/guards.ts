@@ -1,6 +1,10 @@
-import { Role, hasPermission } from './roles'
+import { Role, hasPermission, isRole } from './roles'
 
-export function requireRole(userRole: Role, requiredRole: Role) {
+export function requireRole(userRole: Role | string, requiredRole: Role): asserts userRole is Role {
+  if (!isRole(userRole)) {
+    throw new Error('Invalid role')
+  }
+
   if (!hasPermission(userRole, requiredRole)) {
     throw new Error('Insufficient permissions')
   }
