@@ -426,7 +426,7 @@ export function DailyLogForm({
         className="space-y-6"
         onSubmit={(event) => {
           const submitter = event.nativeEvent.submitter as HTMLButtonElement | null
-          const submitKind = submitter?.dataset.submitKind as 'autosave' | 'manual-draft' | 'submit' | undefined
+          const submitKind = submitter?.dataset.submitKind as 'manual-draft' | 'submit' | undefined
           const intent = submitter?.value === 'submit' ? 'submit' : 'draft'
           setLastSubmitKind(submitKind ?? null)
           setPendingIntent(intent)
