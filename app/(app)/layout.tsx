@@ -2,10 +2,11 @@ import React from 'react'
 import { AppShell } from '@/components/layout/app-shell'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { TourProvider } from '@/components/tour/tour-provider'
 
-async function getSidebarCompanyName() {
+async function getSidebarData() {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return null
+    return { name: null, role: 'member' }
   }
 
   const supabase = await createClient()
@@ -16,17 +17,17 @@ async function getSidebarCompanyName() {
   } = await supabase.auth.getUser()
 
   if (!user) {
-    return null
+    return { name: null, role: 'member' }
   }
 
   const { data: profile } = await admin
     .from('profiles')
-    .select('company_id')
+    .select('company_id, role')
     .eq('user_id', user.id)
     .maybeSingle()
 
   if (!profile?.company_id) {
-    return null
+    return { name: null, role: profile?.role || 'member' }
   }
 
   const { data: company } = await admin
@@ -35,7 +36,10 @@ async function getSidebarCompanyName() {
     .eq('company_id', profile.company_id)
     .maybeSingle()
 
-  return typeof company?.name === 'string' ? company.name : null
+  return {
+    name: typeof company?.name === 'string' ? company.name : null,
+    role: profile.role || 'member'
+  }
 }
 
 export default async function AppLayout({
@@ -43,6 +47,10 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode
 }) {
-  const companyName = await getSidebarCompanyName()
-  return <AppShell companyName={companyName}>{children}</AppShell>
+  const { name: companyName, role } = await getSidebarData()
+  return (
+    <TourProvider userRole={role}>
+      <AppShell companyName={companyName}>{children}</AppShell>
+    </TourProvider>
+  )
 }

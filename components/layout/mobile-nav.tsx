@@ -21,6 +21,7 @@ export function MobileNav() {
             prefetch={true}
             className={cn(
               'flex flex-col items-center justify-center rounded-md text-[11px] leading-none transition-colors',
+              item.tourId,
               active ? 'text-primary' : 'text-muted-foreground',
             )}
           >

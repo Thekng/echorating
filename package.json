@@ -19,6 +19,7 @@
     "next": "latest",
     "react": "latest",
     "react-dom": "latest",
+    "react-joyride": "^2.9.3",
     "resend": "^6.9.2",
     "swr": "^2.4.0",
     "tailwind-merge": "latest",

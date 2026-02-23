@@ -7,6 +7,7 @@ export type AppNavItem = {
   label: string
   shortLabel: string
   icon: LucideIcon
+  tourId: string
 }
 
 export const APP_NAV_ITEMS: AppNavItem[] = [
@@ -15,30 +16,35 @@ export const APP_NAV_ITEMS: AppNavItem[] = [
     label: 'Dashboard',
     shortLabel: 'Home',
     icon: LayoutDashboard,
+    tourId: 'tour-nav-dashboard',
   },
   {
     href: ROUTES.DAILY_LOG,
     label: 'Daily Log',
     shortLabel: 'Log',
     icon: ListChecks,
+    tourId: 'tour-nav-daily-log',
   },
   {
     href: ROUTES.LEADERBOARD,
     label: 'Leaderboard',
     shortLabel: 'Top',
     icon: Medal,
+    tourId: 'tour-nav-leaderboard',
   },
   {
     href: ROUTES.ACCOUNTABILITY,
     label: 'Performance',
     shortLabel: 'Performance',
     icon: Users,
+    tourId: 'tour-nav-accountability',
   },
   {
     href: ROUTES.SETTINGS,
     label: 'Settings',
     shortLabel: 'Settings',
     icon: Settings,
+    tourId: 'tour-nav-settings',
   },
 ]
 

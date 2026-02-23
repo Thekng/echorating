@@ -19,7 +19,7 @@ export function Sidebar({ collapsed, onToggleCollapse, theme, onToggleTheme, com
 
   return (
     <div className="flex h-full w-full flex-col bg-background text-foreground">
-      <div className={cn('border-b border-border', collapsed ? 'px-3 py-5 text-center' : 'p-6')}>
+      <div className={cn('border-b border-border tour-nav-user-menu', collapsed ? 'px-3 py-5 text-center' : 'p-6')}>
         <h2 className="text-xl font-semibold tracking-tight">{collapsed ? 'ER' : 'EchoRating'}</h2>
         {!collapsed ? <p className="mt-1 text-xs text-muted-foreground">Agency performance workspace</p> : null}
       </div>
@@ -36,6 +36,7 @@ export function Sidebar({ collapsed, onToggleCollapse, theme, onToggleTheme, com
               prefetch={true}
               className={cn(
                 'flex items-center rounded-md py-2 text-sm transition-colors',
+                item.tourId,
                 collapsed ? 'justify-center px-2' : 'gap-3 px-3',
                 active
                   ? 'bg-primary text-primary-foreground'
