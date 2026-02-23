@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useActionState, useCallback, useEffect, useMemo, useRef, useState, useOptimistic } from 'react'
 import { Button } from '@/components/ui/button'
 import { saveDailyLogAction } from '@/features/daily-log/actions'
 import { DurationSelector } from '@/components/daily-log/duration-selector'
@@ -304,6 +304,15 @@ export function DailyLogForm({
 }: DailyLogFormProps) {
   const [state, formAction, pending] = useActionState(saveDailyLogAction, INITIAL_DAILY_LOG_ACTION_STATE)
   const [values, setValues] = useState<Record<string, string>>(initialValues)
+
+  const [optimisticValues, addOptimisticValue] = useOptimistic(
+    values,
+    (state, newAction: { metricId: string; value: string }) => ({
+      ...state,
+      [newAction.metricId]: newAction.value,
+    })
+  )
+
   const [notes, setNotes] = useState(initialNotes)
   const [entryStatus, setEntryStatus] = useState<'draft' | 'submitted' | null>(existingEntry?.status ?? null)
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(existingEntry?.updated_at ?? null)
@@ -453,7 +462,8 @@ export function DailyLogForm({
               {metrics.map((metric) => (
                 <div key={metric.metric_id} className="space-y-2">
                   <label className="block text-sm font-medium text-foreground">{metric.name}</label>
-                  {renderMetricInput(metric, values[metric.metric_id] ?? '', disabledForm, (nextValue) => {
+                  {renderMetricInput(metric, optimisticValues[metric.metric_id] ?? '', disabledForm, (nextValue) => {
+                    addOptimisticValue({ metricId: metric.metric_id, value: nextValue })
                     setValues((current) => ({
                       ...current,
                       [metric.metric_id]: nextValue,

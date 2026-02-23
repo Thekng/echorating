@@ -60,13 +60,13 @@ export default async function MetricsSettingsPage({ searchParams }: MetricsPageP
   const enabledMetrics = scopedMetrics.filter((metric) => metric.is_active)
   const availableMetrics = scopedMetrics.filter((metric) => !metric.is_active)
   const selectedDepartmentName =
-    departments.find((department) => department.department_id === selectedDepartmentId)?.name ?? 'No department'
+    departments.find((department) => department.department_id === selectedDepartmentId)?.name ?? 'No team'
 
   return (
     <div className="space-y-6">
       <SettingsPageHeader
-        title="Metrics Studio"
-        description="Enable KPIs, set daily targets and manage calculated formulas."
+        title="Stats Studio"
+        description="Enable stats, set daily goals and manage calculated formulas."
         actions={<CreateMetricModal departments={departments} dependencyMetrics={dependencyMetrics} />}
       />
 
@@ -79,12 +79,12 @@ export default async function MetricsSettingsPage({ searchParams }: MetricsPageP
 
       <SettingsSurface className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Enabled KPIs ({enabledMetrics.length})</h2>
+          <h2 className="text-lg font-semibold">Enabled Stats ({enabledMetrics.length})</h2>
           <p className="text-sm text-muted-foreground">{selectedDepartmentName}</p>
         </div>
 
         {enabledMetrics.length === 0 ? (
-          <SettingsEmptyState message="No enabled KPI for this department." />
+          <SettingsEmptyState message="No enabled stat for this team." />
         ) : (
           <div className="space-y-2">
             {enabledMetrics.map((metric) => (
@@ -114,7 +114,7 @@ export default async function MetricsSettingsPage({ searchParams }: MetricsPageP
                       initialValue={metric.daily_target_value}
                     />
                   ) : (
-                    <p className="text-xs text-muted-foreground">No numeric target for this data type.</p>
+                    <p className="text-xs text-muted-foreground">No numeric goal for this data type.</p>
                   )}
 
                   <div className="flex items-center gap-2">
@@ -161,16 +161,16 @@ export default async function MetricsSettingsPage({ searchParams }: MetricsPageP
           </summary>
           <div className="mt-3 space-y-2">
             {availableMetrics.length === 0 ? (
-              <SettingsEmptyState message="No inactive KPI available in this department." />
+              <SettingsEmptyState message="No inactive stat available in this team." />
             ) : (
               availableMetrics.map((metric) => (
                 <article
                   key={metric.metric_id}
                   className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-background p-3"
                 >
-                    <div className="flex flex-col">
-                      <span className="font-medium">{metric.name}</span>
-                    </div>
+                  <div className="flex flex-col">
+                    <span className="font-medium">{metric.name}</span>
+                  </div>
                   <div className="flex items-center gap-2">
                     <form action={toggleMetricStatusAction}>
                       <input type="hidden" name="metricId" value={metric.metric_id} />

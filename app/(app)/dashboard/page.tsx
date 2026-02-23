@@ -11,14 +11,44 @@ type DashboardPageProps = {
   }>
 }
 
-export default async function DashboardPage({ searchParams }: DashboardPageProps) {
-  const params = await searchParams
+import { Suspense } from 'react'
 
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2.5 overflow-x-hidden">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="min-w-[180px] shrink-0 rounded-lg border bg-card p-3">
+            <div className="mb-2 flex justify-between">
+              <div className="h-4 w-4 rounded bg-muted animate-pulse" />
+              <div className="h-4 w-10 rounded-full bg-muted animate-pulse" />
+            </div>
+            <div className="mt-2 h-7 w-20 rounded bg-muted animate-pulse" />
+            <div className="mt-1.5 h-3 w-24 rounded bg-muted/60 animate-pulse" />
+          </div>
+        ))}
+      </div>
+      <div className="h-[210px] w-full rounded-xl border bg-card/50 animate-pulse" />
+    </div>
+  )
+}
+
+async function DashboardContent({
+  departmentId,
+  period,
+  startDate,
+  endDate,
+}: {
+  departmentId?: string
+  period?: 'today' | 'current_week' | 'this_month' | 'custom' | 'last_7_days' | 'last_30_days' | 'last_90_days'
+  startDate?: string
+  endDate?: string
+}) {
   const result = await getDashboardData({
-    departmentId: params.departmentId,
-    period: params.period,
-    startDate: params.startDate,
-    endDate: params.endDate,
+    departmentId,
+    period,
+    startDate,
+    endDate,
   })
 
   if (!result.success || !result.data) {
@@ -32,58 +62,68 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const {
     departments,
     selectedDepartmentId,
-    period,
-    startDate,
-    endDate,
+    period: resolvedPeriod,
+    startDate: resolvedStartDate,
+    endDate: resolvedEndDate,
     windowDays,
     kpis,
     primaryMetric,
     metricTrends,
-  } =
-    result.data
+  } = result.data
 
   if (departments.length === 0) {
     return (
-      <div className="space-y-5">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">Performance overview by department and period.</p>
-        </div>
-        <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-          No department available for your profile. Ask a manager to assign you to one.
-        </div>
+      <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
+        No team available for your profile. Ask a manager to assign you to one.
       </div>
     )
   }
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Dashboard</h1>
-        <p className="text-xs text-muted-foreground md:text-sm">Performance overview by department and period.</p>
-      </div>
-
       <DashboardFilters
         departments={departments}
         selectedDepartmentId={selectedDepartmentId}
-        period={period}
-        startDate={startDate}
-        endDate={endDate}
+        period={resolvedPeriod}
+        startDate={resolvedStartDate}
+        endDate={resolvedEndDate}
       />
 
       {kpis.length === 0 ? (
         <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-          No active metrics found for this department. Configure metrics in Settings first.
+          No active stats found for this team. Configure stats in Settings first.
         </div>
       ) : (
         <DashboardInteractive
           kpis={kpis}
           metricTrends={metricTrends}
           primaryMetricId={primaryMetric?.metric_id ?? null}
-          period={period}
+          period={resolvedPeriod}
           windowDays={windowDays}
         />
       )}
+    </div>
+  )
+}
+
+export default async function DashboardPage({ searchParams }: DashboardPageProps) {
+  const params = await searchParams
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Dashboard</h1>
+        <p className="text-xs text-muted-foreground md:text-sm">Performance overview by team and period.</p>
+      </div>
+
+      <Suspense fallback={<DashboardSkeleton />}>
+        <DashboardContent
+          departmentId={params.departmentId}
+          period={params.period}
+          startDate={params.startDate}
+          endDate={params.endDate}
+        />
+      </Suspense>
     </div>
   )
 }

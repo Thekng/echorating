@@ -49,7 +49,7 @@ export default async function AccountabilityPage({ searchParams }: Accountabilit
         params.startDate,
         params.endDate,
       )
-      
+
       return {
         ...dept,
         stats: statsResult.data || {
@@ -67,8 +67,8 @@ export default async function AccountabilityPage({ searchParams }: Accountabilit
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Accountability</h1>
-        <p className="text-sm text-muted-foreground">View department performance and team accountability.</p>
+        <h1 className="text-3xl font-bold tracking-tight">Performance</h1>
+        <p className="text-sm text-muted-foreground">View team performance and team member stats.</p>
       </div>
 
       <AgentsFilters
@@ -87,9 +87,9 @@ export default async function AccountabilityPage({ searchParams }: Accountabilit
       <section className="rounded-xl border bg-card">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
           <div>
-            <p className="text-sm font-semibold">Departments Overview</p>
+            <p className="text-sm font-semibold">Teams Overview</p>
             <p className="text-xs text-muted-foreground">
-              {departmentsWithStats.length} department{departmentsWithStats.length !== 1 ? 's' : ''}
+              {departmentsWithStats.length} team{departmentsWithStats.length !== 1 ? 's' : ''}
             </p>
           </div>
         </header>
@@ -98,7 +98,7 @@ export default async function AccountabilityPage({ searchParams }: Accountabilit
           <table className="min-w-[900px] w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/20">
-                <th className="px-4 py-2 text-left font-medium">Department</th>
+                <th className="px-4 py-2 text-left font-medium">Team</th>
                 <th className="px-4 py-2 text-left font-medium">Members</th>
                 <th className="px-4 py-2 text-left font-medium">Submitted</th>
                 <th className="px-4 py-2 text-left font-medium">Draft</th>
@@ -112,7 +112,7 @@ export default async function AccountabilityPage({ searchParams }: Accountabilit
               {departmentsWithStats.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
-                    No departments found.
+                    No teams found.
                   </td>
                 </tr>
               ) : null}

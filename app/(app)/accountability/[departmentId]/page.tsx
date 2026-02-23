@@ -68,7 +68,7 @@ export default async function DepartmentDetailPage({ params, searchParams }: Dep
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">{department.name}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Department accountability overview</p>
+          <p className="mt-1 text-sm text-muted-foreground">Team performance overview</p>
         </div>
         <Link
           href={`${ROUTES.ACCOUNTABILITY}`}
@@ -113,7 +113,7 @@ export default async function DepartmentDetailPage({ params, searchParams }: Dep
       {/* Recent Logs */}
       <section className="rounded-xl border bg-card">
         <header className="border-b px-4 py-3">
-          <p className="text-sm font-semibold">Recent Department Logs</p>
+          <p className="text-sm font-semibold">Recent Team Logs</p>
           <p className="text-xs text-muted-foreground">Last 20 submitted entries</p>
         </header>
         <div className="overflow-x-auto">
@@ -170,13 +170,13 @@ export default async function DepartmentDetailPage({ params, searchParams }: Dep
         <section className="rounded-xl border bg-card">
           <header className="border-b px-4 py-3">
             <p className="text-sm font-semibold">Team Members Performance</p>
-            <p className="text-xs text-muted-foreground">Metrics aggregated for selected period</p>
+            <p className="text-xs text-muted-foreground">Stats aggregated for selected period</p>
           </header>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/20">
-                  <th className="px-4 py-2 text-left font-medium">Agent</th>
+                  <th className="px-4 py-2 text-left font-medium">Team Member</th>
                   <th className="px-4 py-2 text-left font-medium">Completion</th>
                   {metrics.slice(0, 5).map((metric) => (
                     <th key={metric.metric_id} className="px-4 py-2 text-left font-medium text-xs">
@@ -188,22 +188,22 @@ export default async function DepartmentDetailPage({ params, searchParams }: Dep
               </thead>
               <tbody>
                 {agentsResult.data.rows.map((agent) => {
-                  const agentMetrics = agentMetricsResult.success && agentMetricsResult.data 
+                  const agentMetrics = agentMetricsResult.success && agentMetricsResult.data
                     ? agentMetricsResult.data[agent.user_id] ?? {}
                     : {}
-                  
+
                   return (
                     <tr key={agent.user_id} className="border-b last:border-b-0 hover:bg-muted/30">
                       <td className="px-4 py-3 font-medium">{agent.name}</td>
                       <td className="px-4 py-3">{agent.completion_rate.toFixed(1)}%</td>
                       {metrics.slice(0, 5).map((metric) => {
                         const value = agentMetrics[metric.metric_id]
-                        const displayValue = value !== undefined && value !== null 
-                          ? metric.data_type === 'number' 
+                        const displayValue = value !== undefined && value !== null
+                          ? metric.data_type === 'number'
                             ? Math.round(value)
                             : value.toFixed(2)
                           : '-'
-                        
+
                         return (
                           <td key={metric.metric_id} className="px-4 py-3 text-sm text-muted-foreground">
                             {displayValue}

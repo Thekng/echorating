@@ -58,7 +58,7 @@ export default async function AgentsPage({ searchParams }: AgentsPageProps) {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Agents</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Team Members</h1>
         <p className="text-sm text-muted-foreground">Manage roster and track daily performance consistency.</p>
       </div>
 
@@ -78,11 +78,11 @@ export default async function AgentsPage({ searchParams }: AgentsPageProps) {
       <section className="rounded-xl border bg-card">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
           <div>
-            <p className="text-sm font-semibold">Agent Roster</p>
+            <p className="text-sm font-semibold">Team Member Roster</p>
             <p className="text-xs text-muted-foreground">
               {selectedDepartmentId === 'all'
-                ? 'Showing all departments'
-                : `Score by ${scoringMetricsCount} department metrics`}
+                ? 'Showing all teams'
+                : `Score by ${scoringMetricsCount} team stats`}
             </p>
           </div>
         </header>
@@ -91,10 +91,10 @@ export default async function AgentsPage({ searchParams }: AgentsPageProps) {
           <table className="min-w-[980px] w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/20">
-                <th className="px-4 py-2 text-left font-medium">Agent</th>
+                <th className="px-4 py-2 text-left font-medium">Team Member</th>
                 <th className="px-4 py-2 text-left font-medium">Role</th>
                 <th className="px-4 py-2 text-left font-medium">Status</th>
-                <th className="px-4 py-2 text-left font-medium">Departments</th>
+                <th className="px-4 py-2 text-left font-medium">Teams</th>
                 <th className="px-4 py-2 text-left font-medium">Submitted</th>
                 <th className="px-4 py-2 text-left font-medium">Draft</th>
                 <th className="px-4 py-2 text-left font-medium">Completion</th>
@@ -107,7 +107,7 @@ export default async function AgentsPage({ searchParams }: AgentsPageProps) {
               {rows.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">
-                    No agents found for this filter.
+                    No team members found for this filter.
                   </td>
                 </tr>
               ) : null}

@@ -209,7 +209,7 @@ export default async function Agent1To1Page({ params, searchParams }: Agent1To1P
         <div>
           <p className="text-sm text-muted-foreground">
             <Link href={ROUTES.ACCOUNTABILITY} className="hover:underline">
-              Accountability
+              Performance
             </Link>{' '}
             / Profile
           </p>
@@ -232,13 +232,13 @@ export default async function Agent1To1Page({ params, searchParams }: Agent1To1P
 
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <article className="rounded-xl border bg-card p-4">
-          <p className="text-xs uppercase text-muted-foreground">Department Rank</p>
+          <p className="text-xs uppercase text-muted-foreground">Team Rank</p>
           <p className="mt-2 text-2xl font-semibold">{stats.department_rank ? `#${stats.department_rank}` : '-'}</p>
-          <p className="text-xs text-muted-foreground">Based on department score.</p>
+          <p className="text-xs text-muted-foreground">Based on team score.</p>
         </article>
 
         <article className="rounded-xl border bg-card p-4">
-          <p className="text-xs uppercase text-muted-foreground">Department Score</p>
+          <p className="text-xs uppercase text-muted-foreground">Team Score</p>
           <p className="mt-2 text-2xl font-semibold">{stats.department_score === null ? '-' : `${stats.department_score.toFixed(1)}%`}</p>
         </article>
 
@@ -254,7 +254,7 @@ export default async function Agent1To1Page({ params, searchParams }: Agent1To1P
       </section>
 
       <section className="rounded-xl border bg-card p-4">
-        <h2 className="text-sm font-semibold">Key Metrics</h2>
+        <h2 className="text-sm font-semibold">Key Stats</h2>
         <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
           {metric_kpis.map((metric, idx) => (
             <div key={metric.metric_id} className="rounded-md border p-3">
@@ -275,7 +275,7 @@ export default async function Agent1To1Page({ params, searchParams }: Agent1To1P
         <div className="p-4">
           <div className="grid grid-cols-7 gap-2">
             {Array.from({ length: 7 }).map((_, i) => (
-              <div key={i} className="text-xs text-muted-foreground text-center">{['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][i]}</div>
+              <div key={i} className="text-xs text-muted-foreground text-center">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][i]}</div>
             ))}
             {leadingEmpty.map((k) => (
               <div key={k} className="h-12 rounded-md bg-muted/10" />

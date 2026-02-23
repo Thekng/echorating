@@ -33,6 +33,7 @@ export function Sidebar({ collapsed, onToggleCollapse, theme, onToggleTheme, com
             <Link
               key={item.href}
               href={item.href}
+              prefetch={true}
               className={cn(
                 'flex items-center rounded-md py-2 text-sm transition-colors',
                 collapsed ? 'justify-center px-2' : 'gap-3 px-3',

@@ -157,7 +157,7 @@ async function processNextJob(workerId = 'recalc-worker-local') {
           computed_at: now,
           formula_id: f.formula_id,
           calc_trace: { evaluated_at: now },
-        }, { onConflict: ['entry_id', 'metric_id'] })
+        }, { onConflict: 'entry_id,metric_id' })
 
       if (upsertError) {
         throw upsertError

@@ -45,8 +45,8 @@ export default async function DepartmentsSettingsPage({ searchParams }: Departme
   return (
     <div className="space-y-5">
       <SettingsPageHeader
-        title="Departments"
-        description="Manage active and inactive departments with quick actions."
+        title="Teams"
+        description="Manage active and inactive teams with quick actions."
         actions={<CreateDepartmentModal />}
       />
 
@@ -61,7 +61,7 @@ export default async function DepartmentsSettingsPage({ searchParams }: Departme
               id="q"
               name="q"
               defaultValue={params.q ?? ''}
-              placeholder="Department name"
+              placeholder="Team name"
               className="h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm"
             />
           </div>
@@ -107,9 +107,9 @@ export default async function DepartmentsSettingsPage({ searchParams }: Departme
       </form>
 
       <SettingsSurface className="space-y-3">
-        <h2 className="text-lg font-semibold">Active Departments ({activeDepartments.length})</h2>
+        <h2 className="text-lg font-semibold">Active Teams ({activeDepartments.length})</h2>
         {activeDepartments.length === 0 ? (
-          <SettingsEmptyState message="No active department found." />
+          <SettingsEmptyState message="No active team found." />
         ) : (
           <div className="space-y-2">
             {activeDepartments.map((department) => (
@@ -152,11 +152,11 @@ export default async function DepartmentsSettingsPage({ searchParams }: Departme
       <SettingsSurface>
         <details>
           <summary className="cursor-pointer list-none text-lg font-semibold">
-            Inactive Departments ({inactiveDepartments.length})
+            Inactive Teams ({inactiveDepartments.length})
           </summary>
           <div className="mt-3 space-y-2">
             {inactiveDepartments.length === 0 ? (
-              <SettingsEmptyState message="No inactive department found." />
+              <SettingsEmptyState message="No inactive team found." />
             ) : (
               inactiveDepartments.map((department) => (
                 <SettingsRow

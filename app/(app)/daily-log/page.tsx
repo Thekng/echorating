@@ -57,7 +57,7 @@ export default async function DailyLogPage({ searchParams }: DailyLogPageProps) 
 
       {departments.length === 0 ? (
         <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-          No department available for your profile. Ask a manager to assign you to one.
+          No team available for your profile. Ask a manager to assign you to one.
         </div>
       ) : (
         <section className="space-y-5 rounded-2xl border bg-card p-6">
@@ -73,7 +73,7 @@ export default async function DailyLogPage({ searchParams }: DailyLogPageProps) 
 
           {canManage && agentOptions.length === 0 ? (
             <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-              No active agents in this department yet.
+              No active team members in this team yet.
             </div>
           ) : null}
 

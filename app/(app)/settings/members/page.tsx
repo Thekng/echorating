@@ -47,7 +47,7 @@ export default async function MembersSettingsPage({ searchParams }: MembersPageP
     <div className="space-y-5">
       <SettingsPageHeader
         title="Members"
-        description="Manage role permissions, active roster and department assignments."
+        description="Manage role permissions, active roster and team assignments."
         actions={<CreateMemberModal departments={departments} canInviteOwner={canManageOwnerRole} />}
       />
 
@@ -62,7 +62,7 @@ export default async function MembersSettingsPage({ searchParams }: MembersPageP
               id="q"
               name="q"
               defaultValue={params.q ?? ''}
-              placeholder="Name, email or department"
+              placeholder="Name, email or team"
               className="h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm"
             />
           </div>
@@ -117,7 +117,7 @@ export default async function MembersSettingsPage({ searchParams }: MembersPageP
                 <SettingsRow
                   key={member.userId}
                   title={member.name}
-                  subtitle={`${member.email || '-'} · ${member.departments.map((department) => department.name).join(', ') || 'No department'}`}
+                  subtitle={`${member.email || '-'} · ${member.departments.map((department) => department.name).join(', ') || 'No team'}`}
                   meta={
                     <SettingsChip
                       tone={
@@ -175,7 +175,7 @@ export default async function MembersSettingsPage({ searchParams }: MembersPageP
                 <SettingsRow
                   key={member.userId}
                   title={member.name}
-                  subtitle={`${member.email || '-'} · ${member.departments.map((department) => department.name).join(', ') || 'No department'}`}
+                  subtitle={`${member.email || '-'} · ${member.departments.map((department) => department.name).join(', ') || 'No team'}`}
                   meta={<SettingsChip>{ROLE_LABELS[member.role] ?? member.role}</SettingsChip>}
                   actions={
                     <form action={toggleMemberStatusAction}>

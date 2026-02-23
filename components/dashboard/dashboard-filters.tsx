@@ -51,7 +51,7 @@ export function DashboardFilters({
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <div>
           <label htmlFor="dashboard-department" className="mb-1 block text-sm font-medium">
-            Department
+            Team
           </label>
           <select
             id="dashboard-department"

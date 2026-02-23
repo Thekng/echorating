@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import useSWR from 'swr'
 import { Trophy, CalendarDays, Search } from 'lucide-react'
 import { ROUTES } from '@/lib/constants/routes'
 import { formatSecondsToDuration } from '@/lib/daily-log/value-parser'
@@ -49,7 +50,7 @@ function getPeriodLabel(period: Period, start?: string, end?: string): string {
   if (period === 'current_week') return 'This week'
   if (period === 'this_month') return 'This month'
   if (period === 'custom' && start && end) {
-    return formatDateShort(start) === formatDateShort(end) 
+    return formatDateShort(start) === formatDateShort(end)
       ? formatDateShort(start)
       : `${formatDateShort(start)} - ${formatDateShort(end)}`
   }
@@ -58,8 +59,6 @@ function getPeriodLabel(period: Period, start?: string, end?: string): string {
 
 export default function LeaderboardClient() {
   const router = useRouter()
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const [departments, setDepartments] = useState<Department[]>([])
   const [departmentId, setDepartmentId] = useState('')
@@ -68,88 +67,64 @@ export default function LeaderboardClient() {
   const [customStart, setCustomStart] = useState('')
   const [customEnd, setCustomEnd] = useState('')
 
-  const [leaderboard, setLeaderboard] = useState<RankingRow[]>([])
-  const [sortOptions, setSortOptions] = useState<SelectedMetric[]>([])
-  const [selectedMetric, setSelectedMetric] = useState<SelectedMetric | null>(null)
-  const [rangeStart, setRangeStart] = useState('')
-  const [rangeEnd, setRangeEnd] = useState('')
-  const [scoringMetricsCount, setScoringMetricsCount] = useState(0)
-
   const canFetchCustom = period !== 'custom' || (customStart && customEnd)
+
+  const fetcher = async (url: string) => {
+    const res = await fetch(url)
+    const body = await res.json()
+    if (!body.success) {
+      throw new Error(body.error || 'Failed to load leaderboard.')
+    }
+    return body.data as LeaderboardApiPayload
+  }
+
+  const urlKey = useMemo(() => {
+    if (!canFetchCustom) return null
+    if (typeof window === 'undefined') return null
+    const url = new URL('/api/leaderboard', window.location.origin)
+    if (departmentId) url.searchParams.set('departmentId', departmentId)
+    if (metricId) url.searchParams.set('metricId', metricId)
+    url.searchParams.set('period', period)
+    if (period === 'custom') {
+      url.searchParams.set('startDate', customStart)
+      url.searchParams.set('endDate', customEnd)
+    }
+    return url.toString()
+  }, [canFetchCustom, customEnd, customStart, departmentId, metricId, period])
+
+  const { data, error: swrError, isValidating } = useSWR<LeaderboardApiPayload>(urlKey, fetcher, {
+    keepPreviousData: true,
+    revalidateOnFocus: true,
+  })
+
+  const loading = !data && isValidating
+  const error = swrError?.message || data?.message || null
+
+  const leaderboard = data?.leaderboard ?? []
+  const sortOptions = data?.sortOptions ?? []
+  const selectedMetric = data?.selectedMetric ?? null
+  const rangeStart = data?.startDate ?? ''
+  const rangeEnd = data?.endDate ?? ''
+  const scoringMetricsCount = data?.scoringMetricsCount ?? 0
 
   const activePeriodLabel = useMemo(() => {
     return getPeriodLabel(period, rangeStart, rangeEnd)
   }, [period, rangeStart, rangeEnd])
 
   useEffect(() => {
-    if (!canFetchCustom) {
-      return
+    if (data?.departments && departments.length === 0) {
+      setDepartments(data.departments)
     }
+  }, [data?.departments, departments.length])
 
-    let cancelled = false
-    async function run() {
-      setLoading(true)
-      setError(null)
-      try {
-        const url = new URL('/api/leaderboard', window.location.origin)
-        if (departmentId) {
-          url.searchParams.set('departmentId', departmentId)
-        }
-        if (metricId) {
-          url.searchParams.set('metricId', metricId)
-        }
-        url.searchParams.set('period', period)
-        if (period === 'custom') {
-          url.searchParams.set('startDate', customStart)
-          url.searchParams.set('endDate', customEnd)
-        }
-
-        const response = await fetch(url.toString())
-        const body = (await response.json()) as
-          | { success: true; data: LeaderboardApiPayload }
-          | { success: false; error?: string }
-
-        if (!body.success) {
-          throw new Error(body.error || 'Failed to load leaderboard.')
-        }
-
-        if (cancelled) {
-          return
-        }
-
-        setLeaderboard(body.data.leaderboard ?? [])
-        setDepartments(body.data.departments ?? [])
-        setSortOptions(body.data.sortOptions ?? [])
-        setSelectedMetric(body.data.selectedMetric ?? null)
-        setRangeStart(body.data.startDate)
-        setRangeEnd(body.data.endDate)
-        setScoringMetricsCount(body.data.scoringMetricsCount ?? 0)
-        setError(body.data.message ?? null)
-
-        if (!departmentId && body.data.departmentId) {
-          setDepartmentId(body.data.departmentId)
-        }
-        if (body.data.metricId && body.data.metricId !== metricId) {
-          setMetricId(body.data.metricId)
-        }
-      } catch (caughtError) {
-        if (cancelled) {
-          return
-        }
-        const message = caughtError instanceof Error ? caughtError.message : 'Failed to load leaderboard.'
-        setError(message)
-      } finally {
-        if (!cancelled) {
-          setLoading(false)
-        }
-      }
+  useEffect(() => {
+    if (!departmentId && data?.departmentId) {
+      setDepartmentId(data.departmentId)
     }
-
-    run()
-    return () => {
-      cancelled = true
+    if (data?.metricId && data.metricId !== metricId) {
+      setMetricId(data.metricId)
     }
-  }, [canFetchCustom, customEnd, customStart, departmentId, metricId, period])
+  }, [data?.departmentId, data?.metricId, departmentId, metricId])
 
   useEffect(() => {
     if (departments.length === 0) {
@@ -201,7 +176,7 @@ export default function LeaderboardClient() {
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <div>
             <label htmlFor="leaderboard-department" className="mb-1 block text-sm font-medium">
-              Department
+              Team
             </label>
             <select
               id="leaderboard-department"
@@ -209,7 +184,7 @@ export default function LeaderboardClient() {
               onChange={(event) => setDepartmentId(event.currentTarget.value)}
               className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
             >
-              {departments.length === 0 ? <option value="">No departments found</option> : null}
+              {departments.length === 0 ? <option value="">No teams found</option> : null}
               {departments.map((department) => (
                 <option key={department.department_id} value={department.department_id}>
                   {department.name}
@@ -245,10 +220,10 @@ export default function LeaderboardClient() {
               onChange={(event) => setMetricId(event.currentTarget.value)}
               className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
             >
-              {sortOptions.length === 0 ? <option value="department_score">By Department Score</option> : null}
+              {sortOptions.length === 0 ? <option value="department_score">By Team Score</option> : null}
               {sortOptions.map((option) => (
                 <option key={option.metric_id} value={option.metric_id}>
-                  {option.code === 'department_score' ? 'By Department Score' : `By ${option.name}`}
+                  {option.code === 'department_score' ? 'By Team Score' : `By ${option.name}`}
                 </option>
               ))}
             </select>
@@ -288,13 +263,13 @@ export default function LeaderboardClient() {
       <section className="rounded-xl border bg-card">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
           <div>
-            <p className="text-sm font-semibold">Agent Ranking</p>
+            <p className="text-sm font-semibold">Team Member Ranking</p>
             <p className="text-xs text-muted-foreground">
               {selectedMetric
                 ? selectedMetric.code === 'department_score'
-                  ? `Score by ${scoringMetricsCount} department metrics`
+                  ? `Score by ${scoringMetricsCount} team stats`
                   : `Sorted by ${selectedMetric.name}`
-                : 'KPI unavailable'}
+                : 'Stat unavailable'}
             </p>
           </div>
           <div className="inline-flex items-center gap-2 rounded-full border bg-muted/30 px-3 py-1 text-xs text-muted-foreground">
@@ -311,11 +286,11 @@ export default function LeaderboardClient() {
               <thead>
                 <tr className="border-b bg-muted/20">
                   <th className="px-4 py-2 text-left font-medium">Rank</th>
-                  <th className="px-4 py-2 text-left font-medium">Agent</th>
+                  <th className="px-4 py-2 text-left font-medium">Team Member</th>
                   <th className="px-4 py-2 text-left font-medium">
-                    {selectedMetric?.code === 'department_score' ? 'Department Score' : selectedMetric?.name || 'Metric'}
+                    {selectedMetric?.code === 'department_score' ? 'Team Score' : selectedMetric?.name || 'Stat'}
                   </th>
-                  <th className="px-4 py-2 text-left font-medium">Metrics Filled</th>
+                  <th className="px-4 py-2 text-left font-medium">Stats Filled</th>
                   <th className="px-4 py-2 text-right font-medium">Profile</th>
                 </tr>
               </thead>

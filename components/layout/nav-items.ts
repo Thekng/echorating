@@ -30,8 +30,8 @@ export const APP_NAV_ITEMS: AppNavItem[] = [
   },
   {
     href: ROUTES.ACCOUNTABILITY,
-    label: 'Accountability',
-    shortLabel: 'Accountability',
+    label: 'Performance',
+    shortLabel: 'Performance',
     icon: Users,
   },
   {
