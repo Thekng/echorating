@@ -13,6 +13,7 @@ export const ROUTES = {
   DASHBOARD: '/dashboard',
   DAILY_LOG: '/daily-log',
   LEADERBOARD: '/leaderboard',
+  ACCOUNTABILITY: '/accountability',
   AGENTS: '/agents',
   SETTINGS: '/settings',
   SETTINGS_COMPANY: '/settings/company',

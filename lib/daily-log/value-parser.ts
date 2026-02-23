@@ -48,12 +48,26 @@ export function formatSecondsToDuration(value: number | null | undefined) {
   return `${padTwo(hours)}:${padTwo(minutes)}:${padTwo(seconds)}`
 }
 
-export function parseBooleanInput(raw: string | null): boolean | null {
+export function parseBooleanInput(
+  raw: string | null,
+  labels?: { trueLabel: string; falseLabel: string },
+): boolean | null {
   if (!raw) {
     return null
   }
 
   const value = raw.trim().toLowerCase()
+  const trueLabel = labels?.trueLabel?.trim().toLowerCase()
+  const falseLabel = labels?.falseLabel?.trim().toLowerCase()
+
+  if (trueLabel && value === trueLabel) {
+    return true
+  }
+
+  if (falseLabel && value === falseLabel) {
+    return false
+  }
+
   if (['true', '1', 'yes', 'y', 'on'].includes(value)) {
     return true
   }

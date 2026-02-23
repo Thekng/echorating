@@ -9,6 +9,7 @@ import type {
   DailyLogRecentMetricValue,
 } from '@/features/daily-log/types'
 import { formatSecondsToDuration } from '@/lib/daily-log/value-parser'
+import { booleanLabels, normalizeMetricSettings } from '@/lib/metrics/data-types'
 
 type RecentLogsTableProps = {
   departmentId: string
@@ -35,17 +36,54 @@ function metricValue(values: DailyLogRecentMetricValue[], metric: DailyLogKeyMet
   if (!value) {
     return '-'
   }
+  const settings = normalizeMetricSettings(metric.data_type, metric.settings)
 
   if (metric.data_type === 'boolean') {
     if (value.value_bool === null) {
       return '-'
     }
 
-    return value.value_bool ? 'Yes' : 'No'
+    const labels = booleanLabels(settings)
+    return value.value_bool ? labels.trueLabel : labels.falseLabel
   }
 
   if (metric.data_type === 'duration') {
+    if (value.value_numeric === null || value.value_numeric === undefined) {
+      return '-'
+    }
+
+    if (settings.durationFormat === 'minutes') {
+      return `${Number((value.value_numeric / 60).toFixed(2))}`
+    }
+    if (settings.durationFormat === 'hours') {
+      return `${Number((value.value_numeric / 3600).toFixed(2))}`
+    }
+    if (settings.durationFormat === 'days') {
+      return `${Number((value.value_numeric / 86400).toFixed(2))}`
+    }
     return formatSecondsToDuration(value.value_numeric) || '-'
+  }
+
+  if (metric.data_type === 'text' || metric.data_type === 'datetime' || metric.data_type === 'file') {
+    return value.value_text || '-'
+  }
+
+  if (metric.data_type === 'selection') {
+    if (!value.value_text) {
+      return '-'
+    }
+
+    if (settings.selectionMode === 'multi') {
+      try {
+        const parsed = JSON.parse(value.value_text) as string[]
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.join(', ')
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return value.value_text
   }
 
   if (value.value_numeric === null || value.value_numeric === undefined) {
@@ -53,9 +91,10 @@ function metricValue(values: DailyLogRecentMetricValue[], metric: DailyLogKeyMet
   }
 
   if (metric.data_type === 'currency') {
+    const currencyCode = settings.currencyCode || 'USD'
     return new Intl.NumberFormat(undefined, {
       style: 'currency',
-      currency: 'USD',
+      currency: currencyCode,
       maximumFractionDigits: 2,
     }).format(value.value_numeric)
   }

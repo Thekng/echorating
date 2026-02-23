@@ -10,6 +10,13 @@ import { ROUTES } from '@/lib/constants/routes'
 import { type Role } from '@/lib/rbac/roles'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
 import { validateFormulaExpression } from '@/lib/metrics/formula'
+import {
+  isCalculatedSupportedType,
+  normalizeMetricSettings,
+  parseSelectionOptions,
+  type MetricDataType,
+  type MetricSettings,
+} from '@/lib/metrics/data-types'
 
 type MetricActionState = {
   status: 'idle' | 'success' | 'error'
@@ -28,6 +35,96 @@ function resolvedUnit(formData: FormData) {
   }
 
   return field(formData, 'unitCustom')
+}
+
+function buildMetricSettings(dataType: MetricDataType, formData: FormData) {
+  if (dataType === 'number') {
+    return normalizeMetricSettings(dataType, {
+      numberKind: field(formData, 'numberKind') || 'integer',
+    })
+  }
+
+  if (dataType === 'currency') {
+    return normalizeMetricSettings(dataType, {
+      currencyCode: field(formData, 'currencyCode') || 'USD',
+    })
+  }
+
+  if (dataType === 'boolean') {
+    return normalizeMetricSettings(dataType, {
+      booleanPreset: field(formData, 'booleanPreset') || 'yes_no',
+    })
+  }
+
+  if (dataType === 'duration') {
+    return normalizeMetricSettings(dataType, {
+      durationFormat: field(formData, 'durationFormat') || 'hh_mm_ss',
+    })
+  }
+
+  if (dataType === 'text') {
+    return normalizeMetricSettings(dataType, {
+      textFormat: field(formData, 'textFormat') || 'short_text',
+    })
+  }
+
+  if (dataType === 'datetime') {
+    return normalizeMetricSettings(dataType, {
+      datetimeFormat: field(formData, 'datetimeFormat') || 'date',
+    })
+  }
+
+  if (dataType === 'selection') {
+    const selectionOptions = parseSelectionOptions(field(formData, 'selectionOptions'))
+    return normalizeMetricSettings(dataType, {
+      selectionMode: field(formData, 'selectionMode') || 'single',
+      selectionOptions,
+    })
+  }
+
+  if (dataType === 'file') {
+    return normalizeMetricSettings(dataType, {
+      fileKind: field(formData, 'fileKind') || 'file',
+    })
+  }
+
+  return {} as MetricSettings
+}
+
+function resolveTypedUnit(dataType: MetricDataType, rawUnit: string, settings: MetricSettings) {
+  if (dataType === 'currency') {
+    return (settings.currencyCode || rawUnit || 'USD').toLowerCase()
+  }
+
+  if (dataType === 'percent') {
+    return 'pct'
+  }
+
+  if (dataType === 'boolean') {
+    return 'bool'
+  }
+
+  if (dataType === 'duration') {
+    return settings.durationFormat === 'hh_mm_ss' ? 'hh:mm:ss' : settings.durationFormat || rawUnit || 'hh:mm:ss'
+  }
+
+  if (dataType === 'text') {
+    return settings.textFormat || rawUnit || 'text'
+  }
+
+  if (dataType === 'datetime') {
+    return settings.datetimeFormat || rawUnit || 'date'
+  }
+
+  if (dataType === 'selection') {
+    return settings.selectionMode || rawUnit || 'single'
+  }
+
+  if (dataType === 'file') {
+    return settings.fileKind || rawUnit || 'file'
+  }
+
+  return rawUnit.trim()
 }
 
 function zodMessage(error: z.ZodError) {
@@ -401,9 +498,19 @@ export async function createMetricAction(
     return { status: 'error', message: departmentValidation.message }
   }
 
+  const metricSettings = buildMetricSettings(parsed.data.dataType, formData)
+  if (parsed.data.dataType === 'selection' && (!metricSettings.selectionOptions || metricSettings.selectionOptions.length === 0)) {
+    return { status: 'error', message: 'Selection metrics must have at least one option.' }
+  }
+  const unit = resolveTypedUnit(parsed.data.dataType, parsed.data.unit, metricSettings)
+
   let formulaDependencies: string[] = []
   let normalizedExpression = ''
   if (parsed.data.inputMode === 'calculated') {
+    if (!isCalculatedSupportedType(parsed.data.dataType)) {
+      return { status: 'error', message: 'Calculated metrics are only supported for numeric/currency/percent/duration types.' }
+    }
+
     const formulaDependenciesResult = await resolveFormulaDependencies(
       context.admin,
       context.companyId,
@@ -429,7 +536,8 @@ export async function createMetricAction(
       code,
       description: parsed.data.description?.trim() || null,
       data_type: parsed.data.dataType,
-      unit: parsed.data.unit.trim(),
+      unit,
+      settings: metricSettings,
       direction: parsed.data.direction,
       input_mode: parsed.data.inputMode,
       precision_scale: parsed.data.precisionScale,
@@ -536,9 +644,19 @@ export async function updateMetricAction(
     return { status: 'error', message: departmentValidation.message }
   }
 
+  const metricSettings = buildMetricSettings(parsed.data.dataType, formData)
+  if (parsed.data.dataType === 'selection' && (!metricSettings.selectionOptions || metricSettings.selectionOptions.length === 0)) {
+    return { status: 'error', message: 'Selection metrics must have at least one option.' }
+  }
+  const unit = resolveTypedUnit(parsed.data.dataType, parsed.data.unit, metricSettings)
+
   let formulaDependencies: string[] = []
   let normalizedExpression = ''
   if (parsed.data.inputMode === 'calculated') {
+    if (!isCalculatedSupportedType(parsed.data.dataType)) {
+      return { status: 'error', message: 'Calculated metrics are only supported for numeric/currency/percent/duration types.' }
+    }
+
     const formulaDependenciesResult = await resolveFormulaDependencies(
       context.admin,
       context.companyId,
@@ -564,7 +682,8 @@ export async function updateMetricAction(
       code,
       description: parsed.data.description?.trim() || null,
       data_type: parsed.data.dataType,
-      unit: parsed.data.unit.trim(),
+      unit,
+      settings: metricSettings,
       direction: parsed.data.direction,
       input_mode: parsed.data.inputMode,
       precision_scale: parsed.data.precisionScale,
@@ -765,5 +884,4 @@ export async function deleteMetricAction(formData: FormData) {
     .is('deleted_at', null)
 
   revalidatePath(ROUTES.SETTINGS_METRICS)
-  revalidatePath(ROUTES.SETTINGS_TARGETS)
 }

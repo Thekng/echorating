@@ -319,8 +319,9 @@ create table if not exists public.metrics (
   code text not null, -- stable slug e.g. 'talk_time_min'
   description text null,
 
-  data_type text not null check (data_type in ('number','currency','percent','boolean','duration')),
+  data_type text not null check (data_type in ('number','currency','percent','boolean','duration','text','datetime','selection','file')),
   unit text not null, -- 'count','min','usd','pct'
+  settings jsonb not null default '{}'::jsonb,
   direction text not null check (direction in ('higher_is_better','lower_is_better')),
 
   input_mode text not null check (input_mode in ('manual','calculated')),

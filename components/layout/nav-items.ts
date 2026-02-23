@@ -29,9 +29,9 @@ export const APP_NAV_ITEMS: AppNavItem[] = [
     icon: Medal,
   },
   {
-    href: ROUTES.AGENTS,
-    label: 'Agents',
-    shortLabel: 'Agents',
+    href: ROUTES.ACCOUNTABILITY,
+    label: 'Accountability',
+    shortLabel: 'Accountability',
     icon: Users,
   },
   {

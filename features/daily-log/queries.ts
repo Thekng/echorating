@@ -6,15 +6,13 @@ import { requireRole } from '@/lib/rbac/guards'
 import { type Role } from '@/lib/rbac/roles'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
 import { dailyLogFilterSchema } from './schemas'
-import {
-  formatSecondsToDuration,
-} from '@/lib/daily-log/value-parser'
+import { formatSecondsToDuration } from '@/lib/daily-log/value-parser'
+import { normalizeMetricSettings, type DurationFormat } from '@/lib/metrics/data-types'
 import type {
   DailyLogAgentOption,
   DailyLogKeyMetric,
   DailyLogKeyMetricSlot,
   DailyLogMetric,
-  DailyLogMetricDataType,
   DailyLogRecentEntry,
   DailyLogRecentMetricValue,
 } from './types'
@@ -22,6 +20,73 @@ import type {
 type DepartmentOption = {
   department_id: string
   name: string
+}
+
+function isMissingMetricsSettingsColumn(message: string) {
+  const normalized = message.toLowerCase()
+  return normalized.includes('column metrics.settings does not exist')
+}
+
+async function getManualMetricsForDailyLog(
+  admin: ReturnType<typeof createAdminClient>,
+  companyId: string,
+  departmentId: string,
+) {
+  const withSettingsQuery = admin
+    .from('metrics')
+    .select('metric_id, name, code, data_type, unit, settings, description')
+    .eq('company_id', companyId)
+    .eq('department_id', departmentId)
+    .eq('is_active', true)
+    .eq('input_mode', 'manual')
+    .is('deleted_at', null)
+    .order('name', { ascending: true })
+
+  const withSettings = await withSettingsQuery
+  if (!withSettings.error) {
+    return {
+      ok: true as const,
+      metrics: (withSettings.data ?? []) as DailyLogMetric[],
+    }
+  }
+
+  if (!isMissingMetricsSettingsColumn(withSettings.error.message)) {
+    return {
+      ok: false as const,
+      message: formatDatabaseError(withSettings.error.message),
+      metrics: [] as DailyLogMetric[],
+    }
+  }
+
+  const fallback = await admin
+    .from('metrics')
+    .select('metric_id, name, code, data_type, unit, description')
+    .eq('company_id', companyId)
+    .eq('department_id', departmentId)
+    .eq('is_active', true)
+    .eq('input_mode', 'manual')
+    .is('deleted_at', null)
+    .order('name', { ascending: true })
+
+  if (fallback.error) {
+    return {
+      ok: false as const,
+      message: formatDatabaseError(fallback.error.message),
+      metrics: [] as DailyLogMetric[],
+    }
+  }
+
+  const metrics = ((fallback.data ?? []) as Array<Omit<DailyLogMetric, 'settings'> & { settings?: unknown }>).map(
+    (metric) => ({
+      ...metric,
+      settings: null,
+    }),
+  )
+
+  return {
+    ok: true as const,
+    metrics,
+  }
 }
 
 function todayKey() {
@@ -182,7 +247,26 @@ async function getDepartmentAgents(
   return { ok: true as const, agents }
 }
 
-function toDailyLogValue(metric: DailyLogMetric, row: { value_numeric: number | null; value_bool: boolean | null }) {
+function durationFromSeconds(value: number | null, format: DurationFormat) {
+  if (value === null || value === undefined) {
+    return ''
+  }
+
+  if (format === 'hh_mm_ss') {
+    return formatSecondsToDuration(value)
+  }
+
+  const divisor = format === 'minutes' ? 60 : format === 'hours' ? 3600 : 86400
+  const converted = value / divisor
+  return Number.isInteger(converted) ? String(converted) : String(Number(converted.toFixed(2)))
+}
+
+function toDailyLogValue(
+  metric: DailyLogMetric,
+  row: { value_numeric: number | null; value_text: string | null; value_bool: boolean | null },
+) {
+  const settings = normalizeMetricSettings(metric.data_type, metric.settings)
+
   if (metric.data_type === 'boolean') {
     if (row.value_bool === null) {
       return ''
@@ -192,7 +276,11 @@ function toDailyLogValue(metric: DailyLogMetric, row: { value_numeric: number | 
   }
 
   if (metric.data_type === 'duration') {
-    return formatSecondsToDuration(row.value_numeric)
+    return durationFromSeconds(row.value_numeric, settings.durationFormat ?? 'hh_mm_ss')
+  }
+
+  if (metric.data_type === 'text' || metric.data_type === 'datetime' || metric.data_type === 'selection' || metric.data_type === 'file') {
+    return row.value_text ?? ''
   }
 
   if (row.value_numeric === null || row.value_numeric === undefined) {
@@ -265,6 +353,7 @@ async function getKeyMetrics(
         code: configuredMetric.code,
         data_type: configuredMetric.data_type,
         unit: configuredMetric.unit,
+        settings: configuredMetric.settings,
       })
       continue
     }
@@ -282,6 +371,7 @@ async function getKeyMetrics(
       code: fallback.code,
       data_type: fallback.data_type,
       unit: fallback.unit,
+      settings: fallback.settings,
     })
   }
 
@@ -366,7 +456,7 @@ async function getRecentLogs(
   if (keyMetricIds.length > 0) {
     const { data: valuesData, error: valuesError } = await admin
       .from('entry_values')
-      .select('entry_id, metric_id, value_numeric, value_bool, value_source')
+      .select('entry_id, metric_id, value_numeric, value_text, value_bool, value_source')
       .in('entry_id', entryIds)
       .in('metric_id', keyMetricIds)
 
@@ -383,6 +473,7 @@ async function getRecentLogs(
       existing.push({
         metric_id: item.metric_id as string,
         value_numeric: item.value_numeric === null ? null : Number(item.value_numeric),
+        value_text: item.value_text as string | null,
         value_bool: item.value_bool as boolean | null,
       })
       acc.set(item.entry_id as string, existing)
@@ -471,21 +562,16 @@ export async function getDailyLogFormData(rawFilters?: {
     }
   }
 
-  const { data: metricsData, error: metricsError } = await context.admin
-    .from('metrics')
-    .select('metric_id, name, code, data_type, unit, description')
-    .eq('company_id', context.companyId)
-    .eq('department_id', selectedDepartmentId)
-    .eq('is_active', true)
-    .eq('input_mode', 'manual')
-    .is('deleted_at', null)
-    .order('name', { ascending: true })
-
-  if (metricsError) {
-    return { success: false as const, error: formatDatabaseError(metricsError.message), data: null }
+  const metricsResult = await getManualMetricsForDailyLog(
+    context.admin,
+    context.companyId,
+    selectedDepartmentId,
+  )
+  if (!metricsResult.ok) {
+    return { success: false as const, error: metricsResult.message, data: null }
   }
 
-  const metrics = (metricsData ?? []) as DailyLogMetric[]
+  const metrics = metricsResult.metrics
 
   const keyMetricsResult = await getKeyMetrics(context.admin, context.companyId, selectedDepartmentId, metrics)
   if (!keyMetricsResult.ok) {
@@ -549,7 +635,7 @@ export async function getDailyLogFormData(rawFilters?: {
 
     const { data: entryValuesData, error: entryValuesError } = await context.admin
       .from('entry_values')
-      .select('metric_id, value_numeric, value_bool, value_source')
+      .select('metric_id, value_numeric, value_text, value_bool, value_source')
       .eq('entry_id', entry.entry_id)
       .eq('value_source', 'manual')
       .in('metric_id', metricIds)
@@ -566,6 +652,7 @@ export async function getDailyLogFormData(rawFilters?: {
 
       values[item.metric_id as string] = toDailyLogValue(metric, {
         value_numeric: item.value_numeric === null ? null : Number(item.value_numeric),
+        value_text: item.value_text as string | null,
         value_bool: item.value_bool as boolean | null,
       })
     }

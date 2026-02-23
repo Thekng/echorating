@@ -1,4 +1,6 @@
-export type DailyLogMetricDataType = 'number' | 'currency' | 'percent' | 'boolean' | 'duration'
+import { type MetricDataType, type MetricSettings } from '@/lib/metrics/data-types'
+
+export type DailyLogMetricDataType = MetricDataType
 
 export type DailyLogMetric = {
   metric_id: string
@@ -6,6 +8,7 @@ export type DailyLogMetric = {
   code: string
   data_type: DailyLogMetricDataType
   unit: string
+  settings: MetricSettings | null
   description: string | null
 }
 
@@ -37,11 +40,13 @@ export type DailyLogKeyMetric = {
   code: string
   data_type: DailyLogMetricDataType
   unit: string
+  settings: MetricSettings | null
 }
 
 export type DailyLogRecentMetricValue = {
   metric_id: string
   value_numeric: number | null
+  value_text: string | null
   value_bool: boolean | null
 }
 

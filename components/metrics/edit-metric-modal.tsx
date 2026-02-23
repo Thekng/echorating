@@ -5,14 +5,23 @@ import { updateMetricAction } from '@/features/metrics/actions'
 import { Button } from '@/components/ui/button'
 import { FormulaBuilder } from '@/components/metrics/formula-builder'
 import { validateFormulaExpression } from '@/lib/metrics/formula'
-import { Pencil } from 'lucide-react'
+import { Pencil, ChevronDown } from 'lucide-react'
 
 type ActionState = {
   status: 'idle' | 'success' | 'error'
   message: string
 }
 
-type MetricDataType = 'number' | 'currency' | 'percent' | 'boolean' | 'duration'
+type MetricDataType =
+  | 'number'
+  | 'currency'
+  | 'percent'
+  | 'boolean'
+  | 'duration'
+  | 'text'
+  | 'datetime'
+  | 'selection'
+  | 'file'
 
 type MetricItem = {
   metric_id: string
@@ -22,6 +31,7 @@ type MetricItem = {
   description: string | null
   data_type: MetricDataType
   unit: string
+  settings: Record<string, unknown> | null
   direction: 'higher_is_better' | 'lower_is_better'
   input_mode: 'manual' | 'calculated'
   precision_scale: number
@@ -49,6 +59,10 @@ const DATA_TYPES = [
   { value: 'percent', label: 'Percent' },
   { value: 'boolean', label: 'Boolean' },
   { value: 'duration', label: 'Duration' },
+  { value: 'text', label: 'Text' },
+  { value: 'datetime', label: 'Date & Time' },
+  { value: 'selection', label: 'Selection' },
+  { value: 'file', label: 'File' },
 ] as const
 
 const DIRECTIONS = [
@@ -61,12 +75,18 @@ const MODES = [
   { value: 'calculated', label: 'Calculated' },
 ] as const
 
+const CALCULATED_ALLOWED_TYPES: MetricDataType[] = ['number', 'currency', 'percent', 'duration']
+
 const UNIT_OPTIONS: Record<MetricDataType, string[]> = {
-  number: ['count', 'min', 'hours', 'points'],
+  number: ['count', 'points', 'items', 'hours', 'days'],
   currency: ['usd', 'brl', 'eur'],
   percent: ['pct'],
   boolean: ['bool'],
-  duration: ['sec'],
+  duration: ['hh:mm:ss', 'minutes', 'hours', 'days'],
+  text: ['text'],
+  datetime: ['datetime'],
+  selection: ['option'],
+  file: ['file'],
 }
 
 const INITIAL_STATE: ActionState = {
@@ -81,18 +101,24 @@ function toMetricCode(name: string) {
     .replace(/^_+|_+$/g, '')
 }
 
+function settingString(settings: Record<string, unknown> | null, key: string) {
+  const value = settings?.[key]
+  return typeof value === 'string' ? value : ''
+}
+
 export function EditMetricModal({ metric, departments, dependencyMetrics }: EditMetricModalProps) {
   const [open, setOpen] = useState(false)
+  const [showAdvanced, setShowAdvanced] = useState(false)
   const [mode, setMode] = useState<'manual' | 'calculated'>(metric.input_mode)
   const [name, setName] = useState(metric.name)
   const [code, setCode] = useState(metric.code)
-  const [codeAuto, setCodeAuto] = useState(metric.code === toMetricCode(metric.name))
   const [dataType, setDataType] = useState<MetricDataType>(metric.data_type)
-  const [unit, setUnit] = useState('count')
-  const [unitCustom, setUnitCustom] = useState('')
   const [direction, setDirection] = useState<'higher_is_better' | 'lower_is_better'>(metric.direction)
   const [precisionScale, setPrecisionScale] = useState(metric.precision_scale)
   const [expression, setExpression] = useState(metric.formula_expression ?? '')
+  const [description, setDescription] = useState(metric.description ?? '')
+  const [numberKind, setNumberKind] = useState<'integer' | 'decimal'>('integer')
+  const [currencyCode, setCurrencyCode] = useState<'USD' | 'EUR' | 'BRL'>('USD')
   const [state, formAction, pending] = useActionState(updateMetricAction, INITIAL_STATE)
 
   useEffect(() => {
@@ -109,20 +135,14 @@ export function EditMetricModal({ metric, departments, dependencyMetrics }: Edit
     setMode(metric.input_mode)
     setName(metric.name)
     setCode(metric.code)
-    setCodeAuto(metric.code === toMetricCode(metric.name))
     setDataType(metric.data_type)
     setDirection(metric.direction)
     setPrecisionScale(metric.precision_scale)
     setExpression(metric.formula_expression ?? '')
-
-    const options = UNIT_OPTIONS[metric.data_type]
-    if (options.includes(metric.unit)) {
-      setUnit(metric.unit)
-      setUnitCustom('')
-    } else {
-      setUnit('custom')
-      setUnitCustom(metric.unit)
-    }
+    setDescription(metric.description ?? '')
+    setNumberKind(settingString(metric.settings, 'numberKind') === 'decimal' ? 'decimal' : 'integer')
+    const rawCurrency = settingString(metric.settings, 'currencyCode')
+    setCurrencyCode(rawCurrency === 'EUR' || rawCurrency === 'BRL' ? rawCurrency : 'USD')
   }, [metric, open])
 
   const knownMetricCodes = useMemo(
@@ -141,20 +161,19 @@ export function EditMetricModal({ metric, departments, dependencyMetrics }: Edit
 
   function onNameChange(value: string) {
     setName(value)
-    if (codeAuto) {
-      setCode(toMetricCode(value))
-    }
+    setCode(toMetricCode(value))
   }
 
   function onDataTypeChange(nextType: MetricDataType) {
     setDataType(nextType)
-    const nextUnitOptions = UNIT_OPTIONS[nextType]
-    if (unit !== 'custom' && !nextUnitOptions.includes(unit)) {
-      setUnit(nextUnitOptions[0] ?? 'count')
+    if (mode === 'calculated' && !CALCULATED_ALLOWED_TYPES.includes(nextType)) {
+      setMode('manual')
     }
   }
 
-  const disableSubmit = pending || (mode === 'calculated' && !formulaValidation.success)
+  const disableSubmit =
+    pending ||
+    (mode === 'calculated' && !formulaValidation.success)
 
   return (
     <>
@@ -181,51 +200,35 @@ export function EditMetricModal({ metric, departments, dependencyMetrics }: Edit
 
             <form action={formAction} className="space-y-4">
               <input type="hidden" name="metricId" value={metric.metric_id} />
+              <input type="hidden" name="departmentId" value={metric.department_id} />
+              <input type="hidden" name="unit" value="count" />
+              <input type="hidden" name="direction" value={direction} />
+              <input type="hidden" name="precisionScale" value={precisionScale} />
 
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="space-y-2">
-                  <label htmlFor={`edit-metric-mode-${metric.metric_id}`} className="text-sm font-medium">
-                    Mode
-                  </label>
-                  <select
-                    id={`edit-metric-mode-${metric.metric_id}`}
-                    name="inputMode"
-                    value={mode}
-                    onChange={(event) => setMode(event.target.value as 'manual' | 'calculated')}
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  >
-                    {MODES.map((item) => (
-                      <option key={item.value} value={item.value}>
-                        {item.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-2 md:col-span-2">
-                  <label htmlFor={`edit-metric-department-${metric.metric_id}`} className="text-sm font-medium">
-                    Department
-                  </label>
-                  <select
-                    id={`edit-metric-department-${metric.metric_id}`}
-                    name="departmentId"
-                    defaultValue={metric.department_id}
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                    required
-                  >
-                    {departments.map((department) => (
-                      <option key={department.department_id} value={department.department_id}>
-                        {department.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              {/* Mode */}
+              <div className="space-y-2">
+                <label htmlFor={`edit-metric-mode-${metric.metric_id}`} className="text-sm font-medium">
+                  Type of metric
+                </label>
+                <select
+                  id={`edit-metric-mode-${metric.metric_id}`}
+                  name="inputMode"
+                  value={mode}
+                  onChange={(event) => setMode(event.target.value as 'manual' | 'calculated')}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="manual">Manual entry</option>
+                  <option value="calculated" disabled={!CALCULATED_ALLOWED_TYPES.includes(dataType)}>
+                    Calculated formula
+                  </option>
+                </select>
               </div>
 
+              {/* Name & Code (auto-filled) */}
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <label htmlFor={`edit-metric-name-${metric.metric_id}`} className="text-sm font-medium">
-                    Name
+                    Metric name
                   </label>
                   <input
                     id={`edit-metric-name-${metric.metric_id}`}
@@ -235,157 +238,99 @@ export function EditMetricModal({ metric, departments, dependencyMetrics }: Edit
                     required
                     minLength={2}
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    placeholder="e.g., Close Rate"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label htmlFor={`edit-metric-code-${metric.metric_id}`} className="text-sm font-medium">
-                      Code
-                    </label>
-                    <button
-                      type="button"
-                      className="text-xs text-muted-foreground underline underline-offset-4"
-                      onClick={() => {
-                        setCode(toMetricCode(name))
-                        setCodeAuto(true)
-                      }}
-                    >
-                      Auto
-                    </button>
-                  </div>
+                  <label htmlFor={`edit-metric-code-${metric.metric_id}`} className="text-sm font-medium">
+                    Code (auto-filled)
+                  </label>
                   <input
                     id={`edit-metric-code-${metric.metric_id}`}
                     name="code"
                     value={code}
-                    onChange={(event) => {
-                      setCode(event.target.value)
-                      setCodeAuto(false)
-                    }}
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm font-mono"
+                    readOnly
+                    className="h-10 w-full rounded-md border border-input bg-muted px-3 text-sm font-mono text-muted-foreground"
                   />
-                  <p className="text-xs text-muted-foreground">Spaces are automatically converted to `_`.</p>
                 </div>
               </div>
 
               <div className="space-y-2">
                 <label htmlFor={`edit-metric-description-${metric.metric_id}`} className="text-sm font-medium">
-                  Description
+                  Short description (optional)
                 </label>
                 <textarea
                   id={`edit-metric-description-${metric.metric_id}`}
                   name="description"
-                  rows={2}
-                  defaultValue={metric.description ?? ''}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  placeholder="A brief sentence shown under the KPI title"
                 />
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <label htmlFor={`edit-metric-type-${metric.metric_id}`} className="text-sm font-medium">
-                    Data type
-                  </label>
-                  <select
-                    id={`edit-metric-type-${metric.metric_id}`}
-                    name="dataType"
-                    value={dataType}
-                    onChange={(event) => onDataTypeChange(event.target.value as MetricDataType)}
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  >
-                    {DATA_TYPES.map((item) => (
-                      <option key={item.value} value={item.value}>
-                        {item.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-2">
-                  <label htmlFor={`edit-metric-unit-${metric.metric_id}`} className="text-sm font-medium">
-                    Unit
-                  </label>
-                  <select
-                    id={`edit-metric-unit-${metric.metric_id}`}
-                    name="unit"
-                    value={unit}
-                    onChange={(event) => setUnit(event.target.value)}
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  >
-                    {unitOptions.map((item) => (
-                      <option key={item} value={item}>
-                        {item}
-                      </option>
-                    ))}
-                    <option value="custom">custom</option>
-                  </select>
-                </div>
+              {/* Data Type */}
+              <div className="space-y-2">
+                <label htmlFor={`edit-metric-type-${metric.metric_id}`} className="text-sm font-medium">
+                  Data type
+                </label>
+                <select
+                  id={`edit-metric-type-${metric.metric_id}`}
+                  name="dataType"
+                  value={dataType}
+                  onChange={(event) => onDataTypeChange(event.target.value as MetricDataType)}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="number">Number</option>
+                  <option value="currency">Currency</option>
+                  <option value="percent">Percentage</option>
+                  <option value="duration">Duration</option>
+                </select>
               </div>
 
-              {unit === 'custom' ? (
+              {/* Format options based on data type */}
+              {dataType === 'number' && (
                 <div className="space-y-2">
-                  <label htmlFor={`edit-metric-unit-custom-${metric.metric_id}`} className="text-sm font-medium">
-                    Custom unit
+                  <label htmlFor={`edit-metric-number-kind-${metric.metric_id}`} className="text-sm font-medium">
+                    Number format
                   </label>
-                  <input
-                    id={`edit-metric-unit-custom-${metric.metric_id}`}
-                    name="unitCustom"
-                    value={unitCustom}
-                    onChange={(event) => setUnitCustom(event.target.value)}
-                    required
+                  <select
+                    id={`edit-metric-number-kind-${metric.metric_id}`}
+                    name="numberKind"
+                    value={numberKind}
+                    onChange={(event) => setNumberKind(event.target.value as 'integer' | 'decimal')}
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  />
+                  >
+                    <option value="integer">Whole numbers</option>
+                    <option value="decimal">Decimal numbers</option>
+                  </select>
                 </div>
-              ) : null}
+              )}
 
-              <details className="rounded-md border border-border bg-muted/20 p-3">
-                <summary className="cursor-pointer text-sm font-medium text-muted-foreground">
-                  Advanced settings (optional)
-                </summary>
-                <div className="mt-3 grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <label htmlFor={`edit-metric-direction-${metric.metric_id}`} className="text-sm font-medium">
-                      Direction
-                    </label>
-                    <select
-                      id={`edit-metric-direction-${metric.metric_id}`}
-                      name="direction"
-                      value={direction}
-                      onChange={(event) =>
-                        setDirection(event.target.value as 'higher_is_better' | 'lower_is_better')
-                      }
-                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                    >
-                      {DIRECTIONS.map((item) => (
-                        <option key={item.value} value={item.value}>
-                          {item.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label htmlFor={`edit-metric-precision-${metric.metric_id}`} className="text-sm font-medium">
-                      Precision
-                    </label>
-                    <input
-                      id={`edit-metric-precision-${metric.metric_id}`}
-                      name="precisionScale"
-                      type="number"
-                      min={0}
-                      max={6}
-                      value={precisionScale}
-                      onChange={(event) => setPrecisionScale(Number(event.target.value))}
-                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                      required
-                    />
-                  </div>
+              {dataType === 'currency' && (
+                <div className="space-y-2">
+                  <label htmlFor={`edit-metric-currency-code-${metric.metric_id}`} className="text-sm font-medium">
+                    Currency
+                  </label>
+                  <select
+                    id={`edit-metric-currency-code-${metric.metric_id}`}
+                    name="currencyCode"
+                    value={currencyCode}
+                    onChange={(event) => setCurrencyCode(event.target.value as 'USD' | 'EUR' | 'BRL')}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="USD">USD ($)</option>
+                    <option value="EUR">EUR (€)</option>
+                    <option value="BRL">BRL (R$)</option>
+                  </select>
                 </div>
-              </details>
+              )}
 
               {mode === 'calculated' ? (
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Formula</label>
+                  <label className="text-sm font-medium">Calculated formula</label>
+                  <p className="text-xs text-muted-foreground mb-2">Create a formula by combining other metrics. Use +, -, *, / and parentheses.</p>
                   <FormulaBuilder
                     id={`edit-metric-expression-${metric.metric_id}`}
                     name="expression"

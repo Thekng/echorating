@@ -6,6 +6,7 @@ import { requireRole } from '@/lib/rbac/guards'
 import { type Role } from '@/lib/rbac/roles'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
 import { metricFilterSchema } from './schemas'
+import { type MetricDataType, type MetricSettings } from '@/lib/metrics/data-types'
 
 type DepartmentRow = {
   department_id: string
@@ -18,8 +19,9 @@ type MetricRow = {
   name: string
   code: string
   description: string | null
-  data_type: 'number' | 'currency' | 'percent' | 'boolean' | 'duration'
+  data_type: MetricDataType
   unit: string
+  settings: MetricSettings | null
   direction: 'higher_is_better' | 'lower_is_better'
   input_mode: 'manual' | 'calculated'
   precision_scale: number
@@ -40,6 +42,10 @@ type DailyTargetRow = {
   department_id: string
   metric_id: string
   value: number
+}
+
+function isMissingMetricsSettingsColumn(message: string) {
+  return message.toLowerCase().includes('column metrics.settings does not exist')
 }
 
 async function getViewerContext() {
@@ -124,18 +130,22 @@ export async function listMetrics(rawFilters?: {
 
   const departments = (departmentsData ?? []) as DepartmentRow[]
   const departmentMap = new Map(departments.map((department) => [department.department_id, department.name]))
+  const effectiveDepartmentId =
+    departments.find((department) => department.department_id === filters.departmentId)?.department_id ??
+    departments[0]?.department_id ??
+    'all'
 
   let metricsQuery = context.admin
     .from('metrics')
     .select(
-      'metric_id, department_id, name, code, description, data_type, unit, direction, input_mode, precision_scale, is_active, created_at, updated_at',
+      'metric_id, department_id, name, code, description, data_type, unit, settings, direction, input_mode, precision_scale, is_active, created_at, updated_at',
     )
     .eq('company_id', context.companyId)
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
 
-  if (filters.departmentId !== 'all') {
-    metricsQuery = metricsQuery.eq('department_id', filters.departmentId)
+  if (effectiveDepartmentId !== 'all') {
+    metricsQuery = metricsQuery.eq('department_id', effectiveDepartmentId)
   }
 
   if (filters.mode !== 'all') {
@@ -146,13 +156,47 @@ export async function listMetrics(rawFilters?: {
     metricsQuery = metricsQuery.eq('is_active', filters.status === 'active')
   }
 
-  const { data: metricsData, error: metricsError } = await metricsQuery
+  const withSettings = await metricsQuery
 
-  if (metricsError) {
-    return { success: false, error: formatDatabaseError(metricsError.message), data: null }
+  let metrics: MetricRow[] = []
+  if (!withSettings.error) {
+    metrics = (withSettings.data ?? []) as MetricRow[]
+  } else if (isMissingMetricsSettingsColumn(withSettings.error.message)) {
+    let fallbackQuery = context.admin
+      .from('metrics')
+      .select(
+        'metric_id, department_id, name, code, description, data_type, unit, direction, input_mode, precision_scale, is_active, created_at, updated_at',
+      )
+      .eq('company_id', context.companyId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+
+    if (effectiveDepartmentId !== 'all') {
+      fallbackQuery = fallbackQuery.eq('department_id', effectiveDepartmentId)
+    }
+
+    if (filters.mode !== 'all') {
+      fallbackQuery = fallbackQuery.eq('input_mode', filters.mode)
+    }
+
+    if (filters.status !== 'all') {
+      fallbackQuery = fallbackQuery.eq('is_active', filters.status === 'active')
+    }
+
+    const fallback = await fallbackQuery
+    if (fallback.error) {
+      return { success: false, error: formatDatabaseError(fallback.error.message), data: null }
+    }
+
+    metrics = (
+      (fallback.data ?? []) as Array<Omit<MetricRow, 'settings'> & { settings?: MetricSettings | null }>
+    ).map((metric) => ({
+      ...metric,
+      settings: null,
+    }))
+  } else {
+    return { success: false, error: formatDatabaseError(withSettings.error.message), data: null }
   }
-
-  let metrics = (metricsData ?? []) as MetricRow[]
 
   if (filters.q?.trim()) {
     const term = filters.q.trim().toLowerCase()
@@ -232,8 +276,8 @@ export async function listMetrics(rawFilters?: {
     .is('user_id', null)
     .is('deleted_at', null)
 
-  if (filters.departmentId !== 'all') {
-    targetsQuery = targetsQuery.eq('department_id', filters.departmentId)
+  if (effectiveDepartmentId !== 'all') {
+    targetsQuery = targetsQuery.eq('department_id', effectiveDepartmentId)
   }
 
   const { data: targetsData, error: targetsError } = await targetsQuery
@@ -271,7 +315,10 @@ export async function listMetrics(rawFilters?: {
         department_id: metric.department_id,
         department_name: departmentMap.get(metric.department_id) ?? 'Unknown department',
       })),
-      filters,
+      filters: {
+        ...filters,
+        departmentId: effectiveDepartmentId,
+      },
       viewerRole: context.role,
     },
   }
@@ -289,18 +336,42 @@ export async function getMetricById(id: string) {
     return { success: false, error: 'Insufficient permissions.', data: null }
   }
 
-  const { data: metric, error: metricError } = await context.admin
+  const withSettings = await context.admin
     .from('metrics')
     .select(
-      'metric_id, department_id, name, code, description, data_type, unit, direction, input_mode, precision_scale, is_active, created_at, updated_at',
+      'metric_id, department_id, name, code, description, data_type, unit, settings, direction, input_mode, precision_scale, is_active, created_at, updated_at',
     )
     .eq('metric_id', id)
     .eq('company_id', context.companyId)
     .is('deleted_at', null)
     .maybeSingle()
 
-  if (metricError) {
-    return { success: false, error: formatDatabaseError(metricError.message), data: null }
+  let metric: MetricRow | null = null
+  if (!withSettings.error) {
+    metric = (withSettings.data ?? null) as MetricRow | null
+  } else if (isMissingMetricsSettingsColumn(withSettings.error.message)) {
+    const fallback = await context.admin
+      .from('metrics')
+      .select(
+        'metric_id, department_id, name, code, description, data_type, unit, direction, input_mode, precision_scale, is_active, created_at, updated_at',
+      )
+      .eq('metric_id', id)
+      .eq('company_id', context.companyId)
+      .is('deleted_at', null)
+      .maybeSingle()
+
+    if (fallback.error) {
+      return { success: false, error: formatDatabaseError(fallback.error.message), data: null }
+    }
+
+    metric = fallback.data
+      ? ({
+          ...fallback.data,
+          settings: null,
+        } as MetricRow)
+      : null
+  } else {
+    return { success: false, error: formatDatabaseError(withSettings.error.message), data: null }
   }
 
   if (!metric) {

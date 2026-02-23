@@ -7,6 +7,7 @@ import {
   targetStatusSchema,
   upsertDailyDepartmentTargetSchema,
 } from './schemas'
+import { type UpsertDailyDepartmentTargetState } from './action-state'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireRole } from '@/lib/rbac/guards'
@@ -199,27 +200,41 @@ async function upsertDailyDepartmentTargetValue(
 }
 
 export async function upsertDailyDepartmentTargetAction(
+  _prevState: UpsertDailyDepartmentTargetState,
   formData: FormData,
-): Promise<void> {
+): Promise<UpsertDailyDepartmentTargetState> {
   const parsed = upsertDailyDepartmentTargetSchema.safeParse({
     metricId: field(formData, 'metricId'),
     departmentId: field(formData, 'departmentId'),
+    intent: field(formData, 'intent') || 'save',
     value: field(formData, 'value'),
   })
 
   if (!parsed.success) {
-    return
+    return {
+      status: 'error',
+      message: zodMessage(parsed.error),
+      value: null,
+    }
   }
 
   const context = await getActorContext()
   if (!context.ok) {
-    return
+    return {
+      status: 'error',
+      message: context.message,
+      value: null,
+    }
   }
 
   try {
     requireRole(context.role, 'manager')
   } catch {
-    return
+    return {
+      status: 'error',
+      message: 'Insufficient permissions.',
+      value: null,
+    }
   }
 
   const validation = await validateDepartmentAndMetric(
@@ -229,10 +244,14 @@ export async function upsertDailyDepartmentTargetAction(
     parsed.data.metricId,
   )
   if (!validation.ok) {
-    return
+    return {
+      status: 'error',
+      message: validation.message,
+      value: null,
+    }
   }
 
-  if (parsed.data.value === undefined) {
+  if (parsed.data.intent === 'clear') {
     const deactivateResult = await deactivateDailyDepartmentTarget(
       context.admin,
       context.companyId,
@@ -241,12 +260,27 @@ export async function upsertDailyDepartmentTargetAction(
     )
 
     if (!deactivateResult.ok) {
-      return
+      return {
+        status: 'error',
+        message: deactivateResult.message,
+        value: null,
+      }
     }
 
     revalidatePath(ROUTES.SETTINGS_METRICS)
-    revalidatePath(ROUTES.SETTINGS_TARGETS)
-    return
+    return {
+      status: 'success',
+      message: 'Target cleared.',
+      value: null,
+    }
+  }
+
+  if (parsed.data.value === undefined) {
+    return {
+      status: 'error',
+      message: 'Target value must be positive.',
+      value: null,
+    }
   }
 
   const upsertResult = await upsertDailyDepartmentTargetValue(
@@ -258,12 +292,19 @@ export async function upsertDailyDepartmentTargetAction(
   )
 
   if (!upsertResult.ok) {
-    return
+    return {
+      status: 'error',
+      message: upsertResult.message,
+      value: null,
+    }
   }
 
   revalidatePath(ROUTES.SETTINGS_METRICS)
-  revalidatePath(ROUTES.SETTINGS_TARGETS)
-  return
+  return {
+    status: 'success',
+    message: 'Target saved.',
+    value: parsed.data.value,
+  }
 }
 
 export async function createTarget(
@@ -307,7 +348,7 @@ export async function createTarget(
     return { success: false, error: upsertResult.message }
   }
 
-  revalidatePath(ROUTES.SETTINGS_TARGETS)
+  revalidatePath(ROUTES.SETTINGS_METRICS)
   return { success: true }
 }
 
@@ -362,7 +403,7 @@ export async function updateTarget(
     return { success: false, error: formatDatabaseError(updateError.message) }
   }
 
-  revalidatePath(ROUTES.SETTINGS_TARGETS)
+  revalidatePath(ROUTES.SETTINGS_METRICS)
   return { success: true }
 }
 
@@ -396,7 +437,7 @@ export async function deleteTarget(id: string): Promise<{ success: boolean; erro
     return { success: false, error: formatDatabaseError(error.message) }
   }
 
-  revalidatePath(ROUTES.SETTINGS_TARGETS)
+  revalidatePath(ROUTES.SETTINGS_METRICS)
   return { success: true }
 }
 
@@ -431,5 +472,5 @@ export async function toggleTargetStatusAction(formData: FormData) {
     .eq('company_id', context.companyId)
     .is('deleted_at', null)
 
-  revalidatePath(ROUTES.SETTINGS_TARGETS)
+  revalidatePath(ROUTES.SETTINGS_METRICS)
 }

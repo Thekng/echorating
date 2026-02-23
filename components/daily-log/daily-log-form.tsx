@@ -3,6 +3,8 @@
 import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { saveDailyLogAction } from '@/features/daily-log/actions'
+import { DurationSelector } from '@/components/daily-log/duration-selector'
+import { booleanLabels, normalizeMetricSettings } from '@/lib/metrics/data-types'
 import {
   INITIAL_DAILY_LOG_ACTION_STATE,
   type DailyLogMetric,
@@ -55,24 +57,24 @@ function formatTime(value: string | null) {
   }).format(date)
 }
 
-function formatMetricSubLabel(metric: DailyLogMetric) {
-  if (metric.data_type === 'duration') {
-    return 'HH:MM:SS'
+function decodeMultiSelection(value: string) {
+  if (!value.trim()) {
+    return [] as string[]
   }
 
-  if (metric.data_type === 'boolean') {
-    return 'yes / no'
+  try {
+    const parsed = JSON.parse(value) as string[]
+    if (Array.isArray(parsed)) {
+      return parsed
+    }
+  } catch {
+    // ignore and fallback
   }
 
-  if (metric.data_type === 'currency') {
-    return metric.unit || 'currency'
-  }
-
-  if (metric.data_type === 'percent') {
-    return '%'
-  }
-
-  return metric.unit || 'number'
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
 }
 
 function renderMetricInput(
@@ -81,36 +83,210 @@ function renderMetricInput(
   pending: boolean,
   onChange: (nextValue: string) => void,
 ) {
+  const settings = normalizeMetricSettings(metric.data_type, metric.settings)
+
   if (metric.data_type === 'boolean') {
-    const enabled = value === 'true'
+    const labels = booleanLabels(settings)
 
     return (
-      <>
-        <input name={`metric_${metric.metric_id}`} type="hidden" value={enabled ? 'true' : 'false'} />
-        <button
-          type="button"
-          onClick={() => onChange(enabled ? 'false' : 'true')}
+      <select
+        name={`metric_${metric.metric_id}`}
+        value={value}
+        onChange={(event) => onChange(event.currentTarget.value)}
+        disabled={pending}
+        className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+      >
+        <option value="">Select</option>
+        <option value="true">{labels.trueLabel}</option>
+        <option value="false">{labels.falseLabel}</option>
+      </select>
+    )
+  }
+
+  if (metric.data_type === 'duration') {
+    if (settings.durationFormat && settings.durationFormat !== 'hh_mm_ss') {
+      return (
+        <input
+          name={`metric_${metric.metric_id}`}
+          type="number"
+          step={settings.durationFormat === 'days' ? '0.01' : '1'}
+          min="0"
+          inputMode="decimal"
+          value={value}
+          onChange={(event) => onChange(event.currentTarget.value)}
+          placeholder={settings.durationFormat}
           disabled={pending}
-          className={
-            enabled
-              ? 'h-9 w-full rounded-md border border-emerald-500 bg-emerald-50 text-sm font-medium text-emerald-700'
-              : 'h-9 w-full rounded-md border border-input bg-background text-sm text-muted-foreground'
-          }
-        >
-          {enabled ? 'Yes' : 'No'}
-        </button>
-      </>
+          className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+        />
+      )
+    }
+
+    return (
+      <DurationSelector
+        name={`metric_${metric.metric_id}`}
+        value={value}
+        onChange={onChange}
+        disabled={pending}
+        ariaLabel={metric.name}
+      />
+    )
+  }
+
+  if (metric.data_type === 'text') {
+    if (settings.textFormat === 'long_text') {
+      return (
+        <textarea
+          name={`metric_${metric.metric_id}`}
+          rows={3}
+          value={value}
+          onChange={(event) => onChange(event.currentTarget.value)}
+          placeholder="Write details"
+          disabled={pending}
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+        />
+      )
+    }
+
+    const inputType =
+      settings.textFormat === 'email'
+        ? 'email'
+        : settings.textFormat === 'url'
+          ? 'url'
+          : settings.textFormat === 'phone'
+            ? 'tel'
+            : 'text'
+
+    return (
+      <input
+        name={`metric_${metric.metric_id}`}
+        type={inputType}
+        inputMode={settings.textFormat === 'phone' ? 'tel' : 'text'}
+        value={value}
+        onChange={(event) => onChange(event.currentTarget.value)}
+        placeholder={settings.textFormat?.replace('_', ' ') ?? 'text'}
+        disabled={pending}
+        className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+      />
+    )
+  }
+
+  if (metric.data_type === 'datetime') {
+    const inputType =
+      settings.datetimeFormat === 'datetime'
+        ? 'datetime-local'
+        : settings.datetimeFormat === 'time'
+          ? 'time'
+          : 'date'
+
+    return (
+      <input
+        name={`metric_${metric.metric_id}`}
+        type={inputType}
+        value={value}
+        onChange={(event) => onChange(event.currentTarget.value)}
+        disabled={pending}
+        className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+      />
+    )
+  }
+
+  if (metric.data_type === 'selection') {
+    const options = settings.selectionOptions ?? []
+    if (options.length === 0) {
+      return (
+        <p className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
+          No options configured.
+        </p>
+      )
+    }
+
+    if (settings.selectionMode === 'multi') {
+      const selectedValues = decodeMultiSelection(value)
+      return (
+        <>
+          <input type="hidden" name={`metric_${metric.metric_id}`} value={value} />
+          <select
+            multiple
+            value={selectedValues}
+            onChange={(event) => {
+              const next = Array.from(event.currentTarget.selectedOptions).map((option) => option.value)
+              onChange(JSON.stringify(next))
+            }}
+            disabled={pending}
+            className="min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          >
+            {options.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </>
+      )
+    }
+
+    if (settings.selectionMode === 'radio') {
+      return (
+        <div className="space-y-1">
+          <input type="hidden" name={`metric_${metric.metric_id}`} value={value} />
+          {options.map((option) => (
+            <label key={option} className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name={`metric_${metric.metric_id}_radio`}
+                value={option}
+                checked={value === option}
+                onChange={(event) => onChange(event.currentTarget.value)}
+                disabled={pending}
+              />
+              {option}
+            </label>
+          ))}
+        </div>
+      )
+    }
+
+    return (
+      <select
+        name={`metric_${metric.metric_id}`}
+        value={value}
+        onChange={(event) => onChange(event.currentTarget.value)}
+        disabled={pending}
+        className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+      >
+        <option value="">Select one</option>
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    )
+  }
+
+  if (metric.data_type === 'file') {
+    return (
+      <input
+        name={`metric_${metric.metric_id}`}
+        type="url"
+        value={value}
+        onChange={(event) => onChange(event.currentTarget.value)}
+        placeholder={settings.fileKind === 'image' ? 'https://.../image.png' : 'https://.../document.pdf'}
+        disabled={pending}
+        className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+      />
     )
   }
 
   return (
     <input
       name={`metric_${metric.metric_id}`}
-      type="text"
-      inputMode={metric.data_type === 'duration' ? 'text' : 'decimal'}
+      type="number"
+      inputMode="decimal"
+      step={metric.data_type === 'number' && settings.numberKind === 'integer' ? '1' : '0.01'}
       value={value}
       onChange={(event) => onChange(event.currentTarget.value)}
-      placeholder={metric.data_type === 'duration' ? '00:00:00' : '0'}
+      placeholder="0"
       disabled={pending}
       className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
     />
@@ -249,13 +425,12 @@ export function DailyLogForm({
   })()
 
   const disabledForm = pending || !departmentId || !userId
-
   return (
     <>
       <form
         ref={formRef}
         action={formAction}
-        className="space-y-4"
+        className="space-y-6"
         onSubmit={(event) => {
           const submitter = event.nativeEvent.submitter as HTMLButtonElement | null
           const submitKind = submitter?.dataset.submitKind as 'autosave' | 'manual-draft' | 'submit' | undefined
@@ -268,45 +443,16 @@ export function DailyLogForm({
         <input type="hidden" name="departmentId" value={departmentId} />
         <input type="hidden" name="userId" value={userId} />
 
-        <div className="rounded-lg border bg-card p-4">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <p className="text-sm font-medium">Entry status</p>
-              <span
-                className={
-                  entryStatus === 'submitted'
-                    ? 'rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700'
-                    : 'rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs text-amber-700'
-                }
-              >
-                {entryStatus === 'submitted' ? 'Submitted' : 'Draft'}
-              </span>
-            </div>
-            <p
-              className={
-                state.status === 'error'
-                  ? 'text-xs text-destructive'
-                  : dirty
-                    ? 'text-xs text-amber-600'
-                    : 'text-xs text-muted-foreground'
-              }
-            >
-              {statusText}
-            </p>
-          </div>
-
-          {metrics.length === 0 ? (
-            <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-              No active manual metrics found for this department.
-            </p>
-          ) : (
-            <div className="grid gap-3 md:grid-cols-4">
+        {metrics.length === 0 ? (
+          <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+            No active manual metrics found for this department.
+          </p>
+        ) : (
+          <>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               {metrics.map((metric) => (
-                <div key={metric.metric_id} className="space-y-1 rounded-md border border-border/80 p-3">
-                  <p className="truncate text-sm font-medium">{metric.name}</p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {metric.code} · {formatMetricSubLabel(metric)}
-                  </p>
+                <div key={metric.metric_id} className="space-y-2">
+                  <label className="block text-sm font-medium text-foreground">{metric.name}</label>
                   {renderMetricInput(metric, values[metric.metric_id] ?? '', disabledForm, (nextValue) => {
                     setValues((current) => ({
                       ...current,
@@ -316,60 +462,61 @@ export function DailyLogForm({
                 </div>
               ))}
             </div>
-          )}
 
-          <div className="mt-3 space-y-2">
-            <label htmlFor="daily-log-notes" className="text-sm font-medium">
-              Notes
-            </label>
-            <textarea
-              id="daily-log-notes"
-              name="notes"
-              rows={4}
-              value={notes}
-              onChange={(event) => setNotes(event.currentTarget.value)}
-              disabled={disabledForm}
-              placeholder="Add notes about today's performance"
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            />
-          </div>
-        </div>
+            <div className="space-y-2">
+              <label htmlFor="daily-log-notes" className="text-sm font-medium">
+                Notes
+              </label>
+              <textarea
+                id="daily-log-notes"
+                name="notes"
+                rows={5}
+                value={notes}
+                onChange={(event) => setNotes(event.currentTarget.value)}
+                disabled={disabledForm}
+                placeholder="Add any notes about today's performance..."
+                className="w-full rounded-md border border-input bg-background px-3 py-3 text-sm"
+              />
+            </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <button
-            ref={autosaveSubmitterRef}
-            type="submit"
-            name="intent"
-            value="draft"
-            data-submit-kind="autosave"
-            className="hidden"
-            tabIndex={-1}
-            aria-hidden={true}
-          >
-            autosave
-          </button>
+            <button
+              ref={autosaveSubmitterRef}
+              type="submit"
+              name="intent"
+              value="draft"
+              data-submit-kind="autosave"
+              className="hidden"
+              tabIndex={-1}
+              aria-hidden={true}
+            >
+              autosave
+            </button>
 
-          <Button
-            type="submit"
-            name="intent"
-            value="draft"
-            variant="outline"
-            disabled={disabledForm}
-            data-submit-kind="manual-draft"
-          >
-            Save draft
-          </Button>
-
-          <Button
-            type="submit"
-            name="intent"
-            value="submit"
-            disabled={disabledForm}
-            data-submit-kind="submit"
-          >
-            Submit log
-          </Button>
-        </div>
+            <div className="space-y-2">
+              <p
+                className={
+                  state.status === 'error'
+                    ? 'text-xs text-destructive'
+                    : dirty
+                      ? 'text-xs text-amber-600'
+                      : 'text-xs text-muted-foreground'
+                }
+              >
+                {statusText}
+              </p>
+              <Button
+                type="submit"
+                name="intent"
+                value="submit"
+                disabled={disabledForm}
+                data-submit-kind="submit"
+                className="h-12 w-full text-base font-semibold"
+              >
+                Submit Daily Log
+              </Button>
+            </div>
+          </>
+        )}
       </form>
 
       <div className="pointer-events-none fixed right-4 top-20 z-50 flex w-[320px] flex-col gap-2">

@@ -4,6 +4,7 @@ import { useActionState } from 'react'
 import { updateCompanyAction } from '@/features/company/actions'
 import { Button } from '@/components/ui/button'
 import { SettingsSurface } from '@/components/settings/settings-surface'
+import { SettingsFeedback } from '@/components/settings/settings-feedback'
 
 const TIMEZONES = [
   'UTC',
@@ -77,11 +78,7 @@ export function CompanySettingsForm({ name, timezone, canEdit }: CompanySettings
           </select>
         </div>
 
-        {state.status !== 'idle' ? (
-          <p className={state.status === 'error' ? 'text-sm text-destructive' : 'text-sm text-muted-foreground'}>
-            {state.message}
-          </p>
-        ) : null}
+        <SettingsFeedback status={state.status} message={state.message} />
 
         {canEdit ? (
           <Button type="submit" disabled={pending}>

@@ -44,6 +44,7 @@ export const targetSchema = z.object({
 export const upsertDailyDepartmentTargetSchema = z.object({
   metricId: z.string().uuid('Metric is required'),
   departmentId: z.string().uuid('Department is required'),
+  intent: z.enum(['save', 'clear']).default('save'),
   value: optionalPositiveNumberSchema,
 })
 

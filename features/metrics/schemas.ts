@@ -1,6 +1,7 @@
 import { z } from 'zod'
+import { METRIC_DATA_TYPES } from '@/lib/metrics/data-types'
 
-export const metricDataTypeSchema = z.enum(['number', 'currency', 'percent', 'boolean', 'duration'])
+export const metricDataTypeSchema = z.enum(METRIC_DATA_TYPES)
 export const metricDirectionSchema = z.enum(['higher_is_better', 'lower_is_better'])
 export const metricInputModeSchema = z.enum(['manual', 'calculated'])
 

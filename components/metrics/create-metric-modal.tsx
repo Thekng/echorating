@@ -12,7 +12,16 @@ type ActionState = {
   message: string
 }
 
-type MetricDataType = 'number' | 'currency' | 'percent' | 'boolean' | 'duration'
+type MetricDataType =
+  | 'number'
+  | 'currency'
+  | 'percent'
+  | 'boolean'
+  | 'duration'
+  | 'text'
+  | 'datetime'
+  | 'selection'
+  | 'file'
 
 type CreateMetricModalProps = {
   departments: Array<{
@@ -34,6 +43,10 @@ const DATA_TYPES = [
   { value: 'percent', label: 'Percent' },
   { value: 'boolean', label: 'Boolean' },
   { value: 'duration', label: 'Duration' },
+  { value: 'text', label: 'Text' },
+  { value: 'datetime', label: 'Date & Time' },
+  { value: 'selection', label: 'Selection' },
+  { value: 'file', label: 'File' },
 ] as const
 
 const DIRECTIONS = [
@@ -46,12 +59,18 @@ const MODES = [
   { value: 'calculated', label: 'Calculated' },
 ] as const
 
+const CALCULATED_ALLOWED_TYPES: MetricDataType[] = ['number', 'currency', 'percent', 'duration']
+
 const UNIT_OPTIONS: Record<MetricDataType, string[]> = {
-  number: ['count', 'min', 'hours', 'points'],
+  number: ['count', 'points', 'items', 'hours', 'days'],
   currency: ['usd', 'brl', 'eur'],
   percent: ['pct'],
   boolean: ['bool'],
-  duration: ['sec'],
+  duration: ['hh:mm:ss', 'minutes', 'hours', 'days'],
+  text: ['text'],
+  datetime: ['datetime'],
+  selection: ['option'],
+  file: ['file'],
 }
 
 const INITIAL_STATE: ActionState = {
@@ -91,6 +110,17 @@ export function CreateMetricModal({
   const [precisionScale, setPrecisionScale] = useState(0)
   const [precisionDirty, setPrecisionDirty] = useState(false)
   const [expression, setExpression] = useState('')
+  const [numberKind, setNumberKind] = useState<'integer' | 'decimal'>('integer')
+  const [currencyCode, setCurrencyCode] = useState<'USD' | 'EUR' | 'BRL'>('USD')
+  const [booleanPreset, setBooleanPreset] = useState<
+    'yes_no' | 'true_false' | 'active_inactive' | 'qualified_not_qualified' | 'completed_not_completed'
+  >('yes_no')
+  const [durationFormat, setDurationFormat] = useState<'hh_mm_ss' | 'minutes' | 'hours' | 'days'>('hh_mm_ss')
+  const [textFormat, setTextFormat] = useState<'short_text' | 'long_text' | 'email' | 'phone' | 'url'>('short_text')
+  const [datetimeFormat, setDatetimeFormat] = useState<'date' | 'datetime' | 'time'>('date')
+  const [selectionMode, setSelectionMode] = useState<'single' | 'multi' | 'radio'>('single')
+  const [selectionOptions, setSelectionOptions] = useState('')
+  const [fileKind, setFileKind] = useState<'file' | 'image'>('file')
 
   const unitOptions = UNIT_OPTIONS[dataType]
   const knownMetricCodes = useMemo(
@@ -124,6 +154,15 @@ export function CreateMetricModal({
       setPrecisionScale(0)
       setPrecisionDirty(false)
       setExpression('')
+      setNumberKind('integer')
+      setCurrencyCode('USD')
+      setBooleanPreset('yes_no')
+      setDurationFormat('hh_mm_ss')
+      setTextFormat('short_text')
+      setDatetimeFormat('date')
+      setSelectionMode('single')
+      setSelectionOptions('')
+      setFileKind('file')
       return
     }
 
@@ -148,9 +187,19 @@ export function CreateMetricModal({
     if (!precisionDirty) {
       setPrecisionScale(suggestedPrecision(nextType))
     }
+    if (mode === 'calculated' && !CALCULATED_ALLOWED_TYPES.includes(nextType)) {
+      setMode('manual')
+    }
+    if (nextType === 'duration') {
+      setDurationFormat('hh_mm_ss')
+      setUnit('hh:mm:ss')
+    }
   }
 
-  const disableSubmit = pending || (mode === 'calculated' && !formulaValidation.success)
+  const disableSubmit =
+    pending ||
+    (mode === 'calculated' && !formulaValidation.success) ||
+    (dataType === 'selection' && selectionOptions.trim() === '')
 
   return (
     <>
@@ -160,6 +209,7 @@ export function CreateMetricModal({
         title="Add custom KPI"
         aria-label="Add custom KPI"
         className="size-9 p-0"
+        disabled={departments.length === 0}
       >
         <Plus className="size-4" />
       </Button>
@@ -188,7 +238,11 @@ export function CreateMetricModal({
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                   >
                     {MODES.map((item) => (
-                      <option key={item.value} value={item.value}>
+                      <option
+                        key={item.value}
+                        value={item.value}
+                        disabled={item.value === 'calculated' && !CALCULATED_ALLOWED_TYPES.includes(dataType)}
+                      >
                         {item.label}
                       </option>
                     ))}
@@ -328,6 +382,197 @@ export function CreateMetricModal({
                     required
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                   />
+                </div>
+              ) : null}
+
+              {dataType === 'number' ? (
+                <div className="space-y-2">
+                  <label htmlFor="create-metric-number-kind" className="text-sm font-medium">
+                    Number format
+                  </label>
+                  <select
+                    id="create-metric-number-kind"
+                    name="numberKind"
+                    value={numberKind}
+                    onChange={(event) => setNumberKind(event.target.value as 'integer' | 'decimal')}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="integer">Integer</option>
+                    <option value="decimal">Decimal</option>
+                  </select>
+                </div>
+              ) : null}
+
+              {dataType === 'currency' ? (
+                <div className="space-y-2">
+                  <label htmlFor="create-metric-currency-code" className="text-sm font-medium">
+                    Currency
+                  </label>
+                  <select
+                    id="create-metric-currency-code"
+                    name="currencyCode"
+                    value={currencyCode}
+                    onChange={(event) => setCurrencyCode(event.target.value as 'USD' | 'EUR' | 'BRL')}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="USD">USD ($)</option>
+                    <option value="EUR">EUR (€)</option>
+                    <option value="BRL">BRL (R$)</option>
+                  </select>
+                </div>
+              ) : null}
+
+              {dataType === 'boolean' ? (
+                <div className="space-y-2">
+                  <label htmlFor="create-metric-boolean-preset" className="text-sm font-medium">
+                    Boolean labels
+                  </label>
+                  <select
+                    id="create-metric-boolean-preset"
+                    name="booleanPreset"
+                    value={booleanPreset}
+                    onChange={(event) =>
+                      setBooleanPreset(
+                        event.target.value as
+                          | 'yes_no'
+                          | 'true_false'
+                          | 'active_inactive'
+                          | 'qualified_not_qualified'
+                          | 'completed_not_completed',
+                      )
+                    }
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="yes_no">Yes / No</option>
+                    <option value="true_false">True / False</option>
+                    <option value="active_inactive">Active / Inactive</option>
+                    <option value="qualified_not_qualified">Qualified / Not Qualified</option>
+                    <option value="completed_not_completed">Completed / Not Completed</option>
+                  </select>
+                </div>
+              ) : null}
+
+              {dataType === 'duration' ? (
+                <div className="space-y-2">
+                  <label htmlFor="create-metric-duration-format" className="text-sm font-medium">
+                    Duration input
+                  </label>
+                  <select
+                    id="create-metric-duration-format"
+                    name="durationFormat"
+                    value={durationFormat}
+                    onChange={(event) => {
+                      const next = event.target.value as 'hh_mm_ss' | 'minutes' | 'hours' | 'days'
+                      setDurationFormat(next)
+                      if (next === 'hh_mm_ss') {
+                        setUnit('hh:mm:ss')
+                      } else {
+                        setUnit(next)
+                      }
+                    }}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="hh_mm_ss">hh:mm:ss</option>
+                    <option value="minutes">Minutes</option>
+                    <option value="hours">Hours</option>
+                    <option value="days">Days</option>
+                  </select>
+                </div>
+              ) : null}
+
+              {dataType === 'text' ? (
+                <div className="space-y-2">
+                  <label htmlFor="create-metric-text-format" className="text-sm font-medium">
+                    Text format
+                  </label>
+                  <select
+                    id="create-metric-text-format"
+                    name="textFormat"
+                    value={textFormat}
+                    onChange={(event) =>
+                      setTextFormat(event.target.value as 'short_text' | 'long_text' | 'email' | 'phone' | 'url')
+                    }
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="short_text">Short text</option>
+                    <option value="long_text">Long text</option>
+                    <option value="email">Email</option>
+                    <option value="phone">Phone number</option>
+                    <option value="url">URL</option>
+                  </select>
+                </div>
+              ) : null}
+
+              {dataType === 'datetime' ? (
+                <div className="space-y-2">
+                  <label htmlFor="create-metric-datetime-format" className="text-sm font-medium">
+                    Date & time format
+                  </label>
+                  <select
+                    id="create-metric-datetime-format"
+                    name="datetimeFormat"
+                    value={datetimeFormat}
+                    onChange={(event) => setDatetimeFormat(event.target.value as 'date' | 'datetime' | 'time')}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="date">Date</option>
+                    <option value="datetime">Date & Time</option>
+                    <option value="time">Time only</option>
+                  </select>
+                </div>
+              ) : null}
+
+              {dataType === 'selection' ? (
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <label htmlFor="create-metric-selection-mode" className="text-sm font-medium">
+                      Selection mode
+                    </label>
+                    <select
+                      id="create-metric-selection-mode"
+                      name="selectionMode"
+                      value={selectionMode}
+                      onChange={(event) => setSelectionMode(event.target.value as 'single' | 'multi' | 'radio')}
+                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="single">Single select</option>
+                      <option value="multi">Multi select</option>
+                      <option value="radio">Radio buttons</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label htmlFor="create-metric-selection-options" className="text-sm font-medium">
+                      Options (one per line)
+                    </label>
+                    <textarea
+                      id="create-metric-selection-options"
+                      name="selectionOptions"
+                      value={selectionOptions}
+                      onChange={(event) => setSelectionOptions(event.target.value)}
+                      rows={4}
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      placeholder={'Option A\nOption B\nOption C'}
+                      required
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              {dataType === 'file' ? (
+                <div className="space-y-2">
+                  <label htmlFor="create-metric-file-kind" className="text-sm font-medium">
+                    File type
+                  </label>
+                  <select
+                    id="create-metric-file-kind"
+                    name="fileKind"
+                    value={fileKind}
+                    onChange={(event) => setFileKind(event.target.value as 'file' | 'image')}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="file">File upload</option>
+                    <option value="image">Image upload</option>
+                  </select>
                 </div>
               ) : null}
 

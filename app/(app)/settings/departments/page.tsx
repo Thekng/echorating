@@ -1,12 +1,16 @@
+import Link from 'next/link'
 import { CreateDepartmentModal } from '@/components/departments/create-department-modal'
 import { EditDepartmentModal } from '@/components/departments/edit-department-modal'
 import { SettingsEmptyState } from '@/components/settings/settings-empty-state'
 import { SettingsPageHeader } from '@/components/settings/settings-page-header'
 import { SettingsRow } from '@/components/settings/settings-row'
 import { SettingsSurface } from '@/components/settings/settings-surface'
+import { SettingsError } from '@/components/settings/settings-error'
+import { SettingsChip } from '@/components/settings/settings-chip'
 import { toggleDepartmentStatusAction } from '@/features/departments/actions'
 import { listDepartments } from '@/features/departments/queries'
-import { Filter, Power } from 'lucide-react'
+import { ROUTES } from '@/lib/constants/routes'
+import { Filter, Power, RotateCcw, Search } from 'lucide-react'
 
 type DepartmentsPageProps = {
   searchParams: Promise<{
@@ -32,11 +36,7 @@ export default async function DepartmentsSettingsPage({ searchParams }: Departme
   })
 
   if (!result.success) {
-    return (
-      <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
-        {result.error}
-      </div>
-    )
+    return <SettingsError error={result.error || 'Failed to load departments'} />
   }
 
   const activeDepartments = result.data.filter((department) => department.is_active)
@@ -55,13 +55,16 @@ export default async function DepartmentsSettingsPage({ searchParams }: Departme
           <label htmlFor="q" className="mb-1 block text-sm font-medium">
             Search
           </label>
-          <input
-            id="q"
-            name="q"
-            defaultValue={params.q ?? ''}
-            placeholder="Department name"
-            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-          />
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              id="q"
+              name="q"
+              defaultValue={params.q ?? ''}
+              placeholder="Department name"
+              className="h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm"
+            />
+          </div>
         </div>
 
         <div>
@@ -83,7 +86,15 @@ export default async function DepartmentsSettingsPage({ searchParams }: Departme
           </select>
         </div>
 
-        <div className="md:col-span-4 flex items-center justify-end">
+        <div className="md:col-span-4 flex items-center justify-end gap-2">
+          <Link
+            href={ROUTES.SETTINGS_DEPARTMENTS}
+            title="Reset filters"
+            aria-label="Reset filters"
+            className="inline-flex size-9 items-center justify-center rounded-md border border-input hover:bg-muted/40"
+          >
+            <RotateCcw className="size-4" />
+          </Link>
           <button
             type="submit"
             title="Apply filters"
@@ -107,9 +118,9 @@ export default async function DepartmentsSettingsPage({ searchParams }: Departme
                 title={department.name}
                 subtitle={`Updated ${new Date(department.updated_at).toLocaleDateString()}`}
                 meta={
-                  <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">
+                  <SettingsChip tone="success">
                     {TYPE_LABELS[department.type] ?? department.type}
-                  </span>
+                  </SettingsChip>
                 }
                 actions={
                   <>
@@ -138,40 +149,44 @@ export default async function DepartmentsSettingsPage({ searchParams }: Departme
         )}
       </SettingsSurface>
 
-      <SettingsSurface className="space-y-3">
-        <h2 className="text-lg font-semibold">Inactive Departments ({inactiveDepartments.length})</h2>
-        {inactiveDepartments.length === 0 ? (
-          <SettingsEmptyState message="No inactive department found." />
-        ) : (
-          <div className="space-y-2">
-            {inactiveDepartments.map((department) => (
-              <SettingsRow
-                key={department.department_id}
-                title={department.name}
-                subtitle={`Updated ${new Date(department.updated_at).toLocaleDateString()}`}
-                meta={
-                  <span className="rounded-full bg-zinc-200 px-2 py-1 text-xs font-semibold text-zinc-700">
-                    {TYPE_LABELS[department.type] ?? department.type}
-                  </span>
-                }
-                actions={
-                  <form action={toggleDepartmentStatusAction}>
-                    <input type="hidden" name="departmentId" value={department.department_id} />
-                    <input type="hidden" name="nextStatus" value="active" />
-                    <button
-                      type="submit"
-                      title={`Activate ${department.name}`}
-                      aria-label={`Activate ${department.name}`}
-                      className="inline-flex size-8 items-center justify-center rounded-md border border-input hover:bg-muted/40"
-                    >
-                      <Power className="size-3.5" />
-                    </button>
-                  </form>
-                }
-              />
-            ))}
+      <SettingsSurface>
+        <details>
+          <summary className="cursor-pointer list-none text-lg font-semibold">
+            Inactive Departments ({inactiveDepartments.length})
+          </summary>
+          <div className="mt-3 space-y-2">
+            {inactiveDepartments.length === 0 ? (
+              <SettingsEmptyState message="No inactive department found." />
+            ) : (
+              inactiveDepartments.map((department) => (
+                <SettingsRow
+                  key={department.department_id}
+                  title={department.name}
+                  subtitle={`Updated ${new Date(department.updated_at).toLocaleDateString()}`}
+                  meta={
+                    <SettingsChip>
+                      {TYPE_LABELS[department.type] ?? department.type}
+                    </SettingsChip>
+                  }
+                  actions={
+                    <form action={toggleDepartmentStatusAction}>
+                      <input type="hidden" name="departmentId" value={department.department_id} />
+                      <input type="hidden" name="nextStatus" value="active" />
+                      <button
+                        type="submit"
+                        title={`Activate ${department.name}`}
+                        aria-label={`Activate ${department.name}`}
+                        className="inline-flex size-8 items-center justify-center rounded-md border border-input hover:bg-muted/40"
+                      >
+                        <Power className="size-3.5" />
+                      </button>
+                    </form>
+                  }
+                />
+              ))
+            )}
           </div>
-        )}
+        </details>
       </SettingsSurface>
     </div>
   )

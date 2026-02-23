@@ -15,6 +15,7 @@ import {
   type DailyLogMetricDataType,
 } from './types'
 import { parseBooleanInput, parseDurationToSeconds } from '@/lib/daily-log/value-parser'
+import { booleanLabels, normalizeMetricSettings, type DurationFormat } from '@/lib/metrics/data-types'
 
 const INITIAL_ERROR_STATE: DailyLogActionState = {
   status: 'error',
@@ -40,6 +41,11 @@ const keyMetricsSchema = z.object({
 const deleteDailyLogSchema = z.object({
   entryId: z.string().uuid('Invalid log entry.'),
 })
+
+function isMissingMetricsSettingsColumn(message: string) {
+  const normalized = message.toLowerCase()
+  return normalized.includes('column metrics.settings does not exist')
+}
 
 function field(formData: FormData, key: string) {
   const value = formData.get(key)
@@ -197,7 +203,31 @@ async function getManualMetricsForDepartment(
   companyId: string,
   departmentId: string,
 ) {
-  const { data, error } = await admin
+  const withSettings = await admin
+    .from('metrics')
+    .select('metric_id, data_type, settings')
+    .eq('company_id', companyId)
+    .eq('department_id', departmentId)
+    .eq('is_active', true)
+    .eq('input_mode', 'manual')
+    .is('deleted_at', null)
+
+  if (!withSettings.error) {
+    return {
+      ok: true as const,
+      metrics: (withSettings.data ?? []) as Array<{ metric_id: string; data_type: DailyLogMetricDataType; settings: unknown }>,
+    }
+  }
+
+  if (!isMissingMetricsSettingsColumn(withSettings.error.message)) {
+    return {
+      ok: false as const,
+      message: formatDatabaseError(withSettings.error.message),
+      metrics: [] as Array<{ metric_id: string; data_type: DailyLogMetricDataType; settings: unknown }>,
+    }
+  }
+
+  const fallback = await admin
     .from('metrics')
     .select('metric_id, data_type')
     .eq('company_id', companyId)
@@ -206,34 +236,64 @@ async function getManualMetricsForDepartment(
     .eq('input_mode', 'manual')
     .is('deleted_at', null)
 
-  if (error) {
+  if (fallback.error) {
     return {
       ok: false as const,
-      message: formatDatabaseError(error.message),
-      metrics: [] as Array<{ metric_id: string; data_type: DailyLogMetricDataType }>,
+      message: formatDatabaseError(fallback.error.message),
+      metrics: [] as Array<{ metric_id: string; data_type: DailyLogMetricDataType; settings: unknown }>,
     }
   }
 
+  const metrics = ((fallback.data ?? []) as Array<{ metric_id: string; data_type: DailyLogMetricDataType }>).map(
+    (metric) => ({
+      ...metric,
+      settings: null,
+    }),
+  )
+
   return {
     ok: true as const,
-    metrics: (data ?? []) as Array<{ metric_id: string; data_type: DailyLogMetricDataType }>,
+    metrics,
   }
+}
+
+function durationToSeconds(rawValue: string, format: DurationFormat) {
+  if (format === 'hh_mm_ss') {
+    return parseDurationToSeconds(rawValue)
+  }
+
+  const trimmed = rawValue.trim()
+  if (!trimmed) {
+    return { ok: true as const, value: null as number | null }
+  }
+
+  const numberValue = Number(trimmed.replace(',', '.'))
+  if (Number.isNaN(numberValue) || numberValue < 0) {
+    return { ok: false as const, message: 'Invalid duration value.' }
+  }
+
+  const multiplier = format === 'minutes' ? 60 : format === 'hours' ? 3600 : 86400
+  return { ok: true as const, value: numberValue * multiplier }
 }
 
 function parseMetricValue(
   metricType: DailyLogMetricDataType,
+  metricSettings: unknown,
   rawValue: string,
 ):
   | { ok: true; hasValue: false }
-  | { ok: true; hasValue: true; value_numeric: number | null; value_bool: boolean | null }
+  | { ok: true; hasValue: true; value_numeric: number | null; value_text: string | null; value_bool: boolean | null }
   | { ok: false; message: string } {
+  const settings = normalizeMetricSettings(metricType, metricSettings)
+
   if (metricType === 'boolean') {
     const normalized = rawValue.trim()
     if (!normalized) {
       return { ok: true, hasValue: false }
     }
 
-    const parsedBool = parseBooleanInput(normalized)
+    const labels = booleanLabels(settings)
+    const parsedBool = parseBooleanInput(normalized, labels)
     if (parsedBool === null) {
       return { ok: false, message: 'Invalid boolean value.' }
     }
@@ -242,12 +302,13 @@ function parseMetricValue(
       ok: true,
       hasValue: true,
       value_numeric: null,
+      value_text: null,
       value_bool: parsedBool,
     }
   }
 
   if (metricType === 'duration') {
-    const durationResult = parseDurationToSeconds(rawValue)
+    const durationResult = durationToSeconds(rawValue, settings.durationFormat ?? 'hh_mm_ss')
     if (!durationResult.ok) {
       return { ok: false, message: durationResult.message }
     }
@@ -260,6 +321,98 @@ function parseMetricValue(
       ok: true,
       hasValue: true,
       value_numeric: durationResult.value,
+      value_text: null,
+      value_bool: null,
+    }
+  }
+
+  if (metricType === 'text' || metricType === 'datetime' || metricType === 'selection' || metricType === 'file') {
+    const value = rawValue.trim()
+    if (!value) {
+      return { ok: true, hasValue: false }
+    }
+
+    if (metricType === 'text') {
+      if (settings.textFormat === 'email') {
+        const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+        if (!validEmail) {
+          return { ok: false, message: 'Invalid email format.' }
+        }
+      }
+
+      if (settings.textFormat === 'url') {
+        try {
+          new URL(value)
+        } catch {
+          return { ok: false, message: 'Invalid URL format.' }
+        }
+      }
+    }
+
+    if (metricType === 'datetime') {
+      if (settings.datetimeFormat === 'date' && !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return { ok: false, message: 'Invalid date format.' }
+      }
+      if (settings.datetimeFormat === 'time' && !/^\d{2}:\d{2}$/.test(value)) {
+        return { ok: false, message: 'Invalid time format.' }
+      }
+      if (settings.datetimeFormat === 'datetime' && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value)) {
+        return { ok: false, message: 'Invalid date/time format.' }
+      }
+    }
+
+    if (metricType === 'selection') {
+      const options = settings.selectionOptions ?? []
+      if (options.length === 0) {
+        return { ok: false, message: 'Selection metric has no options.' }
+      }
+
+      if (settings.selectionMode === 'multi') {
+        let selected: string[] = []
+        try {
+          selected = JSON.parse(value) as string[]
+        } catch {
+          selected = value
+            .split(',')
+            .map((item) => item.trim())
+            .filter(Boolean)
+        }
+
+        if (selected.length === 0) {
+          return { ok: true, hasValue: false }
+        }
+
+        if (selected.some((item) => !options.includes(item))) {
+          return { ok: false, message: 'Invalid selection option.' }
+        }
+
+        return {
+          ok: true,
+          hasValue: true,
+          value_numeric: null,
+          value_text: JSON.stringify(selected),
+          value_bool: null,
+        }
+      }
+
+      if (!options.includes(value)) {
+        return { ok: false, message: 'Invalid selection option.' }
+      }
+    }
+
+    if (metricType === 'file') {
+      try {
+        new URL(value)
+      } catch {
+        return { ok: false, message: 'Invalid file URL.' }
+      }
+    }
+
+    return {
+      ok: true,
+      hasValue: true,
+      value_numeric: null,
+      value_text: value,
       value_bool: null,
     }
   }
@@ -273,10 +426,15 @@ function parseMetricValue(
     return { ok: true, hasValue: false }
   }
 
+  if (metricType === 'number' && settings.numberKind === 'integer' && !Number.isInteger(parsedNumber.value)) {
+    return { ok: false, message: 'Only whole numbers are allowed.' }
+  }
+
   return {
     ok: true,
     hasValue: true,
     value_numeric: parsedNumber.value,
+    value_text: null,
     value_bool: null,
   }
 }
@@ -389,12 +547,13 @@ export async function saveDailyLogAction(
   const valueRows: Array<{
     metric_id: string
     value_numeric: number | null
+    value_text: string | null
     value_bool: boolean | null
   }> = []
 
   for (const metric of metricsResult.metrics) {
     const raw = field(formData, `metric_${metric.metric_id}`)
-    const parsedValue = parseMetricValue(metric.data_type, raw)
+    const parsedValue = parseMetricValue(metric.data_type, metric.settings, raw)
 
     if (!parsedValue.ok) {
       return {
@@ -411,6 +570,7 @@ export async function saveDailyLogAction(
     valueRows.push({
       metric_id: metric.metric_id,
       value_numeric: parsedValue.value_numeric,
+      value_text: parsedValue.value_text,
       value_bool: parsedValue.value_bool,
     })
   }
@@ -487,8 +647,8 @@ export async function saveDailyLogAction(
         entry_id: entry.entry_id,
         metric_id: row.metric_id,
         value_numeric: row.value_numeric,
+        value_text: row.value_text,
         value_bool: row.value_bool,
-        value_text: null,
         value_source: 'manual',
       })),
     )

@@ -1,32 +1,48 @@
 import React from 'react'
-import { Sidebar } from '@/components/layout/sidebar'
-import { Topbar } from '@/components/layout/topbar'
-import { MobileNav } from '@/components/layout/mobile-nav'
+import { AppShell } from '@/components/layout/app-shell'
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
-export default function AppLayout({
+async function getSidebarCompanyName() {
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return null
+  }
+
+  const supabase = await createClient()
+  const admin = createAdminClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return null
+  }
+
+  const { data: profile } = await admin
+    .from('profiles')
+    .select('company_id')
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  if (!profile?.company_id) {
+    return null
+  }
+
+  const { data: company } = await admin
+    .from('companies')
+    .select('name')
+    .eq('company_id', profile.company_id)
+    .maybeSingle()
+
+  return typeof company?.name === 'string' ? company.name : null
+}
+
+export default async function AppLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  return (
-    <div className="min-h-screen bg-background md:flex">
-      <aside className="hidden md:fixed md:inset-y-0 md:flex md:w-64 md:border-r md:border-border">
-        <Sidebar />
-      </aside>
-
-      <div className="flex min-h-screen flex-1 flex-col md:ml-64">
-        <header className="sticky top-0 z-30 border-b border-border bg-background/90 backdrop-blur">
-          <Topbar />
-        </header>
-
-        <main className="flex-1 overflow-y-auto p-4 pb-24 md:p-8 md:pb-8">
-          {children}
-        </main>
-
-        <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 backdrop-blur md:hidden">
-          <MobileNav />
-        </nav>
-      </div>
-    </div>
-  )
+  const companyName = await getSidebarCompanyName()
+  return <AppShell companyName={companyName}>{children}</AppShell>
 }
