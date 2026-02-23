@@ -316,12 +316,12 @@ export function DailyLogForm({
   const [notes, setNotes] = useState(initialNotes)
   const [entryStatus, setEntryStatus] = useState<'draft' | 'submitted' | null>(existingEntry?.status ?? null)
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(existingEntry?.updated_at ?? null)
-  const [lastSubmitKind, setLastSubmitKind] = useState<'autosave' | 'manual-draft' | 'submit' | null>(null)
+  const [lastSubmitKind, setLastSubmitKind] = useState<'manual-draft' | 'submit' | null>(null)
   const [pendingIntent, setPendingIntent] = useState<'draft' | 'submit' | null>(null)
   const [toasts, setToasts] = useState<Toast[]>([])
 
   const formRef = useRef<HTMLFormElement | null>(null)
-  const autosaveSubmitterRef = useRef<HTMLButtonElement | null>(null)
+  const draftSubmitterRef = useRef<HTMLButtonElement | null>(null)
   const lastHandledStateRef = useRef('')
 
   const savedSnapshot = useMemo(
@@ -354,19 +354,6 @@ export function DailyLogForm({
     }, 3200)
   }, [])
 
-  useEffect(() => {
-    if (!dirty || pending || !autosaveSubmitterRef.current || !formRef.current || !userId) {
-      return
-    }
-
-    const timer = window.setTimeout(() => {
-      setLastSubmitKind('autosave')
-      setPendingIntent('draft')
-      formRef.current?.requestSubmit(autosaveSubmitterRef.current ?? undefined)
-    }, 1200)
-
-    return () => window.clearTimeout(timer)
-  }, [dirty, pending, currentSnapshot, userId])
 
   useEffect(() => {
     if (state.status === 'idle') {
@@ -384,10 +371,7 @@ export function DailyLogForm({
       setLastSavedAt(state.savedAt)
       setEntryStatus(state.entryStatus)
       setPendingIntent(null)
-
-      if (lastSubmitKind !== 'autosave') {
-        pushToast('success', state.message)
-      }
+      pushToast('success', state.message)
       return
     }
 
@@ -489,19 +473,6 @@ export function DailyLogForm({
               />
             </div>
 
-            <button
-              ref={autosaveSubmitterRef}
-              type="submit"
-              name="intent"
-              value="draft"
-              data-submit-kind="autosave"
-              className="hidden"
-              tabIndex={-1}
-              aria-hidden={true}
-            >
-              autosave
-            </button>
-
             <div className="space-y-2">
               <p
                 className={
@@ -514,16 +485,30 @@ export function DailyLogForm({
               >
                 {statusText}
               </p>
-              <Button
-                type="submit"
-                name="intent"
-                value="submit"
-                disabled={disabledForm}
-                data-submit-kind="submit"
-                className="h-12 w-full text-base font-semibold"
-              >
-                Submit Daily Log
-              </Button>
+              <div className="flex gap-3">
+                <Button
+                  ref={draftSubmitterRef}
+                  type="submit"
+                  name="intent"
+                  value="draft"
+                  disabled={disabledForm || !dirty}
+                  data-submit-kind="manual-draft"
+                  variant="outline"
+                  className="h-12 flex-1 text-base font-semibold"
+                >
+                  Save Draft
+                </Button>
+                <Button
+                  type="submit"
+                  name="intent"
+                  value="submit"
+                  disabled={disabledForm}
+                  data-submit-kind="submit"
+                  className="h-12 flex-1 text-base font-semibold"
+                >
+                  Submit Daily Log
+                </Button>
+              </div>
             </div>
           </>
         )}
