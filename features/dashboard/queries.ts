@@ -12,20 +12,25 @@ type IncomingDashboardPeriod = DashboardPeriod | 'last_7_days' | 'last_30_days' 
 
 type DateRangeResult =
   | {
-      ok: true
-      period: DashboardPeriod
-      startDate: string
-      endDate: string
-      previousStartDate: string
-      previousEndDate: string
-      windowDays: number
-      elapsedDays: number
-      remainingDays: number
-    }
+    ok: true
+    period: DashboardPeriod
+    startDate: string
+    endDate: string
+    previousStartDate: string
+    previousEndDate: string
+    windowDays: number
+    elapsedDays: number
+    remainingDays: number
+  }
   | { ok: false; message: string }
 
 type DepartmentOption = {
   department_id: string
+  name: string
+}
+
+type AgentOption = {
+  user_id: string
   name: string
 }
 
@@ -86,6 +91,8 @@ type DashboardResultData = {
   viewerRole: Role
   departments: DepartmentOption[]
   selectedDepartmentId: string
+  agents: AgentOption[]
+  selectedUserId: string | null
   period: DashboardPeriod
   startDate: string
   endDate: string
@@ -437,6 +444,7 @@ function ensureDailyTrendDates(startDate: string, windowDays: number) {
 
 export async function getDashboardData(filters?: {
   departmentId?: string | null
+  userId?: string | null
   period?: IncomingDashboardPeriod | null
   startDate?: string | null
   endDate?: string | null
@@ -473,6 +481,8 @@ export async function getDashboardData(filters?: {
       viewerRole: context.role,
       departments: [],
       selectedDepartmentId: '',
+      agents: [],
+      selectedUserId: null,
       period: range.period,
       startDate: range.startDate,
       endDate: range.endDate,
@@ -548,13 +558,42 @@ export async function getDashboardData(filters?: {
   const primaryMetric = prioritizedMetrics[0] ?? null
   const selectedMetricIds = prioritizedMetrics.map((metric) => metric.metric_id)
 
-  const { data: entriesCurrentData, error: entriesCurrentError } = await context.admin
+  const { data: activeMembersData, error: activeMembersError } = await context.admin
+    .from('department_members')
+    .select('user_id, profiles!inner(full_name)')
+    .eq('department_id', selectedDepartmentId)
+    .eq('is_active', true)
+    .is('deleted_at', null)
+
+  if (activeMembersError) {
+    return { success: false as const, error: formatDatabaseError(activeMembersError.message), data: null }
+  }
+
+  const agents: AgentOption[] = ((activeMembersData as any) ?? []).map((row: any) => ({
+    user_id: row.user_id,
+    name: row.profiles?.full_name || 'Unknown',
+  }))
+
+  const activeAgentIds = agents.map((agent) => agent.user_id)
+
+  const isManagerOrOwner = context.role === 'manager' || context.role === 'owner'
+  const requestedUserId = filters?.userId === 'all' ? null : filters?.userId
+
+  const effectiveUserId = isManagerOrOwner ? (requestedUserId || null) : context.userId
+
+  let entriesCurrentQuery = context.admin
     .from('daily_entries')
     .select('entry_id, entry_date, status, user_id')
     .eq('company_id', context.companyId)
     .eq('department_id', selectedDepartmentId)
     .gte('entry_date', range.startDate)
     .lte('entry_date', range.endDate)
+
+  if (effectiveUserId) {
+    entriesCurrentQuery = entriesCurrentQuery.eq('user_id', effectiveUserId)
+  }
+
+  const { data: entriesCurrentData, error: entriesCurrentError } = await entriesCurrentQuery
 
   if (entriesCurrentError) {
     return { success: false as const, error: formatDatabaseError(entriesCurrentError.message), data: null }
@@ -568,19 +607,6 @@ export async function getDashboardData(filters?: {
   for (const entry of submittedCurrent) {
     submittedLogsByDate.set(entry.entry_date, (submittedLogsByDate.get(entry.entry_date) ?? 0) + 1)
   }
-
-  const { data: activeMembersData, error: activeMembersError } = await context.admin
-    .from('department_members')
-    .select('user_id')
-    .eq('department_id', selectedDepartmentId)
-    .eq('is_active', true)
-    .is('deleted_at', null)
-
-  if (activeMembersError) {
-    return { success: false as const, error: formatDatabaseError(activeMembersError.message), data: null }
-  }
-
-  const activeAgentIds = Array.from(new Set((activeMembersData ?? []).map((row) => row.user_id as string)))
 
   const consistencyRate = toPercent(new Set(submittedCurrent.map((entry) => entry.entry_date)).size, range.windowDays)
   const submissionRate = toPercent(submittedCurrent.length, submittedCurrent.length + draftCurrent.length)
@@ -598,7 +624,7 @@ export async function getDashboardData(filters?: {
   let metricTrends: DashboardMetricTrend[] = []
 
   if (selectedMetricIds.length > 0) {
-    const { data: entriesBothData, error: entriesBothError } = await context.admin
+    let entriesBothQuery = context.admin
       .from('daily_entries')
       .select('entry_id, entry_date')
       .eq('company_id', context.companyId)
@@ -606,6 +632,12 @@ export async function getDashboardData(filters?: {
       .eq('status', 'submitted')
       .gte('entry_date', range.previousStartDate)
       .lte('entry_date', range.endDate)
+
+    if (effectiveUserId) {
+      entriesBothQuery = entriesBothQuery.eq('user_id', effectiveUserId)
+    }
+
+    const { data: entriesBothData, error: entriesBothError } = await entriesBothQuery
 
     if (entriesBothError) {
       return { success: false as const, error: formatDatabaseError(entriesBothError.message), data: null }
@@ -716,6 +748,8 @@ export async function getDashboardData(filters?: {
     viewerRole: context.role,
     departments,
     selectedDepartmentId,
+    agents,
+    selectedUserId: effectiveUserId,
     period: range.period,
     startDate: range.startDate,
     endDate: range.endDate,

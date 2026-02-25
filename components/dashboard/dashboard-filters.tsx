@@ -9,6 +9,11 @@ type DashboardFiltersProps = {
     name: string
   }>
   selectedDepartmentId: string
+  agents?: Array<{
+    user_id: string
+    name: string
+  }>
+  selectedUserId?: string | null
   period: 'today' | 'current_week' | 'this_month' | 'custom'
   startDate: string
   endDate: string
@@ -21,6 +26,8 @@ function todayKey() {
 export function DashboardFilters({
   departments,
   selectedDepartmentId,
+  agents = [],
+  selectedUserId,
   period,
   startDate,
   endDate,
@@ -70,6 +77,31 @@ export function DashboardFilters({
             ))}
           </select>
         </div>
+
+        {agents.length > 0 ? (
+          <div>
+            <label htmlFor="dashboard-agent" className="mb-1 block text-sm font-medium">
+              Agent
+            </label>
+            <select
+              id="dashboard-agent"
+              value={selectedUserId || 'all'}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              onChange={(event) =>
+                updateFilters({
+                  userId: event.currentTarget.value === 'all' ? null : event.currentTarget.value,
+                })
+              }
+            >
+              <option value="all">All Team</option>
+              {agents.map((agent) => (
+                <option key={agent.user_id} value={agent.user_id}>
+                  {agent.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
 
         <div>
           <label htmlFor="dashboard-period" className="mb-1 block text-sm font-medium">

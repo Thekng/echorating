@@ -213,11 +213,13 @@ async function validateDepartment(
 async function getFormulaCodeIndexes(
   admin: ReturnType<typeof createAdminClient>,
   companyId: string,
+  departmentId: string,
 ) {
   const { data: allMetrics, error: allMetricsError } = await admin
     .from('metrics')
     .select('metric_id, code, is_active')
     .eq('company_id', companyId)
+    .eq('department_id', departmentId)
     .is('deleted_at', null)
 
   if (allMetricsError) {
@@ -264,10 +266,11 @@ async function getFormulaCodeIndexes(
 async function resolveFormulaDependencies(
   admin: ReturnType<typeof createAdminClient>,
   companyId: string,
+  departmentId: string,
   expression: string,
   currentMetricId?: string,
 ) {
-  const indexesResult = await getFormulaCodeIndexes(admin, companyId)
+  const indexesResult = await getFormulaCodeIndexes(admin, companyId, departmentId)
   if (!indexesResult.ok) {
     return {
       ok: false as const,
@@ -514,6 +517,7 @@ export async function createMetricAction(
     const formulaDependenciesResult = await resolveFormulaDependencies(
       context.admin,
       context.companyId,
+      parsed.data.departmentId,
       parsed.data.expression ?? '',
     )
 
@@ -660,6 +664,7 @@ export async function updateMetricAction(
     const formulaDependenciesResult = await resolveFormulaDependencies(
       context.admin,
       context.companyId,
+      parsed.data.departmentId,
       parsed.data.expression ?? '',
       parsed.data.metricId,
     )

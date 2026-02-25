@@ -215,8 +215,8 @@ export function CreateMetricModal({
       </Button>
 
       {open ? (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
-          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl border bg-card p-6 text-card-foreground shadow-lg">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border bg-card p-6 text-card-foreground shadow-lg">
             <div className="mb-5">
               <h2 className="text-lg font-semibold">Create KPI</h2>
               <p className="text-sm text-muted-foreground">
@@ -225,7 +225,26 @@ export function CreateMetricModal({
             </div>
 
             <form action={formAction} className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label htmlFor="create-metric-department" className="text-sm font-medium">
+                    Department
+                  </label>
+                  <select
+                    id="create-metric-department"
+                    name="departmentId"
+                    defaultValue={departments[0]?.department_id ?? ''}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    required
+                  >
+                    {departments.map((department) => (
+                      <option key={department.department_id} value={department.department_id}>
+                        {department.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <div className="space-y-2">
                   <label htmlFor="create-metric-mode" className="text-sm font-medium">
                     Mode
@@ -244,25 +263,6 @@ export function CreateMetricModal({
                         disabled={item.value === 'calculated' && !CALCULATED_ALLOWED_TYPES.includes(dataType)}
                       >
                         {item.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-2 md:col-span-2">
-                  <label htmlFor="create-metric-department" className="text-sm font-medium">
-                    Department
-                  </label>
-                  <select
-                    id="create-metric-department"
-                    name="departmentId"
-                    defaultValue={departments[0]?.department_id ?? ''}
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                    required
-                  >
-                    {departments.map((department) => (
-                      <option key={department.department_id} value={department.department_id}>
-                        {department.name}
                       </option>
                     ))}
                   </select>
@@ -434,11 +434,11 @@ export function CreateMetricModal({
                     onChange={(event) =>
                       setBooleanPreset(
                         event.target.value as
-                          | 'yes_no'
-                          | 'true_false'
-                          | 'active_inactive'
-                          | 'qualified_not_qualified'
-                          | 'completed_not_completed',
+                        | 'yes_no'
+                        | 'true_false'
+                        | 'active_inactive'
+                        | 'qualified_not_qualified'
+                        | 'completed_not_completed',
                       )
                     }
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"

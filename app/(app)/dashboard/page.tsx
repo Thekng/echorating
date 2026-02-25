@@ -5,6 +5,7 @@ import { getDashboardData } from '@/features/dashboard/queries'
 type DashboardPageProps = {
   searchParams: Promise<{
     departmentId?: string
+    userId?: string
     period?: 'today' | 'current_week' | 'this_month' | 'custom' | 'last_7_days' | 'last_30_days' | 'last_90_days'
     startDate?: string
     endDate?: string
@@ -35,17 +36,20 @@ function DashboardSkeleton() {
 
 async function DashboardContent({
   departmentId,
+  userId,
   period,
   startDate,
   endDate,
 }: {
   departmentId?: string
+  userId?: string
   period?: 'today' | 'current_week' | 'this_month' | 'custom' | 'last_7_days' | 'last_30_days' | 'last_90_days'
   startDate?: string
   endDate?: string
 }) {
   const result = await getDashboardData({
     departmentId,
+    userId,
     period,
     startDate,
     endDate,
@@ -62,6 +66,8 @@ async function DashboardContent({
   const {
     departments,
     selectedDepartmentId,
+    agents,
+    selectedUserId,
     period: resolvedPeriod,
     startDate: resolvedStartDate,
     endDate: resolvedEndDate,
@@ -84,6 +90,8 @@ async function DashboardContent({
       <DashboardFilters
         departments={departments}
         selectedDepartmentId={selectedDepartmentId}
+        agents={agents}
+        selectedUserId={selectedUserId}
         period={resolvedPeriod}
         startDate={resolvedStartDate}
         endDate={resolvedEndDate}
@@ -119,6 +127,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       <Suspense fallback={<DashboardSkeleton />}>
         <DashboardContent
           departmentId={params.departmentId}
+          userId={params.userId}
           period={params.period}
           startDate={params.startDate}
           endDate={params.endDate}

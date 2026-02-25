@@ -245,7 +245,7 @@ export async function listMetrics(rawFilters?: {
     }
   }
 
-  const { data: allActiveMetricsData, error: allActiveMetricsError } = await context.admin
+  let allActiveMetricsQuery = context.admin
     .from('metrics')
     .select('metric_id, name, code, department_id')
     .eq('company_id', context.companyId)
@@ -253,75 +253,79 @@ export async function listMetrics(rawFilters?: {
     .is('deleted_at', null)
     .order('name', { ascending: true })
 
-  if (allActiveMetricsError) {
-    return { success: false, error: formatDatabaseError(allActiveMetricsError.message), data: null }
-  }
-
-  const allActiveMetrics = (allActiveMetricsData ?? []) as Array<{
-    metric_id: string
-    name: string
-    code: string
-    department_id: string
-  }>
-
-  const metricNameMap = new Map(allActiveMetrics.map((metric) => [metric.metric_id, metric.name]))
-
-  let targetsQuery = context.admin
-    .from('targets')
-    .select('target_id, department_id, metric_id, value')
-    .eq('company_id', context.companyId)
-    .eq('scope', 'department')
-    .eq('period', 'daily')
-    .eq('is_active', true)
-    .is('user_id', null)
-    .is('deleted_at', null)
-
   if (effectiveDepartmentId !== 'all') {
-    targetsQuery = targetsQuery.eq('department_id', effectiveDepartmentId)
+    allActiveMetricsQuery = allActiveMetricsQuery.eq('department_id', effectiveDepartmentId)
   }
 
-  const { data: targetsData, error: targetsError } = await targetsQuery
-  if (targetsError) {
-    return { success: false, error: formatDatabaseError(targetsError.message), data: null }
-  }
+  const { data: allActiveMetricsData, error: allActiveMetricsError } = await allActiveMetricsQuery
+  return { success: false, error: formatDatabaseError(allActiveMetricsError.message), data: null }
+}
 
-  const dailyTargetMap = new Map<string, DailyTargetRow>()
-  for (const target of (targetsData ?? []) as DailyTargetRow[]) {
-    dailyTargetMap.set(`${target.department_id}:${target.metric_id}`, target)
-  }
+const allActiveMetrics = (allActiveMetricsData ?? []) as Array<{
+  metric_id: string
+  name: string
+  code: string
+  department_id: string
+}>
 
-  return {
-    success: true,
-    data: {
-      metrics: metrics.map((metric) => {
-        const dependencyIds = dependencyMap.get(metric.metric_id) ?? []
-        const dailyTarget = dailyTargetMap.get(`${metric.department_id}:${metric.metric_id}`)
-        return {
-          ...metric,
-          department_name: departmentMap.get(metric.department_id) ?? 'Unknown department',
-          formula_expression: currentFormulaMap.get(metric.metric_id)?.expression ?? null,
-          formula_version: currentFormulaMap.get(metric.metric_id)?.version ?? null,
-          depends_on_metric_ids: dependencyIds,
-          depends_on_metric_names: dependencyIds.map((metricId) => metricNameMap.get(metricId)).filter(Boolean),
-          daily_target_id: dailyTarget?.target_id ?? null,
-          daily_target_value: dailyTarget ? Number(dailyTarget.value) : null,
-        }
-      }),
-      departments,
-      dependencyMetrics: allActiveMetrics.map((metric) => ({
-        metric_id: metric.metric_id,
-        name: metric.name,
-        code: metric.code,
-        department_id: metric.department_id,
+const metricNameMap = new Map(allActiveMetrics.map((metric) => [metric.metric_id, metric.name]))
+
+let targetsQuery = context.admin
+  .from('targets')
+  .select('target_id, department_id, metric_id, value')
+  .eq('company_id', context.companyId)
+  .eq('scope', 'department')
+  .eq('period', 'daily')
+  .eq('is_active', true)
+  .is('user_id', null)
+  .is('deleted_at', null)
+
+if (effectiveDepartmentId !== 'all') {
+  targetsQuery = targetsQuery.eq('department_id', effectiveDepartmentId)
+}
+
+const { data: targetsData, error: targetsError } = await targetsQuery
+if (targetsError) {
+  return { success: false, error: formatDatabaseError(targetsError.message), data: null }
+}
+
+const dailyTargetMap = new Map<string, DailyTargetRow>()
+for (const target of (targetsData ?? []) as DailyTargetRow[]) {
+  dailyTargetMap.set(`${target.department_id}:${target.metric_id}`, target)
+}
+
+return {
+  success: true,
+  data: {
+    metrics: metrics.map((metric) => {
+      const dependencyIds = dependencyMap.get(metric.metric_id) ?? []
+      const dailyTarget = dailyTargetMap.get(`${metric.department_id}:${metric.metric_id}`)
+      return {
+        ...metric,
         department_name: departmentMap.get(metric.department_id) ?? 'Unknown department',
-      })),
-      filters: {
-        ...filters,
-        departmentId: effectiveDepartmentId,
-      },
-      viewerRole: context.role,
+        formula_expression: currentFormulaMap.get(metric.metric_id)?.expression ?? null,
+        formula_version: currentFormulaMap.get(metric.metric_id)?.version ?? null,
+        depends_on_metric_ids: dependencyIds,
+        depends_on_metric_names: dependencyIds.map((metricId) => metricNameMap.get(metricId)).filter(Boolean),
+        daily_target_id: dailyTarget?.target_id ?? null,
+        daily_target_value: dailyTarget ? Number(dailyTarget.value) : null,
+      }
+    }),
+    departments,
+    dependencyMetrics: allActiveMetrics.map((metric) => ({
+      metric_id: metric.metric_id,
+      name: metric.name,
+      code: metric.code,
+      department_id: metric.department_id,
+      department_name: departmentMap.get(metric.department_id) ?? 'Unknown department',
+    })),
+    filters: {
+      ...filters,
+      departmentId: effectiveDepartmentId,
     },
-  }
+    viewerRole: context.role,
+  },
+}
 }
 
 export async function getMetricById(id: string) {
@@ -366,9 +370,9 @@ export async function getMetricById(id: string) {
 
     metric = fallback.data
       ? ({
-          ...fallback.data,
-          settings: null,
-        } as MetricRow)
+        ...fallback.data,
+        settings: null,
+      } as MetricRow)
       : null
   } else {
     return { success: false, error: formatDatabaseError(withSettings.error.message), data: null }
