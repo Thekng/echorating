@@ -1,25 +1,22 @@
 'use client'
 
-import { useActionState, useEffect, useState } from 'react'
-import { updateMemberRoleAction } from '@/features/members/actions'
+import { useState, useTransition, type FormEvent } from 'react'
+import { updateMemberRoleAction, type MemberActionState } from '@/features/members/actions'
 import { Button } from '@/components/ui/button'
 import { ShieldCheck } from 'lucide-react'
-
-type ActionState = {
-  status: 'idle' | 'success' | 'error'
-  message: string
-}
 
 type EditMemberRoleModalProps = {
   userId: string
   memberName: string
   currentRole: 'owner' | 'manager' | 'member'
   canManageOwnerRole: boolean
+  onSaved?: (message: string) => void
 }
 
-const INITIAL_STATE: ActionState = {
+const INITIAL_STATE: MemberActionState = {
   status: 'idle',
   message: '',
+  fieldErrors: {},
 }
 
 export function EditMemberRoleModal({
@@ -27,46 +24,64 @@ export function EditMemberRoleModal({
   memberName,
   currentRole,
   canManageOwnerRole,
+  onSaved,
 }: EditMemberRoleModalProps) {
   const [open, setOpen] = useState(false)
-  const [state, formAction, pending] = useActionState(updateMemberRoleAction, INITIAL_STATE)
+  const [state, setState] = useState<MemberActionState>(INITIAL_STATE)
+  const [pending, startTransition] = useTransition()
 
-  useEffect(() => {
-    if (state.status === 'success') {
-      setOpen(false)
-    }
-  }, [state.status])
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const formData = new FormData(event.currentTarget)
+
+    setState(INITIAL_STATE)
+    startTransition(async () => {
+      const nextState = await updateMemberRoleAction(INITIAL_STATE, formData)
+      setState(nextState)
+
+      if (nextState.status === 'success') {
+        onSaved?.(nextState.message)
+        setOpen(false)
+      }
+    })
+  }
 
   return (
     <>
       <Button
         type="button"
         variant="outline"
-        className="size-8 p-0"
-        onClick={() => setOpen(true)}
+        size="icon"
+        onClick={() => {
+          setState(INITIAL_STATE)
+          setOpen(true)
+        }}
         title={`Edit role for ${memberName}`}
         aria-label={`Edit role for ${memberName}`}
       >
-        <ShieldCheck className="size-3.5" />
+        <ShieldCheck className="size-4" />
       </Button>
 
       {open ? (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
-          <div className="w-full max-w-sm rounded-xl border bg-card p-6 text-card-foreground shadow-lg">
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={() => setOpen(false)}>
+          <div
+            className="w-full max-w-sm rounded-xl border bg-card p-6 text-card-foreground shadow-lg"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="mb-5">
               <h2 className="text-lg font-semibold">Edit Role</h2>
               <p className="text-sm text-muted-foreground">{memberName}</p>
             </div>
 
-            <form action={formAction} className="space-y-4">
+            <form className="space-y-4" onSubmit={handleSubmit}>
               <input type="hidden" name="userId" value={userId} />
 
               <div className="space-y-2">
-                <label htmlFor={`edit-role-${userId}`} className="text-sm font-medium">
+                <label htmlFor={`edit-member-role-${userId}`} className="text-sm font-medium">
                   Role
                 </label>
                 <select
-                  id={`edit-role-${userId}`}
+                  id={`edit-member-role-${userId}`}
                   name="role"
                   defaultValue={currentRole}
                   className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
@@ -75,6 +90,7 @@ export function EditMemberRoleModal({
                   <option value="manager">Manager</option>
                   <option value="member">Member</option>
                 </select>
+                {state.fieldErrors.role ? <p className="text-xs text-destructive">{state.fieldErrors.role}</p> : null}
               </div>
 
               {state.status !== 'idle' ? (

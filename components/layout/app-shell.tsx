@@ -17,37 +17,35 @@ type AppShellProps = {
 
 type ThemeMode = 'light' | 'dark'
 
-function resolveInitialTheme(): ThemeMode {
-  if (typeof window === 'undefined') {
-    return 'light'
-  }
-
-  const saved = window.localStorage.getItem(THEME_KEY)
-  if (saved === 'light' || saved === 'dark') {
-    return saved
-  }
-
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-}
-
 export function AppShell({ children, companyName }: AppShellProps) {
-  const [collapsed, setCollapsed] = useState(() => {
-    if (typeof window === 'undefined') {
-      return false
-    }
-    return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1'
-  })
-  const [theme, setTheme] = useState<ThemeMode>(() => resolveInitialTheme())
+  const [collapsed, setCollapsed] = useState(false)
+  const [theme, setTheme] = useState<ThemeMode>('light')
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
+    // Load from localStorage after hydration
+    const savedCollapsed = window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1'
+    const savedTheme = window.localStorage.getItem(THEME_KEY)
+    const resolvedTheme = savedTheme === 'dark' || savedTheme === 'light' 
+      ? savedTheme 
+      : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    
+    setCollapsed(savedCollapsed)
+    setTheme(resolvedTheme)
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (!mounted) return
     window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? '1' : '0')
-  }, [collapsed])
+  }, [collapsed, mounted])
 
   useEffect(() => {
+    if (!mounted) return
     const root = document.documentElement
     root.classList.toggle('dark', theme === 'dark')
     window.localStorage.setItem(THEME_KEY, theme)
-  }, [theme])
+  }, [theme, mounted])
 
   return (
     <div className="min-h-screen bg-background md:flex">

@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { ROUTES } from '@/lib/constants/routes'
 import { getDepartmentProfile, listDepartments, getDepartmentAgentMetrics } from '@/features/departments/queries'
 import { getAgentsList } from '@/features/agents/queries'
+import { formatMetricNumber, formatPercent } from '@/lib/metrics/format'
 import { formatDateShort } from '@/lib/utils/date-formatter'
 import { AgentsFilters } from '@/components/agents/agents-filters'
 
@@ -14,11 +15,43 @@ type DepartmentDetailPageProps = {
   }>
 }
 
+type AgentFilterPeriod = 'today' | 'current_week' | 'this_month' | 'custom'
+
 function formatDate(value: string | null) {
   if (!value) {
     return '-'
   }
   return formatDateShort(value)
+}
+
+function formatEntryMetricValue(entryValue: {
+  value_numeric: number | null
+  value_text: string | null
+  value_bool: boolean | null
+}, metric: { data_type: string; unit?: string | null; settings?: unknown }) {
+  const metricDataType = metric.data_type
+
+  if (metricDataType === 'boolean') {
+    if (entryValue.value_bool === null) {
+      return '-'
+    }
+    return entryValue.value_bool ? 'Yes' : 'No'
+  }
+
+  if (entryValue.value_numeric !== null) {
+    return formatMetricNumber(entryValue.value_numeric, {
+      dataType: metricDataType,
+      unit: metric.unit,
+      settings: metric.settings,
+      booleanMode: 'count',
+    })
+  }
+
+  if (entryValue.value_text) {
+    return entryValue.value_text
+  }
+
+  return '-'
 }
 
 export default async function DepartmentDetailPage({ params, searchParams }: DepartmentDetailPageProps) {
@@ -41,6 +74,12 @@ export default async function DepartmentDetailPage({ params, searchParams }: Dep
   }
 
   const { department, stats, metrics, recent_entries, members_count } = deptResult.data
+  const filterPeriod: AgentFilterPeriod =
+    query.period === 'current_week' || query.period === 'this_month' || query.period === 'custom'
+      ? query.period
+      : query.period === 'this_week'
+        ? 'current_week'
+        : 'today'
 
   // departments for filters
   const allDepartmentsResult = await listDepartments()
@@ -82,7 +121,7 @@ export default async function DepartmentDetailPage({ params, searchParams }: Dep
         basePath={ROUTES.ACCOUNTABILITY}
         departments={allDepartments}
         selectedDepartmentId={department.department_id}
-        period={(query.period as any) ?? 'today'}
+        period={filterPeriod}
         startDate={query.startDate ?? ''}
         endDate={query.endDate ?? ''}
         showStatus={false}
@@ -102,7 +141,7 @@ export default async function DepartmentDetailPage({ params, searchParams }: Dep
         </div>
         <div className="rounded-lg border bg-card p-4">
           <p className="text-xs font-medium text-muted-foreground">Completion</p>
-          <p className="mt-1 text-2xl font-bold">{stats.completion_rate.toFixed(1)}%</p>
+          <p className="mt-1 text-2xl font-bold">{formatPercent(stats.completion_rate, 1)}</p>
         </div>
         <div className="rounded-lg border bg-card p-4">
           <p className="text-xs font-medium text-muted-foreground">Last Entry</p>
@@ -153,11 +192,22 @@ export default async function DepartmentDetailPage({ params, searchParams }: Dep
                     </span>
                   </td>
                   <td className="px-4 py-3 max-w-xs truncate text-muted-foreground">{entry.notes || '-'}</td>
-                  {entry.metric_values.slice(0, 5).map((mv) => (
-                    <td key={mv.metric_id} className="px-4 py-3">
-                      {mv.value_numeric !== null ? mv.value_numeric : mv.value_text || mv.value_bool || '-'}
-                    </td>
-                  ))}
+                  {metrics.slice(0, 5).map((metric) => {
+                    const entryValue = entry.metric_values.find((item) => item.metric_id === metric.metric_id)
+                    if (!entryValue) {
+                      return (
+                        <td key={metric.metric_id} className="px-4 py-3">
+                          -
+                        </td>
+                      )
+                    }
+
+                    return (
+                      <td key={metric.metric_id} className="px-4 py-3">
+                        {formatEntryMetricValue(entryValue, metric)}
+                      </td>
+                    )
+                  })}
                 </tr>
               ))}
             </tbody>
@@ -195,13 +245,16 @@ export default async function DepartmentDetailPage({ params, searchParams }: Dep
                   return (
                     <tr key={agent.user_id} className="border-b last:border-b-0 hover:bg-muted/30">
                       <td className="px-4 py-3 font-medium">{agent.name}</td>
-                      <td className="px-4 py-3">{agent.completion_rate.toFixed(1)}%</td>
+                      <td className="px-4 py-3">{formatPercent(agent.completion_rate, 1)}</td>
                       {metrics.slice(0, 5).map((metric) => {
                         const value = agentMetrics[metric.metric_id]
                         const displayValue = value !== undefined && value !== null
-                          ? metric.data_type === 'number'
-                            ? Math.round(value)
-                            : value.toFixed(2)
+                          ? formatMetricNumber(value, {
+                            dataType: metric.data_type,
+                            unit: metric.unit,
+                            settings: metric.settings,
+                            booleanMode: 'count',
+                          })
                           : '-'
 
                         return (

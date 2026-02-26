@@ -1,6 +1,7 @@
 import { DashboardFilters } from '@/components/dashboard/dashboard-filters'
 import { DashboardInteractive } from '@/components/dashboard/dashboard-interactive'
 import { getDashboardData } from '@/features/dashboard/queries'
+import Link from 'next/link'
 
 type DashboardPageProps = {
   searchParams: Promise<{
@@ -72,6 +73,9 @@ async function DashboardContent({
     startDate: resolvedStartDate,
     endDate: resolvedEndDate,
     windowDays,
+    paceTotalUnits,
+    paceElapsedUnits,
+    paceUnitLabel,
     kpis,
     primaryMetric,
     metricTrends,
@@ -108,6 +112,9 @@ async function DashboardContent({
           primaryMetricId={primaryMetric?.metric_id ?? null}
           period={resolvedPeriod}
           windowDays={windowDays}
+          paceTotalUnits={paceTotalUnits}
+          paceElapsedUnits={paceElapsedUnits}
+          paceUnitLabel={paceUnitLabel}
         />
       )}
     </div>
@@ -119,9 +126,17 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Dashboard</h1>
-        <p className="text-xs text-muted-foreground md:text-sm">Performance overview by team and period.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Dashboard</h1>
+          <p className="text-xs text-muted-foreground md:text-sm">Performance overview by team and period.</p>
+        </div>
+        <Link
+          href="/daily-log"
+          className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+        >
+          Add Daily Log
+        </Link>
       </div>
 
       <Suspense fallback={<DashboardSkeleton />}>

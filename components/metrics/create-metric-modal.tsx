@@ -1,16 +1,12 @@
 'use client'
 
-import { useActionState, useEffect, useMemo, useState } from 'react'
-import { createMetricAction } from '@/features/metrics/actions'
+import { useMemo, useState, useTransition, type FormEvent } from 'react'
+import { createMetricAction, type MetricActionState } from '@/features/metrics/actions'
 import { Button } from '@/components/ui/button'
+import { DepartmentPicker } from '@/components/filters/department-picker'
 import { FormulaBuilder } from '@/components/metrics/formula-builder'
-import { validateFormulaExpression } from '@/lib/metrics/formula'
+import { validateFormulaExpression, type FormulaValueType } from '@/lib/metrics/formula'
 import { Plus } from 'lucide-react'
-
-type ActionState = {
-  status: 'idle' | 'success' | 'error'
-  message: string
-}
 
 type MetricDataType =
   | 'number'
@@ -34,14 +30,16 @@ type CreateMetricModalProps = {
     code: string
     department_id: string
     department_name: string
+    data_type: MetricDataType
   }>
+  onSaved?: (message: string) => void
 }
 
 const DATA_TYPES = [
   { value: 'number', label: 'Number' },
   { value: 'currency', label: 'Currency' },
   { value: 'percent', label: 'Percent' },
-  { value: 'boolean', label: 'Boolean' },
+  { value: 'boolean', label: 'Yes / No' },
   { value: 'duration', label: 'Duration' },
   { value: 'text', label: 'Text' },
   { value: 'datetime', label: 'Date & Time' },
@@ -49,17 +47,12 @@ const DATA_TYPES = [
   { value: 'file', label: 'File' },
 ] as const
 
-const DIRECTIONS = [
-  { value: 'higher_is_better', label: 'Higher is better' },
-  { value: 'lower_is_better', label: 'Lower is better' },
-] as const
-
 const MODES = [
   { value: 'manual', label: 'Manual' },
   { value: 'calculated', label: 'Calculated' },
 ] as const
 
-const CALCULATED_ALLOWED_TYPES: MetricDataType[] = ['number', 'currency', 'percent', 'duration']
+const CALCULATED_ALLOWED_TYPES: MetricDataType[] = ['number', 'currency', 'percent', 'duration', 'boolean']
 
 const UNIT_OPTIONS: Record<MetricDataType, string[]> = {
   number: ['count', 'points', 'items', 'hours', 'days'],
@@ -73,17 +66,10 @@ const UNIT_OPTIONS: Record<MetricDataType, string[]> = {
   file: ['file'],
 }
 
-const INITIAL_STATE: ActionState = {
+const INITIAL_STATE: MetricActionState = {
   status: 'idle',
   message: '',
-}
-
-function suggestedPrecision(dataType: MetricDataType) {
-  if (dataType === 'currency' || dataType === 'percent') {
-    return 2
-  }
-
-  return 0
+  fieldErrors: {},
 }
 
 function toMetricCode(name: string) {
@@ -93,28 +79,37 @@ function toMetricCode(name: string) {
     .replace(/^_+|_+$/g, '')
 }
 
+function formulaValueTypeForMetricDataType(dataType: MetricDataType): FormulaValueType | null {
+  if (dataType === 'boolean') {
+    return 'boolean'
+  }
+
+  if (dataType === 'number' || dataType === 'currency' || dataType === 'percent' || dataType === 'duration') {
+    return 'number'
+  }
+
+  return null
+}
+
 export function CreateMetricModal({
   departments,
   dependencyMetrics,
+  onSaved,
 }: CreateMetricModalProps) {
   const [open, setOpen] = useState(false)
-  const [state, formAction, pending] = useActionState(createMetricAction, INITIAL_STATE)
+  const [state, setState] = useState<MetricActionState>(INITIAL_STATE)
+  const [pending, startTransition] = useTransition()
   const [mode, setMode] = useState<'manual' | 'calculated'>('manual')
+  const [departmentId, setDepartmentId] = useState(departments[0]?.department_id ?? '')
   const [name, setName] = useState('')
   const [code, setCode] = useState('')
   const [codeDirty, setCodeDirty] = useState(false)
   const [dataType, setDataType] = useState<MetricDataType>('number')
   const [unit, setUnit] = useState('count')
   const [unitCustom, setUnitCustom] = useState('')
-  const [direction, setDirection] = useState<'higher_is_better' | 'lower_is_better'>('higher_is_better')
-  const [precisionScale, setPrecisionScale] = useState(0)
-  const [precisionDirty, setPrecisionDirty] = useState(false)
   const [expression, setExpression] = useState('')
   const [numberKind, setNumberKind] = useState<'integer' | 'decimal'>('integer')
   const [currencyCode, setCurrencyCode] = useState<'USD' | 'EUR' | 'BRL'>('USD')
-  const [booleanPreset, setBooleanPreset] = useState<
-    'yes_no' | 'true_false' | 'active_inactive' | 'qualified_not_qualified' | 'completed_not_completed'
-  >('yes_no')
   const [durationFormat, setDurationFormat] = useState<'hh_mm_ss' | 'minutes' | 'hours' | 'days'>('hh_mm_ss')
   const [textFormat, setTextFormat] = useState<'short_text' | 'long_text' | 'email' | 'phone' | 'url'>('short_text')
   const [datetimeFormat, setDatetimeFormat] = useState<'date' | 'datetime' | 'time'>('date')
@@ -123,53 +118,86 @@ export function CreateMetricModal({
   const [fileKind, setFileKind] = useState<'file' | 'image'>('file')
 
   const unitOptions = UNIT_OPTIONS[dataType]
+  const availableFormulaMetrics = useMemo(
+    () =>
+      dependencyMetrics.filter(
+        (metric) =>
+          metric.department_id === departmentId &&
+          formulaValueTypeForMetricDataType(metric.data_type) !== null,
+      ),
+    [dependencyMetrics, departmentId],
+  )
+  const metricReturnTypes = useMemo(() => {
+    const map = new Map<string, FormulaValueType>()
+
+    for (const metric of availableFormulaMetrics) {
+      const type = formulaValueTypeForMetricDataType(metric.data_type)
+      if (!type) {
+        continue
+      }
+      map.set(metric.code.toLowerCase(), type)
+    }
+
+    return map
+  }, [availableFormulaMetrics])
   const knownMetricCodes = useMemo(
-    () => dependencyMetrics.map((metric) => metric.code.toLowerCase()),
-    [dependencyMetrics],
+    () => Array.from(metricReturnTypes.keys()),
+    [metricReturnTypes],
   )
   const formulaValidation = useMemo(
     () =>
       validateFormulaExpression(expression, {
         knownMetricCodes,
+        metricReturnTypes,
       }),
-    [expression, knownMetricCodes],
+    [expression, knownMetricCodes, metricReturnTypes],
   )
 
-  useEffect(() => {
-    if (state.status === 'success') {
-      setOpen(false)
-    }
-  }, [state.status])
+  function resetFormState() {
+    setDepartmentId(departments[0]?.department_id ?? '')
+    setMode('manual')
+    setName('')
+    setCode('')
+    setCodeDirty(false)
+    setDataType('number')
+    setUnit('count')
+    setUnitCustom('')
+    setExpression('')
+    setNumberKind('integer')
+    setCurrencyCode('USD')
+    setDurationFormat('hh_mm_ss')
+    setTextFormat('short_text')
+    setDatetimeFormat('date')
+    setSelectionMode('single')
+    setSelectionOptions('')
+    setFileKind('file')
+  }
 
-  useEffect(() => {
-    if (!open) {
-      setMode('manual')
-      setName('')
-      setCode('')
-      setCodeDirty(false)
-      setDataType('number')
-      setUnit('count')
-      setUnitCustom('')
-      setDirection('higher_is_better')
-      setPrecisionScale(0)
-      setPrecisionDirty(false)
-      setExpression('')
-      setNumberKind('integer')
-      setCurrencyCode('USD')
-      setBooleanPreset('yes_no')
-      setDurationFormat('hh_mm_ss')
-      setTextFormat('short_text')
-      setDatetimeFormat('date')
-      setSelectionMode('single')
-      setSelectionOptions('')
-      setFileKind('file')
-      return
-    }
+  function handleOpenModal() {
+    setState(INITIAL_STATE)
+    resetFormState()
+    setOpen(true)
+  }
 
-    if (!unitOptions.includes(unit) && unit !== 'custom') {
-      setUnit(unitOptions[0] ?? 'count')
-    }
-  }, [open, unit, unitOptions])
+  function handleCloseModal() {
+    setOpen(false)
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const formData = new FormData(event.currentTarget)
+
+    setState(INITIAL_STATE)
+    startTransition(async () => {
+      const nextState = await createMetricAction(INITIAL_STATE, formData)
+      setState(nextState)
+
+      if (nextState.status === 'success') {
+        onSaved?.(nextState.message)
+        setOpen(false)
+      }
+    })
+  }
 
   function onNameChange(value: string) {
     setName(value)
@@ -183,9 +211,6 @@ export function CreateMetricModal({
     const nextUnitOptions = UNIT_OPTIONS[nextType]
     if (unit !== 'custom' && !nextUnitOptions.includes(unit)) {
       setUnit(nextUnitOptions[0] ?? 'count')
-    }
-    if (!precisionDirty) {
-      setPrecisionScale(suggestedPrecision(nextType))
     }
     if (mode === 'calculated' && !CALCULATED_ALLOWED_TYPES.includes(nextType)) {
       setMode('manual')
@@ -205,7 +230,7 @@ export function CreateMetricModal({
     <>
       <Button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={handleOpenModal}
         title="Add custom KPI"
         aria-label="Add custom KPI"
         className="size-9 p-0"
@@ -215,8 +240,11 @@ export function CreateMetricModal({
       </Button>
 
       {open ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border bg-card p-6 text-card-foreground shadow-lg">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={handleCloseModal}>
+          <div 
+            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto overflow-x-visible rounded-xl border bg-card p-6 text-card-foreground shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="mb-5">
               <h2 className="text-lg font-semibold">Create KPI</h2>
               <p className="text-sm text-muted-foreground">
@@ -224,25 +252,22 @@ export function CreateMetricModal({
               </p>
             </div>
 
-            <form action={formAction} className="space-y-4">
+            <form className="space-y-4" onSubmit={handleSubmit}>
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <label htmlFor="create-metric-department" className="text-sm font-medium">
-                    Department
-                  </label>
-                  <select
-                    id="create-metric-department"
-                    name="departmentId"
-                    defaultValue={departments[0]?.department_id ?? ''}
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                    required
-                  >
-                    {departments.map((department) => (
-                      <option key={department.department_id} value={department.department_id}>
-                        {department.name}
-                      </option>
-                    ))}
-                  </select>
+                  <label className="text-sm font-medium">Department</label>
+                  <div className="flex flex-col gap-2">
+                    <DepartmentPicker
+                      departments={departments}
+                      value={departmentId}
+                      onChange={setDepartmentId}
+                      placeholder="Select a department"
+                      required
+                    />
+                  </div>
+                  {state.fieldErrors.departmentId ? (
+                    <p className="text-xs text-destructive">{state.fieldErrors.departmentId}</p>
+                  ) : null}
                 </div>
 
                 <div className="space-y-2">
@@ -283,6 +308,9 @@ export function CreateMetricModal({
                     onChange={(event) => onNameChange(event.target.value)}
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                   />
+                  {state.fieldErrors.name ? (
+                    <p className="text-xs text-destructive">{state.fieldErrors.name}</p>
+                  ) : null}
                 </div>
 
                 <div className="space-y-2">
@@ -312,6 +340,9 @@ export function CreateMetricModal({
                     placeholder="auto from name"
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm font-mono"
                   />
+                  {state.fieldErrors.code ? (
+                    <p className="text-xs text-destructive">{state.fieldErrors.code}</p>
+                  ) : null}
                   <p className="text-xs text-muted-foreground">Spaces are automatically converted to `_`.</p>
                 </div>
               </div>
@@ -346,6 +377,9 @@ export function CreateMetricModal({
                       </option>
                     ))}
                   </select>
+                  {state.fieldErrors.dataType ? (
+                    <p className="text-xs text-destructive">{state.fieldErrors.dataType}</p>
+                  ) : null}
                 </div>
 
                 <div className="space-y-2">
@@ -366,6 +400,9 @@ export function CreateMetricModal({
                     ))}
                     <option value="custom">custom</option>
                   </select>
+                  {state.fieldErrors.unit ? (
+                    <p className="text-xs text-destructive">{state.fieldErrors.unit}</p>
+                  ) : null}
                 </div>
               </div>
 
@@ -424,31 +461,12 @@ export function CreateMetricModal({
 
               {dataType === 'boolean' ? (
                 <div className="space-y-2">
-                  <label htmlFor="create-metric-boolean-preset" className="text-sm font-medium">
-                    Boolean labels
-                  </label>
-                  <select
-                    id="create-metric-boolean-preset"
-                    name="booleanPreset"
-                    value={booleanPreset}
-                    onChange={(event) =>
-                      setBooleanPreset(
-                        event.target.value as
-                        | 'yes_no'
-                        | 'true_false'
-                        | 'active_inactive'
-                        | 'qualified_not_qualified'
-                        | 'completed_not_completed',
-                      )
-                    }
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  >
-                    <option value="yes_no">Yes / No</option>
-                    <option value="true_false">True / False</option>
-                    <option value="active_inactive">Active / Inactive</option>
-                    <option value="qualified_not_qualified">Qualified / Not Qualified</option>
-                    <option value="completed_not_completed">Completed / Not Completed</option>
-                  </select>
+                  <input type="hidden" name="booleanPreset" value="yes_no" />
+                  <label className="text-sm font-medium">Boolean labels</label>
+                  <p className="rounded-md border border-input bg-muted/20 px-3 py-2 text-sm">Yes / No</p>
+                  <p className="text-xs text-muted-foreground">
+                    Boolean metrics are always presented as Yes or No for clarity.
+                  </p>
                 </div>
               ) : null}
 
@@ -554,6 +572,9 @@ export function CreateMetricModal({
                       placeholder={'Option A\nOption B\nOption C'}
                       required
                     />
+                    {state.fieldErrors.selectionOptions ? (
+                      <p className="text-xs text-destructive">{state.fieldErrors.selectionOptions}</p>
+                    ) : null}
                   </div>
                 </div>
               ) : null}
@@ -576,54 +597,6 @@ export function CreateMetricModal({
                 </div>
               ) : null}
 
-              <details className="rounded-md border border-border bg-muted/20 p-3">
-                <summary className="cursor-pointer text-sm font-medium text-muted-foreground">
-                  Advanced settings (optional)
-                </summary>
-                <div className="mt-3 grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <label htmlFor="create-metric-direction" className="text-sm font-medium">
-                      Direction
-                    </label>
-                    <select
-                      id="create-metric-direction"
-                      name="direction"
-                      value={direction}
-                      onChange={(event) =>
-                        setDirection(event.target.value as 'higher_is_better' | 'lower_is_better')
-                      }
-                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                    >
-                      {DIRECTIONS.map((item) => (
-                        <option key={item.value} value={item.value}>
-                          {item.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label htmlFor="create-metric-precision" className="text-sm font-medium">
-                      Precision
-                    </label>
-                    <input
-                      id="create-metric-precision"
-                      name="precisionScale"
-                      type="number"
-                      min={0}
-                      max={6}
-                      value={precisionScale}
-                      onChange={(event) => {
-                        setPrecisionScale(Number(event.target.value))
-                        setPrecisionDirty(true)
-                      }}
-                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                      required
-                    />
-                  </div>
-                </div>
-              </details>
-
               {mode === 'calculated' ? (
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Formula</label>
@@ -631,10 +604,23 @@ export function CreateMetricModal({
                     id="create-metric-expression"
                     name="expression"
                     value={expression}
-                    metrics={dependencyMetrics}
+                    metrics={availableFormulaMetrics}
                     onChange={setExpression}
                     required
                   />
+                  {availableFormulaMetrics.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      No active metrics found for this department yet. Create a manual metric first, then reuse its code in formulas.
+                    </p>
+                  ) : null}
+                  {!formulaValidation.success ? (
+                    <p className="text-xs text-destructive">{formulaValidation.error}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Formula looks valid.</p>
+                  )}
+                  {state.fieldErrors.expression ? (
+                    <p className="text-xs text-destructive">{state.fieldErrors.expression}</p>
+                  ) : null}
                 </div>
               ) : null}
 

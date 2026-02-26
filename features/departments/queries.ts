@@ -5,7 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { departmentFilterSchema } from './schemas'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
 import { requireRole } from '@/lib/rbac/guards'
-import { type MetricDataType } from '@/lib/metrics/data-types'
+import { type MetricDataType, type MetricSettings } from '@/lib/metrics/data-types'
 
 type DepartmentPeriod = 'today' | 'current_week' | 'this_week' | 'this_month' | 'custom'
 type IncomingDepartmentPeriod = DepartmentPeriod | 'this_week'
@@ -20,7 +20,7 @@ type DepartmentMetricData = {
   code: string
   data_type: MetricDataType
   unit: string
-  direction: 'higher_is_better' | 'lower_is_better'
+  settings: MetricSettings | null
 }
 
 type DepartmentAggregateStats = {
@@ -184,6 +184,7 @@ export async function listDepartments(rawFilters?: {
     .from('departments')
     .select('department_id, name, type, is_active, created_at, updated_at', { count: 'exact' })
     .eq('company_id', context.companyId)
+    .is('deleted_at', null)
     .order('created_at', { ascending: false })
 
   if (filters.q?.trim()) {
@@ -218,6 +219,7 @@ export async function getDepartmentById(id: string) {
     .select('department_id, name, type, is_active, created_at, updated_at')
     .eq('department_id', id)
     .eq('company_id', context.companyId)
+    .is('deleted_at', null)
     .maybeSingle()
 
   if (queryError) {
@@ -311,7 +313,6 @@ export async function getDepartmentAggregateStats(
 
   const submittedCount = entries.filter((e) => e.status === 'submitted').length
   const draftCount = entries.filter((e) => e.status === 'draft').length
-  const totalEntries = submittedCount + draftCount
 
   const submittedDays = new Set(entries.filter((e) => e.status === 'submitted').map((e) => e.entry_date))
   const periodDays = Math.floor((new Date(range.endDate).getTime() - new Date(range.startDate).getTime()) / 86400000) + 1
@@ -367,7 +368,7 @@ async function getScoreMetricsForDepartment(
 ) {
   const { data, error } = await admin
     .from('metrics')
-    .select('metric_id, data_type, direction')
+    .select('metric_id, data_type')
     .eq('company_id', companyId)
     .eq('department_id', departmentId)
     .in('data_type', RANKING_METRIC_TYPES)
@@ -378,13 +379,13 @@ async function getScoreMetricsForDepartment(
     return {
       ok: false as const,
       message: formatDatabaseError(error.message),
-      metrics: [] as Array<{ metric_id: string; data_type: MetricDataType; direction: string }>,
+      metrics: [] as Array<{ metric_id: string; data_type: MetricDataType }>,
     }
   }
 
   return {
     ok: true as const,
-    metrics: (data ?? []) as Array<{ metric_id: string; data_type: MetricDataType; direction: string }>,
+    metrics: (data ?? []) as Array<{ metric_id: string; data_type: MetricDataType }>,
   }
 }
 
@@ -397,7 +398,7 @@ async function calculateDepartmentMemberScores(
   departmentId: string,
   startDate: string,
   endDate: string,
-  scoreMetrics: Array<{ metric_id: string; data_type: MetricDataType; direction: string }>,
+  scoreMetrics: Array<{ metric_id: string; data_type: MetricDataType }>,
   memberIds: string[],
 ) {
   if (scoreMetrics.length === 0 || memberIds.length === 0) {
@@ -504,6 +505,7 @@ export async function getDepartmentProfile(
     .select('department_id, name, type, is_active')
     .eq('department_id', departmentId)
     .eq('company_id', context.companyId)
+    .is('deleted_at', null)
     .maybeSingle()
 
   if (deptError || !deptData) {
@@ -526,7 +528,7 @@ export async function getDepartmentProfile(
   // Get metrics for this department
   const { data: metricsData, error: metricsError } = await context.admin
     .from('metrics')
-    .select('metric_id, name, code, data_type, unit, direction, settings')
+    .select('metric_id, name, code, data_type, unit, settings')
     .eq('company_id', context.companyId)
     .eq('department_id', departmentId)
     .eq('is_active', true)

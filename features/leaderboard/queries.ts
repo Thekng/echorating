@@ -10,7 +10,22 @@ import { type MetricDataType } from '@/lib/metrics/data-types'
 type LeaderboardPeriod = 'today' | 'current_week' | 'this_month' | 'custom'
 type IncomingLeaderboardPeriod = LeaderboardPeriod | 'this_week'
 
-type LeaderboardMetric = {
+type DateRangeResult =
+  | {
+    ok: true
+    period: LeaderboardPeriod
+    startDate: string
+    endDate: string
+    cutoffDate: string
+  }
+  | { ok: false; message: string }
+
+type DepartmentOption = {
+  department_id: string
+  name: string
+}
+
+export type LeaderboardMetric = {
   metric_id: string
   name: string
   code: string
@@ -18,19 +33,26 @@ type LeaderboardMetric = {
   unit: string
 }
 
-type LeaderboardSortOption = LeaderboardMetric
-
-type LeaderboardRow = {
+export type LeaderboardRow = {
   user_id: string
   name: string
-  value: number
-  met_count: number
+  values: Record<string, number>
+  filled_count: number
   total_count: number
 }
 
-type DateRangeResult =
-  | { ok: true; period: LeaderboardPeriod; startDate: string; endDate: string }
-  | { ok: false; message: string }
+export type LeaderboardData = {
+  departments: DepartmentOption[]
+  departmentId: string
+  period: LeaderboardPeriod
+  startDate: string
+  endDate: string
+  metrics: LeaderboardMetric[]
+  sortOptions: LeaderboardMetric[]
+  selectedMetricId: string
+  leaderboard: LeaderboardRow[]
+  message?: string
+}
 
 const RANKING_METRIC_TYPES: MetricDataType[] = ['number', 'currency', 'percent', 'duration', 'boolean']
 const PERIOD_ALIASES: Record<IncomingLeaderboardPeriod, LeaderboardPeriod> = {
@@ -40,13 +62,25 @@ const PERIOD_ALIASES: Record<IncomingLeaderboardPeriod, LeaderboardPeriod> = {
   this_month: 'this_month',
   custom: 'custom',
 }
-const DEPARTMENT_SCORE_OPTION: LeaderboardSortOption = {
-  metric_id: 'department_score',
-  name: 'Department Score',
-  code: 'department_score',
-  data_type: 'percent',
-  unit: '%',
-}
+
+const DEFAULT_DEPARTMENT_METRIC_PRIORITY = [
+  'premium',
+  'premium_quoted',
+  'premium_sold',
+  'households',
+  'quoted_households',
+  'policies',
+  'policies_sold',
+  'items',
+  'items_sold',
+  'calls',
+  'outbound_calls',
+  'talk_time',
+  'talk_time_min',
+  'life_apps',
+  'new_conversations',
+  'follow_ups_completed',
+]
 
 function dateKeyUtc(date: Date) {
   return [
@@ -73,35 +107,33 @@ function resolveDateRange(
 ): DateRangeResult {
   const period = PERIOD_ALIASES[rawPeriod ?? 'today'] ?? 'today'
   const now = new Date()
+  const today = dateKeyUtc(now)
 
   if (period === 'custom') {
     if (!isDateKey(startDate) || !isDateKey(endDate)) {
       return { ok: false, message: 'Custom period requires start and end dates.' }
     }
 
-    const customStart = startDate
-    const customEnd = endDate
-
-    if (customStart > customEnd) {
+    if (startDate > endDate) {
       return { ok: false, message: 'Custom start date must be before or equal to end date.' }
     }
 
     return {
       ok: true,
       period,
-      startDate: customStart,
-      endDate: customEnd,
+      startDate,
+      endDate,
+      cutoffDate: today < startDate ? startDate : today > endDate ? endDate : today,
     }
   }
-
-  const todayKey = dateKeyUtc(now)
 
   if (period === 'today') {
     return {
       ok: true,
       period,
-      startDate: todayKey,
-      endDate: todayKey,
+      startDate: today,
+      endDate: today,
+      cutoffDate: today,
     }
   }
 
@@ -109,20 +141,32 @@ function resolveDateRange(
     const day = now.getUTCDay()
     const diffToMonday = day === 0 ? 6 : day - 1
     const monday = addUtcDays(now, -diffToMonday)
+    const sunday = addUtcDays(monday, 6)
+    const start = dateKeyUtc(monday)
+    const end = dateKeyUtc(sunday)
     return {
       ok: true,
       period,
-      startDate: dateKeyUtc(monday),
-      endDate: todayKey,
+      startDate: start,
+      endDate: end,
+      cutoffDate: today < start ? start : today > end ? end : today,
     }
   }
 
+  const start = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`
+  const end = dateKeyUtc(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)))
   return {
     ok: true,
     period,
-    startDate: `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`,
-    endDate: todayKey,
+    startDate: start,
+    endDate: end,
+    cutoffDate: today < start ? start : today > end ? end : today,
   }
+}
+
+function isMissingProfileNameColumn(message: string) {
+  const normalized = message.toLowerCase()
+  return normalized.includes('column profiles_1.name does not exist')
 }
 
 async function getViewerContext() {
@@ -143,7 +187,7 @@ async function getViewerContext() {
 
   const { data: profile, error: profileError } = await admin
     .from('profiles')
-    .select('company_id, role')
+    .select('company_id, role, is_active, deleted_at')
     .eq('user_id', user.id)
     .maybeSingle()
 
@@ -151,96 +195,216 @@ async function getViewerContext() {
     return { ok: false as const, message: formatDatabaseError(profileError.message) }
   }
 
-  if (!profile?.company_id || !profile?.role) {
-    return { ok: false as const, message: 'Company profile not found.' }
+  if (!profile?.company_id || !profile?.role || profile.is_active === false || profile.deleted_at) {
+    return { ok: false as const, message: 'Active company profile not found.' }
   }
 
   return {
     ok: true as const,
     admin,
+    userId: user.id,
     companyId: profile.company_id as string,
     role: profile.role as Role,
   }
 }
 
-async function resolveDepartmentId(
+async function getAccessibleDepartments(
   admin: ReturnType<typeof createAdminClient>,
   companyId: string,
-  requestedDepartmentId?: string | null,
+  userId: string,
+  role: Role,
 ) {
-  if (requestedDepartmentId) {
+  if (role === 'owner' || role === 'manager') {
     const { data, error } = await admin
       .from('departments')
-      .select('department_id')
-      .eq('department_id', requestedDepartmentId)
+      .select('department_id, name')
       .eq('company_id', companyId)
+      .eq('is_active', true)
       .is('deleted_at', null)
-      .maybeSingle()
+      .order('name', { ascending: true })
 
     if (error) {
-      return { ok: false as const, message: formatDatabaseError(error.message), departmentId: null as string | null }
+      return {
+        ok: false as const,
+        message: formatDatabaseError(error.message),
+        departments: [] as DepartmentOption[],
+      }
     }
 
-    if (data?.department_id) {
-      return { ok: true as const, departmentId: data.department_id as string }
+    return { ok: true as const, departments: (data ?? []) as DepartmentOption[] }
+  }
+
+  const { data: memberships, error: membershipsError } = await admin
+    .from('department_members')
+    .select('department_id')
+    .eq('user_id', userId)
+    .eq('is_active', true)
+    .is('deleted_at', null)
+
+  if (membershipsError) {
+    return {
+      ok: false as const,
+      message: formatDatabaseError(membershipsError.message),
+      departments: [] as DepartmentOption[],
     }
+  }
+
+  const departmentIds = (memberships ?? []).map((item) => item.department_id as string).filter(Boolean)
+  if (departmentIds.length === 0) {
+    return { ok: true as const, departments: [] as DepartmentOption[] }
   }
 
   const { data, error } = await admin
     .from('departments')
-    .select('department_id')
+    .select('department_id, name')
     .eq('company_id', companyId)
+    .in('department_id', departmentIds)
+    .eq('is_active', true)
     .is('deleted_at', null)
     .order('name', { ascending: true })
-    .limit(1)
-    .maybeSingle()
 
   if (error) {
-    return { ok: false as const, message: formatDatabaseError(error.message), departmentId: null as string | null }
+    return {
+      ok: false as const,
+      message: formatDatabaseError(error.message),
+      departments: [] as DepartmentOption[],
+    }
   }
 
-  return { ok: true as const, departmentId: (data?.department_id as string | undefined) ?? null }
+  return { ok: true as const, departments: (data ?? []) as DepartmentOption[] }
 }
 
-type ScoreMetric = LeaderboardMetric & {
-  direction: 'higher_is_better' | 'lower_is_better'
-}
-
-async function resolveScoreMetrics(
+async function getDepartmentMetrics(
   admin: ReturnType<typeof createAdminClient>,
   companyId: string,
   departmentId: string,
 ) {
   const { data: metricsData, error: metricsError } = await admin
     .from('metrics')
-    .select('metric_id, name, code, data_type, unit, direction')
+    .select('metric_id, name, code, data_type, unit')
     .eq('company_id', companyId)
     .eq('department_id', departmentId)
     .eq('is_active', true)
     .in('data_type', RANKING_METRIC_TYPES)
     .is('deleted_at', null)
-    .order('name', { ascending: true })
 
   if (metricsError) {
     return {
       ok: false as const,
       message: formatDatabaseError(metricsError.message),
-      metrics: [] as ScoreMetric[],
+      metrics: [] as LeaderboardMetric[],
     }
   }
 
-  const metrics = (metricsData ?? []) as Array<
-    LeaderboardMetric & { direction: 'higher_is_better' | 'lower_is_better' }
-  >
+  const metrics = (metricsData ?? []) as LeaderboardMetric[]
   if (metrics.length === 0) {
+    return { ok: true as const, metrics: [] as LeaderboardMetric[] }
+  }
+
+  const { data: keyMetricRows } = await admin
+    .from('department_log_key_metrics')
+    .select('slot, metric_id')
+    .eq('department_id', departmentId)
+    .order('slot', { ascending: true })
+
+  const keyMetricRank = new Map<string, number>()
+  for (const row of (keyMetricRows ?? []) as Array<{ slot: number; metric_id: string }>) {
+    keyMetricRank.set(row.metric_id, row.slot)
+  }
+
+  const metricPriority = (metric: LeaderboardMetric) => {
+    const slot = keyMetricRank.get(metric.metric_id)
+    if (slot !== undefined) {
+      return slot
+    }
+
+    const codeIndex = DEFAULT_DEPARTMENT_METRIC_PRIORITY.indexOf(metric.code)
+    if (codeIndex !== -1) {
+      return 100 + codeIndex
+    }
+
+    return 1000
+  }
+
+  return {
+    ok: true as const,
+    metrics: metrics
+      .slice()
+      .sort((left, right) => {
+        const leftPriority = metricPriority(left)
+        const rightPriority = metricPriority(right)
+        if (leftPriority !== rightPriority) {
+          return leftPriority - rightPriority
+        }
+        return left.name.localeCompare(right.name)
+      }),
+  }
+}
+
+async function getActiveMembersForDepartment(
+  admin: ReturnType<typeof createAdminClient>,
+  departmentId: string,
+) {
+  const withName = await admin
+    .from('department_members')
+    .select('user_id, profiles!inner(name)')
+    .eq('department_id', departmentId)
+    .eq('is_active', true)
+    .is('deleted_at', null)
+
+  let rows: Array<{ user_id: string; profiles?: { name?: string; full_name?: string } }> = []
+  if (!withName.error) {
+    rows = (withName.data as typeof rows) ?? []
+  } else if (isMissingProfileNameColumn(withName.error.message)) {
+    const fallback = await admin
+      .from('department_members')
+      .select('user_id, profiles!inner(full_name)')
+      .eq('department_id', departmentId)
+      .eq('is_active', true)
+      .is('deleted_at', null)
+
+    if (fallback.error) {
+      return {
+        ok: false as const,
+        message: formatDatabaseError(fallback.error.message),
+        members: [] as Array<{ user_id: string; name: string }>,
+      }
+    }
+
+    rows = (fallback.data as typeof rows) ?? []
+  } else {
     return {
-      ok: true as const,
-      message: 'No numeric KPI available for leaderboard in this department.',
-      metrics: [] as ScoreMetric[],
+      ok: false as const,
+      message: formatDatabaseError(withName.error.message),
+      members: [] as Array<{ user_id: string; name: string }>,
     }
   }
 
-  return { ok: true as const, metrics }
+  return {
+    ok: true as const,
+    members: rows.map((row) => ({
+      user_id: row.user_id,
+      name: row.profiles?.name || row.profiles?.full_name || 'Unknown',
+    })),
+  }
+}
+
+function parseMetricValue(
+  dataType: MetricDataType,
+  row: { value_numeric: number | null; value_bool: boolean | null },
+) {
+  if (dataType === 'boolean') {
+    if (row.value_bool === null) {
+      return null
+    }
+    return row.value_bool ? 1 : 0
+  }
+
+  if (row.value_numeric === null || row.value_numeric === undefined) {
+    return null
+  }
+
+  return Number(row.value_numeric)
 }
 
 export async function getLeaderboard(opts: {
@@ -250,336 +414,214 @@ export async function getLeaderboard(opts: {
   startDate?: string | null
   endDate?: string | null
   limit?: number
-}) {
+}): Promise<
+  | { success: true; data: LeaderboardData }
+  | { success: false; error: string; data: null }
+> {
   const context = await getViewerContext()
   if (!context.ok) {
-    return { success: false as const, error: context.message, data: null }
+    return { success: false, error: context.message, data: null }
   }
 
   try {
-    requireRole(context.role, 'manager')
+    requireRole(context.role, 'member')
   } catch {
-    return { success: false as const, error: 'Insufficient permissions.', data: null }
+    return { success: false, error: 'Insufficient permissions.', data: null }
   }
 
   const range = resolveDateRange(opts.period, opts.startDate, opts.endDate)
   if (!range.ok) {
-    return { success: false as const, error: range.message, data: null }
+    return { success: false, error: range.message, data: null }
   }
 
-  const departmentResult = await resolveDepartmentId(context.admin, context.companyId, opts.departmentId)
-  if (!departmentResult.ok) {
-    return { success: false as const, error: departmentResult.message, data: null }
-  }
-
-  if (!departmentResult.departmentId) {
-    return { success: false as const, error: 'No departments found.', data: null }
-  }
-
-  const scoreMetricsResult = await resolveScoreMetrics(
+  const accessibleDepartments = await getAccessibleDepartments(
     context.admin,
     context.companyId,
-    departmentResult.departmentId,
+    context.userId,
+    context.role,
   )
-  if (!scoreMetricsResult.ok) {
-    return { success: false as const, error: scoreMetricsResult.message, data: null }
+  if (!accessibleDepartments.ok) {
+    return { success: false, error: accessibleDepartments.message, data: null }
   }
 
-  const scoreMetrics = scoreMetricsResult.metrics
-  const sortOptions: LeaderboardSortOption[] = [
-    DEPARTMENT_SCORE_OPTION,
-    ...scoreMetrics.map((metric) => ({
-      metric_id: metric.metric_id,
-      name: metric.name,
-      code: metric.code,
-      data_type: metric.data_type,
-      unit: metric.unit,
-    })),
-  ]
-
-  const requestedMetricId = opts.metricId?.trim() || DEPARTMENT_SCORE_OPTION.metric_id
-  const selectedMetric =
-    sortOptions.find((option) => option.metric_id === requestedMetricId) ?? DEPARTMENT_SCORE_OPTION
-
-  const scoreMetricIds = scoreMetrics.map((metric) => metric.metric_id)
-
-  if (scoreMetrics.length === 0) {
+  const departments = accessibleDepartments.departments
+  if (departments.length === 0) {
     return {
-      success: true as const,
+      success: true,
       data: {
-        leaderboard: [] as LeaderboardRow[],
-        departmentId: departmentResult.departmentId,
-        metricId: DEPARTMENT_SCORE_OPTION.metric_id,
-        selectedMetric: DEPARTMENT_SCORE_OPTION,
-        sortOptions: [DEPARTMENT_SCORE_OPTION],
-        scoringMetricsCount: 0,
+        departments: [],
+        departmentId: '',
         period: range.period,
         startDate: range.startDate,
         endDate: range.endDate,
-        message: scoreMetricsResult.message ?? 'No scoring metrics available for this department.',
+        metrics: [],
+        sortOptions: [],
+        selectedMetricId: '',
+        leaderboard: [],
+        message: 'No active departments available for your profile.',
       },
     }
   }
 
-  const limit = Math.min(Math.max(opts.limit ?? 20, 1), 100)
+  const selectedDepartmentId =
+    opts.departmentId && departments.some((department) => department.department_id === opts.departmentId)
+      ? opts.departmentId
+      : departments[0].department_id
+
+  const metricsResult = await getDepartmentMetrics(context.admin, context.companyId, selectedDepartmentId)
+  if (!metricsResult.ok) {
+    return { success: false, error: metricsResult.message, data: null }
+  }
+
+  const metrics = metricsResult.metrics
+  const selectedMetricId =
+    opts.metricId && metrics.some((metric) => metric.metric_id === opts.metricId)
+      ? opts.metricId
+      : (metrics[0]?.metric_id ?? '')
+
+  const activeMembersResult = await getActiveMembersForDepartment(context.admin, selectedDepartmentId)
+  if (!activeMembersResult.ok) {
+    return { success: false, error: activeMembersResult.message, data: null }
+  }
+
+  const members = activeMembersResult.members
+  const memberById = new Map(members.map((member) => [member.user_id, member.name]))
+  const metricById = new Map(metrics.map((metric) => [metric.metric_id, metric]))
+
+  if (metrics.length === 0) {
+    return {
+      success: true,
+      data: {
+        departments,
+        departmentId: selectedDepartmentId,
+        period: range.period,
+        startDate: range.startDate,
+        endDate: range.endDate,
+        metrics: [],
+        sortOptions: [],
+        selectedMetricId: '',
+        leaderboard: members.map((member) => ({
+          user_id: member.user_id,
+          name: member.name,
+          values: {},
+          filled_count: 0,
+          total_count: 0,
+        })),
+        message: 'No active leaderboard metrics found for this department.',
+      },
+    }
+  }
+
   const { data: entriesData, error: entriesError } = await context.admin
     .from('daily_entries')
     .select('entry_id, user_id')
     .eq('company_id', context.companyId)
-    .eq('department_id', departmentResult.departmentId)
+    .eq('department_id', selectedDepartmentId)
     .eq('status', 'submitted')
     .gte('entry_date', range.startDate)
-    .lte('entry_date', range.endDate)
+    .lte('entry_date', range.cutoffDate)
 
   if (entriesError) {
-    return { success: false as const, error: formatDatabaseError(entriesError.message), data: null }
+    return { success: false, error: formatDatabaseError(entriesError.message), data: null }
   }
 
-  const entries = (entriesData ?? []) as Array<{ entry_id: string; user_id: string }>
-  const entryIds = entries.map((entry) => entry.entry_id)
-  if (entryIds.length === 0) {
-    return {
-      success: true as const,
-      data: {
-        leaderboard: [] as LeaderboardRow[],
-        departmentId: departmentResult.departmentId,
-        metricId: selectedMetric.metric_id,
-        selectedMetric,
-        sortOptions,
-        scoringMetricsCount: scoreMetrics.length,
-        period: range.period,
-        startDate: range.startDate,
-        endDate: range.endDate,
-      },
-    }
-  }
+  const entries = ((entriesData ?? []) as Array<{ entry_id: string; user_id: string }>).filter((entry) =>
+    memberById.has(entry.user_id),
+  )
 
-  const { data: valuesData, error: valuesError } = await context.admin
-    .from('entry_values')
-    .select('entry_id, metric_id, value_numeric, value_bool')
-    .in('entry_id', entryIds)
-    .in('metric_id', scoreMetricIds)
-
-  if (valuesError) {
-    return { success: false as const, error: formatDatabaseError(valuesError.message), data: null }
-  }
-
-  const metricById = new Map(scoreMetrics.map((metric) => [metric.metric_id, metric]))
-  const valueByEntryMetric = new Map<string, number>()
-  for (const row of (valuesData ?? []) as Array<{
-    entry_id: string
-    metric_id: string
-    value_numeric: number | null
-    value_bool: boolean | null
-  }>) {
-    const metric = metricById.get(row.metric_id)
-    if (!metric) {
-      continue
-    }
-
-    if (metric.data_type === 'boolean') {
-      if (row.value_bool === null) {
-        continue
-      }
-      valueByEntryMetric.set(`${row.entry_id}:${row.metric_id}`, row.value_bool ? 1 : 0)
-      continue
-    }
-
-    if (row.value_numeric === null || row.value_numeric === undefined) {
-      continue
-    }
-    valueByEntryMetric.set(`${row.entry_id}:${row.metric_id}`, Number(row.value_numeric))
-  }
-
+  const metricIds = metrics.map((metric) => metric.metric_id)
   const valueByUserMetric = new Map<string, Map<string, number>>()
-  for (const entry of entries) {
-    for (const metricId of scoreMetricIds) {
-      const value = valueByEntryMetric.get(`${entry.entry_id}:${metricId}`)
-      if (value === undefined) {
+  const filledByUserMetric = new Map<string, Set<string>>()
+
+  if (entries.length > 0 && metricIds.length > 0) {
+    const entryIds = entries.map((entry) => entry.entry_id)
+    const entryUserById = new Map(entries.map((entry) => [entry.entry_id, entry.user_id]))
+
+    const { data: valuesData, error: valuesError } = await context.admin
+      .from('entry_values')
+      .select('entry_id, metric_id, value_numeric, value_bool')
+      .in('entry_id', entryIds)
+      .in('metric_id', metricIds)
+
+    if (valuesError) {
+      return { success: false, error: formatDatabaseError(valuesError.message), data: null }
+    }
+
+    for (const row of (valuesData ?? []) as Array<{
+      entry_id: string
+      metric_id: string
+      value_numeric: number | null
+      value_bool: boolean | null
+    }>) {
+      const userId = entryUserById.get(row.entry_id)
+      const metric = metricById.get(row.metric_id)
+      if (!userId || !metric) {
         continue
       }
-      const currentByMetric = valueByUserMetric.get(entry.user_id) ?? new Map<string, number>()
-      currentByMetric.set(metricId, (currentByMetric.get(metricId) ?? 0) + value)
-      valueByUserMetric.set(entry.user_id, currentByMetric)
+
+      const parsed = parseMetricValue(metric.data_type, row)
+      if (parsed === null) {
+        continue
+      }
+
+      const currentMetricValues = valueByUserMetric.get(userId) ?? new Map<string, number>()
+      currentMetricValues.set(row.metric_id, (currentMetricValues.get(row.metric_id) ?? 0) + parsed)
+      valueByUserMetric.set(userId, currentMetricValues)
+
+      const filledSet = filledByUserMetric.get(userId) ?? new Set<string>()
+      filledSet.add(row.metric_id)
+      filledByUserMetric.set(userId, filledSet)
     }
   }
 
-  if (valueByUserMetric.size === 0) {
+  const allRows: LeaderboardRow[] = members.map((member) => {
+    const valuesByMetric = valueByUserMetric.get(member.user_id) ?? new Map<string, number>()
+    const values: Record<string, number> = {}
+
+    for (const metric of metrics) {
+      values[metric.metric_id] = Number((valuesByMetric.get(metric.metric_id) ?? 0).toFixed(2))
+    }
+
     return {
-      success: true as const,
-      data: {
-        leaderboard: [] as LeaderboardRow[],
-        departmentId: departmentResult.departmentId,
-        metricId: selectedMetric.metric_id,
-        selectedMetric,
-        sortOptions,
-        scoringMetricsCount: scoreMetrics.length,
-        period: range.period,
-        startDate: range.startDate,
-        endDate: range.endDate,
-        message: 'No metric values found for this period.',
-      },
+      user_id: member.user_id,
+      name: member.name,
+      values,
+      filled_count: filledByUserMetric.get(member.user_id)?.size ?? 0,
+      total_count: metrics.length,
     }
-  }
+  })
 
-  const rankedUserIds = Array.from(valueByUserMetric.keys())
-  let profileNameByUserId = new Map<string, string>()
-
-  if (rankedUserIds.length > 0) {
-    const { data: profilesData, error: profilesError } = await context.admin
-      .from('profiles')
-      .select('user_id, name')
-      .eq('company_id', context.companyId)
-      .in('user_id', rankedUserIds)
-
-    if (!profilesError && profilesData) {
-      profileNameByUserId = new Map(
-        (profilesData as Array<{ user_id: string; name: string }>).map((profile) => [
-          profile.user_id,
-          profile.name,
-        ]),
-      )
-    }
-  }
-
-  const metricStats = new Map<string, { min: number; max: number }>()
-  for (const metricId of scoreMetricIds) {
-    const values: number[] = []
-    for (const userId of rankedUserIds) {
-      const userMetricValues = valueByUserMetric.get(userId)
-      if (!userMetricValues) {
-        continue
+  const limit = Math.min(Math.max(opts.limit ?? 100, 1), 500)
+  const leaderboard = allRows
+    .slice()
+    .sort((left, right) => {
+      const leftValue = selectedMetricId ? left.values[selectedMetricId] ?? 0 : 0
+      const rightValue = selectedMetricId ? right.values[selectedMetricId] ?? 0 : 0
+      if (rightValue !== leftValue) {
+        return rightValue - leftValue
       }
-      const metricValue = userMetricValues.get(metricId)
-      if (metricValue === undefined) {
-        continue
-      }
-      values.push(metricValue)
-    }
-
-    if (values.length === 0) {
-      metricStats.set(metricId, { min: 0, max: 0 })
-      continue
-    }
-
-    let min = values[0]
-    let max = values[0]
-    for (const item of values) {
-      if (item < min) min = item
-      if (item > max) max = item
-    }
-    metricStats.set(metricId, { min, max })
-  }
-
-  const baseRows = rankedUserIds
-    .map((userId) => {
-      const userMetricValues = valueByUserMetric.get(userId) ?? new Map<string, number>()
-      let normalizedSum = 0
-      let filledCount = 0
-
-      for (const metricId of scoreMetricIds) {
-        const metric = metricById.get(metricId)
-        const stats = metricStats.get(metricId)
-        if (!metric || !stats) {
-          continue
-        }
-
-        const rawValue = userMetricValues.get(metricId)
-        if (rawValue === undefined) {
-          continue
-        }
-
-        filledCount += 1
-        const span = stats.max - stats.min
-        let normalized = 0
-
-        if (span <= 0) {
-          normalized = 1
-        } else if (metric.direction === 'lower_is_better') {
-          normalized = (stats.max - rawValue) / span
-        } else {
-          normalized = (rawValue - stats.min) / span
-        }
-
-        if (normalized < 0) normalized = 0
-        if (normalized > 1) normalized = 1
-        normalizedSum += normalized
-      }
-
-      return {
-        user_id: userId,
-        name: profileNameByUserId.get(userId) ?? userId,
-        department_score: scoreMetricIds.length > 0 ? Number(((normalizedSum / scoreMetricIds.length) * 100).toFixed(2)) : 0,
-        metric_values: userMetricValues,
-        met_count: filledCount,
-        total_count: scoreMetricIds.length,
-      }
+      return left.name.localeCompare(right.name)
     })
+    .slice(0, limit)
 
-  let leaderboard: LeaderboardRow[] = []
-  let message: string | undefined
-
-  if (selectedMetric.metric_id === DEPARTMENT_SCORE_OPTION.metric_id) {
-    leaderboard = baseRows
-      .map((row) => ({
-        user_id: row.user_id,
-        name: row.name,
-        value: row.department_score,
-        met_count: row.met_count,
-        total_count: row.total_count,
-      }))
-      .sort((left, right) => {
-        if (right.value !== left.value) {
-          return right.value - left.value
-        }
-        if (right.met_count !== left.met_count) {
-          return right.met_count - left.met_count
-        }
-        return left.name.localeCompare(right.name)
-      })
-      .slice(0, limit)
-  } else {
-    const sortMetric = metricById.get(selectedMetric.metric_id)
-    const isLowerBetter = sortMetric?.direction === 'lower_is_better'
-
-    leaderboard = baseRows
-      .filter((row) => row.metric_values.has(selectedMetric.metric_id))
-      .map((row) => ({
-        user_id: row.user_id,
-        name: row.name,
-        value: Number(row.metric_values.get(selectedMetric.metric_id) ?? 0),
-        met_count: row.met_count,
-        total_count: row.total_count,
-      }))
-      .sort((left, right) => {
-        if (right.value !== left.value) {
-          return isLowerBetter ? left.value - right.value : right.value - left.value
-        }
-        if (right.met_count !== left.met_count) {
-          return right.met_count - left.met_count
-        }
-        return left.name.localeCompare(right.name)
-      })
-      .slice(0, limit)
-
-    if (leaderboard.length === 0) {
-      message = `No data available for ${selectedMetric.name} in this period.`
-    }
-  }
+  const hasAnyValues = leaderboard.some((row) =>
+    metrics.some((metric) => (row.values[metric.metric_id] ?? 0) !== 0),
+  )
 
   return {
-    success: true as const,
+    success: true,
     data: {
-      leaderboard,
-      departmentId: departmentResult.departmentId,
-      metricId: selectedMetric.metric_id,
-      selectedMetric,
-      sortOptions,
-      scoringMetricsCount: scoreMetrics.length,
+      departments,
+      departmentId: selectedDepartmentId,
       period: range.period,
       startDate: range.startDate,
       endDate: range.endDate,
-      message,
+      metrics,
+      sortOptions: metrics,
+      selectedMetricId,
+      leaderboard,
+      message: hasAnyValues ? undefined : 'No metric values found for this period.',
     },
   }
 }
+

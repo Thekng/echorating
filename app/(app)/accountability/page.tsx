@@ -1,9 +1,10 @@
-import Link from 'next/link'
 import { ROUTES } from '@/lib/constants/routes'
+import { formatPercent } from '@/lib/metrics/format'
 import { formatDateShort } from '@/lib/utils/date-formatter'
 import { AgentsFilters } from '@/components/agents/agents-filters'
 import { listDepartments } from '@/features/departments/queries'
-import { getDepartmentAggregateStats } from '@/features/departments/queries'
+import { getAgentsList } from '@/features/agents/queries'
+import Link from 'next/link'
 
 type AccountabilityPageProps = {
   searchParams: Promise<{
@@ -26,10 +27,15 @@ function formatDate(value: string | null) {
 
 export default async function AccountabilityPage({ searchParams }: AccountabilityPageProps) {
   const params = await searchParams
+  const filterPeriod: 'today' | 'current_week' | 'this_month' | 'custom' =
+    params.period === 'current_week' || params.period === 'this_month' || params.period === 'custom'
+      ? params.period
+      : params.period === 'this_week'
+        ? 'current_week'
+        : 'today'
 
   const departmentsResult = await listDepartments({
-    q: params.q,
-    status: params.status ?? 'active',
+    status: 'active',
   })
 
   if (!departmentsResult.success || !departmentsResult.data) {
@@ -40,56 +46,70 @@ export default async function AccountabilityPage({ searchParams }: Accountabilit
     )
   }
 
-  // Get aggregated stats for each department
-  const departmentsWithStats = await Promise.all(
-    departmentsResult.data.map(async (dept) => {
-      const statsResult = await getDepartmentAggregateStats(
-        dept.department_id,
-        params.period,
-        params.startDate,
-        params.endDate,
-      )
+  if (departmentsResult.data.length === 0) {
+    return (
+      <div className="rounded-lg border border-muted/40 bg-card p-4 text-sm text-muted-foreground">
+        No active departments found.
+      </div>
+    )
+  }
 
-      return {
-        ...dept,
-        stats: statsResult.data || {
-          total_members: 0,
-          submitted_count: 0,
-          draft_count: 0,
-          completion_rate: 0,
-          last_entry_date: null,
-          department_score: null,
-        },
-      }
-    }),
-  )
+  const requestedDepartmentId =
+    params.departmentId && params.departmentId !== 'all'
+      ? params.departmentId
+      : null
+  const selectedDepartmentId = departmentsResult.data.some((department) => department.department_id === requestedDepartmentId)
+    ? (requestedDepartmentId as string)
+    : departmentsResult.data[0].department_id
+
+  const selectedDepartment = departmentsResult.data.find((department) => department.department_id === selectedDepartmentId)
+
+  const agentsResult = await getAgentsList({
+    departmentId: selectedDepartmentId,
+    period: params.period,
+    startDate: params.startDate,
+    endDate: params.endDate,
+    q: params.q,
+    status: params.status,
+  })
+
+  if (!agentsResult.success || !agentsResult.data) {
+    return (
+      <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+        {agentsResult.error}
+      </div>
+    )
+  }
+
+  const rows = agentsResult.data.rows
 
   return (
     <div className="space-y-5">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Performance</h1>
-        <p className="text-sm text-muted-foreground">View team performance and team member stats.</p>
+        <p className="text-sm text-muted-foreground">Select a team to view live agent submission performance.</p>
       </div>
 
       <AgentsFilters
         basePath={ROUTES.ACCOUNTABILITY}
         departments={departmentsResult.data}
-        selectedDepartmentId={params.departmentId ?? 'all'}
-        period={(params.period as any) ?? 'today'}
+        selectedDepartmentId={selectedDepartmentId}
+        period={filterPeriod}
         startDate={params.startDate ?? ''}
         endDate={params.endDate ?? ''}
         status={params.status ?? 'active'}
         q={params.q}
         showStatus
         showSearch
+        allowAllDepartment={false}
       />
 
       <section className="rounded-xl border bg-card">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
           <div>
-            <p className="text-sm font-semibold">Teams Overview</p>
+            <p className="text-sm font-semibold">Agent Performance</p>
             <p className="text-xs text-muted-foreground">
-              {departmentsWithStats.length} team{departmentsWithStats.length !== 1 ? 's' : ''}
+              {selectedDepartment?.name ?? 'Selected team'} · {rows.length} agent{rows.length !== 1 ? 's' : ''}
             </p>
           </div>
         </header>
@@ -98,42 +118,50 @@ export default async function AccountabilityPage({ searchParams }: Accountabilit
           <table className="min-w-[900px] w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/20">
-                <th className="px-4 py-2 text-left font-medium">Team</th>
-                <th className="px-4 py-2 text-left font-medium">Members</th>
+                <th className="px-4 py-2 text-left font-medium">Team Member</th>
+                <th className="px-4 py-2 text-left font-medium">Role</th>
+                <th className="px-4 py-2 text-left font-medium">Status</th>
                 <th className="px-4 py-2 text-left font-medium">Submitted</th>
                 <th className="px-4 py-2 text-left font-medium">Draft</th>
                 <th className="px-4 py-2 text-left font-medium">Completion</th>
-                <th className="px-4 py-2 text-left font-medium">Score</th>
                 <th className="px-4 py-2 text-left font-medium">Last Entry</th>
-                <th className="px-4 py-2 text-right font-medium">View</th>
+                <th className="px-4 py-2 text-right font-medium">Profile</th>
               </tr>
             </thead>
             <tbody>
-              {departmentsWithStats.length === 0 ? (
+              {rows.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
-                    No teams found.
+                    No agents found for this filter.
                   </td>
                 </tr>
               ) : null}
 
-              {departmentsWithStats.map((dept) => (
-                <tr key={dept.department_id} className="border-b last:border-b-0">
-                  <td className="px-4 py-3 font-medium">{dept.name}</td>
-                  <td className="px-4 py-3">{dept.stats.total_members}</td>
-                  <td className="px-4 py-3">{dept.stats.submitted_count}</td>
-                  <td className="px-4 py-3">{dept.stats.draft_count}</td>
-                  <td className="px-4 py-3">{dept.stats.completion_rate.toFixed(1)}%</td>
+              {rows.map((row) => (
+                <tr key={row.user_id} className="border-b last:border-b-0">
+                  <td className="px-4 py-3 font-medium">{row.name}</td>
+                  <td className="px-4 py-3 capitalize">{row.role}</td>
                   <td className="px-4 py-3">
-                    {dept.stats.department_score === null ? '-' : `${dept.stats.department_score.toFixed(1)}%`}
+                    <span
+                      className={
+                        row.is_active
+                          ? 'rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700'
+                          : 'rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs text-slate-700'
+                      }
+                    >
+                      {row.is_active ? 'Active' : 'Inactive'}
+                    </span>
                   </td>
-                  <td className="px-4 py-3 text-muted-foreground">{formatDate(dept.stats.last_entry_date)}</td>
+                  <td className="px-4 py-3">{row.submitted_count}</td>
+                  <td className="px-4 py-3">{row.draft_count}</td>
+                  <td className="px-4 py-3">{formatPercent(row.completion_rate, 1)}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{formatDate(row.last_entry_date)}</td>
                   <td className="px-4 py-3 text-right">
                     <Link
-                      href={`${ROUTES.ACCOUNTABILITY}/${dept.department_id}`}
+                      href={`${ROUTES.ACCOUNTABILITY}/${selectedDepartmentId}/agent/${row.user_id}`}
                       className="rounded-md border border-input px-2 py-1 text-xs hover:bg-muted/40"
                     >
-                      View
+                      Open
                     </Link>
                   </td>
                 </tr>

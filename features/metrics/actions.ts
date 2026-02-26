@@ -9,7 +9,7 @@ import { requireRole } from '@/lib/rbac/guards'
 import { ROUTES } from '@/lib/constants/routes'
 import { type Role } from '@/lib/rbac/roles'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
-import { validateFormulaExpression } from '@/lib/metrics/formula'
+import { validateFormulaExpression, type FormulaValueType } from '@/lib/metrics/formula'
 import {
   isCalculatedSupportedType,
   normalizeMetricSettings,
@@ -18,9 +18,22 @@ import {
   type MetricSettings,
 } from '@/lib/metrics/data-types'
 
-type MetricActionState = {
+type MetricFieldKey =
+  | 'metricId'
+  | 'departmentId'
+  | 'name'
+  | 'code'
+  | 'description'
+  | 'dataType'
+  | 'unit'
+  | 'inputMode'
+  | 'expression'
+  | 'selectionOptions'
+
+export type MetricActionState = {
   status: 'idle' | 'success' | 'error'
   message: string
+  fieldErrors: Partial<Record<MetricFieldKey, string>>
 }
 
 function field(formData: FormData, key: string) {
@@ -52,7 +65,7 @@ function buildMetricSettings(dataType: MetricDataType, formData: FormData) {
 
   if (dataType === 'boolean') {
     return normalizeMetricSettings(dataType, {
-      booleanPreset: field(formData, 'booleanPreset') || 'yes_no',
+      booleanPreset: 'yes_no',
     })
   }
 
@@ -127,8 +140,142 @@ function resolveTypedUnit(dataType: MetricDataType, rawUnit: string, settings: M
   return rawUnit.trim()
 }
 
+function formulaValueTypeForMetricDataType(dataType: MetricDataType): FormulaValueType | null {
+  if (dataType === 'boolean') {
+    return 'boolean'
+  }
+
+  if (dataType === 'number' || dataType === 'currency' || dataType === 'percent' || dataType === 'duration') {
+    return 'number'
+  }
+
+  return null
+}
+
 function zodMessage(error: z.ZodError) {
   return error.issues[0]?.message ?? 'Invalid data'
+}
+
+function zodFieldErrors(error: z.ZodError): Partial<Record<MetricFieldKey, string>> {
+  const errors: Partial<Record<MetricFieldKey, string>> = {}
+
+  for (const issue of error.issues) {
+    const key = issue.path[0]
+    if (
+      key === 'metricId' ||
+      key === 'departmentId' ||
+      key === 'name' ||
+      key === 'code' ||
+      key === 'description' ||
+      key === 'dataType' ||
+      key === 'unit' ||
+      key === 'inputMode' ||
+      key === 'expression' ||
+      key === 'selectionOptions'
+    ) {
+      if (!errors[key]) {
+        errors[key] = issue.message
+      }
+    }
+  }
+
+  return errors
+}
+
+function actionSuccess(message: string): MetricActionState {
+  return {
+    status: 'success',
+    message,
+    fieldErrors: {},
+  }
+}
+
+function actionError(
+  message: string,
+  fieldErrors: Partial<Record<MetricFieldKey, string>> = {},
+): MetricActionState {
+  return {
+    status: 'error',
+    message,
+    fieldErrors,
+  }
+}
+
+function mapMetricDatabaseError(message: string): MetricActionState {
+  const lowered = message.toLowerCase()
+
+  if (lowered.includes('duplicate key value') || lowered.includes('idx_metrics_company_dept_code_active')) {
+    return actionError('A metric with this code already exists in this department.', {
+      code: 'Metric code already exists for this department.',
+    })
+  }
+
+  return actionError(formatDatabaseError(message))
+}
+
+function requiresLegacyMetricColumns(message: string) {
+  const lowered = message.toLowerCase()
+  return (
+    lowered.includes('null value in column "direction"') ||
+    lowered.includes('null value in column "precision_scale"')
+  )
+}
+
+function isMissingTypedFormulaColumns(message: string) {
+  const lowered = message.toLowerCase()
+  return (
+    lowered.includes('column metric_formulas.ast_json does not exist') ||
+    lowered.includes('column metric_formulas.return_type does not exist') ||
+    lowered.includes('column metric_formulas.engine_version does not exist')
+  )
+}
+
+function legacyPrecisionScaleForDataType(dataType: MetricDataType) {
+  if (dataType === 'currency') {
+    return 2
+  }
+
+  if (dataType === 'number' || dataType === 'percent' || dataType === 'duration') {
+    return 1
+  }
+
+  return 0
+}
+
+async function insertMetricCompat(
+  admin: ReturnType<typeof createAdminClient>,
+  payload: {
+    company_id: string
+    department_id: string
+    name: string
+    code: string
+    description: string | null
+    data_type: MetricDataType
+    unit: string
+    settings: MetricSettings
+    input_mode: 'manual' | 'calculated'
+    is_active: boolean
+  },
+) {
+  const firstAttempt = await admin
+    .from('metrics')
+    .insert(payload)
+    .select('metric_id')
+    .maybeSingle()
+
+  if (!firstAttempt.error || !requiresLegacyMetricColumns(firstAttempt.error.message)) {
+    return firstAttempt
+  }
+
+  return admin
+    .from('metrics')
+    .insert({
+      ...payload,
+      direction: 'higher_is_better',
+      precision_scale: legacyPrecisionScaleForDataType(payload.data_type),
+    })
+    .select('metric_id')
+    .maybeSingle()
 }
 
 function toMetricCode(name: string) {
@@ -217,7 +364,7 @@ async function getFormulaCodeIndexes(
 ) {
   const { data: allMetrics, error: allMetricsError } = await admin
     .from('metrics')
-    .select('metric_id, code, is_active')
+    .select('metric_id, code, is_active, data_type')
     .eq('company_id', companyId)
     .eq('department_id', departmentId)
     .is('deleted_at', null)
@@ -227,12 +374,14 @@ async function getFormulaCodeIndexes(
       ok: false as const,
       message: formatDatabaseError(allMetricsError.message),
       activeCodeToMetricId: new Map<string, string>(),
+      activeCodeToFormulaType: new Map<string, FormulaValueType | null>(),
       duplicateActiveCodes: new Set<string>(),
       allCodes: new Set<string>(),
     }
   }
 
   const activeCodeToMetricId = new Map<string, string>()
+  const activeCodeToFormulaType = new Map<string, FormulaValueType | null>()
   const duplicateActiveCodes = new Set<string>()
   const allCodes = new Set<string>()
 
@@ -253,11 +402,16 @@ async function getFormulaCodeIndexes(
     }
 
     activeCodeToMetricId.set(code, metric.metric_id as string)
+    activeCodeToFormulaType.set(
+      code,
+      formulaValueTypeForMetricDataType(metric.data_type as MetricDataType),
+    )
   }
 
   return {
     ok: true as const,
     activeCodeToMetricId,
+    activeCodeToFormulaType,
     duplicateActiveCodes,
     allCodes,
   }
@@ -268,6 +422,7 @@ async function resolveFormulaDependencies(
   companyId: string,
   departmentId: string,
   expression: string,
+  expectedReturnType: FormulaValueType,
   currentMetricId?: string,
 ) {
   const indexesResult = await getFormulaCodeIndexes(admin, companyId, departmentId)
@@ -277,16 +432,29 @@ async function resolveFormulaDependencies(
       message: indexesResult.message,
       metricIds: [] as string[],
       normalizedExpression: '',
+      astJson: {} as Record<string, unknown>,
+      returnType: expectedReturnType,
     }
   }
 
-  const parsed = validateFormulaExpression(expression)
+  const dependencyMetricTypes = new Map<string, FormulaValueType>()
+  for (const [code, type] of indexesResult.activeCodeToFormulaType.entries()) {
+    if (type) {
+      dependencyMetricTypes.set(code, type)
+    }
+  }
+
+  const parsed = validateFormulaExpression(expression, {
+    metricReturnTypes: dependencyMetricTypes,
+  })
   if (!parsed.success) {
     return {
       ok: false as const,
       message: parsed.error,
       metricIds: [] as string[],
       normalizedExpression: '',
+      astJson: {} as Record<string, unknown>,
+      returnType: expectedReturnType,
     }
   }
 
@@ -298,6 +466,8 @@ async function resolveFormulaDependencies(
         message: `Metric code "${code}" is duplicated across active departments. Use a unique code.`,
         metricIds: [] as string[],
         normalizedExpression: '',
+        astJson: {} as Record<string, unknown>,
+        returnType: expectedReturnType,
       }
     }
 
@@ -309,6 +479,8 @@ async function resolveFormulaDependencies(
           message: `Metric code "${code}" is inactive and cannot be used in formulas.`,
           metricIds: [] as string[],
           normalizedExpression: '',
+          astJson: {} as Record<string, unknown>,
+          returnType: expectedReturnType,
         }
       }
 
@@ -317,6 +489,20 @@ async function resolveFormulaDependencies(
         message: `Unknown metric code "${code}" in formula.`,
         metricIds: [] as string[],
         normalizedExpression: '',
+        astJson: {} as Record<string, unknown>,
+        returnType: expectedReturnType,
+      }
+    }
+
+    const dependencyType = indexesResult.activeCodeToFormulaType.get(code) ?? null
+    if (!dependencyType) {
+      return {
+        ok: false as const,
+        message: `Metric code "${code}" uses an unsupported data type for formulas.`,
+        metricIds: [] as string[],
+        normalizedExpression: '',
+        astJson: {} as Record<string, unknown>,
+        returnType: expectedReturnType,
       }
     }
 
@@ -326,16 +512,31 @@ async function resolveFormulaDependencies(
         message: 'A metric cannot reference itself in its own formula.',
         metricIds: [] as string[],
         normalizedExpression: '',
+        astJson: {} as Record<string, unknown>,
+        returnType: expectedReturnType,
       }
     }
 
     metricIds.push(dependencyId)
   }
 
+  if (parsed.returnType !== expectedReturnType) {
+    return {
+      ok: false as const,
+      message: `Formula must return ${expectedReturnType} for this metric type.`,
+      metricIds: [] as string[],
+      normalizedExpression: '',
+      astJson: {} as Record<string, unknown>,
+      returnType: expectedReturnType,
+    }
+  }
+
   return {
     ok: true as const,
     metricIds,
     normalizedExpression: parsed.normalizedExpression,
+    astJson: parsed.ast,
+    returnType: parsed.returnType,
   }
 }
 
@@ -384,29 +585,70 @@ async function upsertCurrentFormula(
   admin: ReturnType<typeof createAdminClient>,
   metricId: string,
   expression: string,
+  astJson: Record<string, unknown>,
+  returnType: FormulaValueType,
 ) {
   const trimmedExpression = expression.trim()
+  type CurrentFormulaRow = {
+    formula_id: string
+    expression: string
+    version: number
+    ast_json?: unknown
+    return_type?: string | null
+    engine_version?: string | null
+  }
 
-  const { data: currentFormula, error: currentFormulaError } = await admin
+  const typedCurrentFormula = await admin
     .from('metric_formulas')
-    .select('formula_id, expression, version')
+    .select('formula_id, expression, version, ast_json, return_type, engine_version')
     .eq('metric_id', metricId)
     .eq('is_current', true)
     .maybeSingle()
 
-  if (currentFormulaError) {
-    return { ok: false as const, message: formatDatabaseError(currentFormulaError.message) }
+  let supportsTypedFormulaColumns = true
+  let currentFormula: CurrentFormulaRow | null = null
+
+  if (!typedCurrentFormula.error) {
+    currentFormula = (typedCurrentFormula.data ?? null) as CurrentFormulaRow | null
+  } else if (isMissingTypedFormulaColumns(typedCurrentFormula.error.message)) {
+    supportsTypedFormulaColumns = false
+    const legacyCurrentFormula = await admin
+      .from('metric_formulas')
+      .select('formula_id, expression, version')
+      .eq('metric_id', metricId)
+      .eq('is_current', true)
+      .maybeSingle()
+
+    if (legacyCurrentFormula.error) {
+      return { ok: false as const, message: formatDatabaseError(legacyCurrentFormula.error.message) }
+    }
+
+    currentFormula = (legacyCurrentFormula.data ?? null) as CurrentFormulaRow | null
+  } else {
+    return { ok: false as const, message: formatDatabaseError(typedCurrentFormula.error.message) }
   }
 
   if (!currentFormula) {
-    const { error: insertError } = await admin
-      .from('metric_formulas')
-      .insert({
+    const createFormulaPayload = supportsTypedFormulaColumns
+      ? {
+        metric_id: metricId,
+        expression: trimmedExpression,
+        ast_json: astJson,
+        return_type: returnType,
+        engine_version: 'notion_v1',
+        version: 1,
+        is_current: true,
+      }
+      : {
         metric_id: metricId,
         expression: trimmedExpression,
         version: 1,
         is_current: true,
-      })
+      }
+
+    const { error: insertError } = await admin
+      .from('metric_formulas')
+      .insert(createFormulaPayload)
 
     if (insertError) {
       return { ok: false as const, message: formatDatabaseError(insertError.message) }
@@ -415,18 +657,40 @@ async function upsertCurrentFormula(
     return { ok: true as const }
   }
 
-  if (currentFormula.expression.trim() === trimmedExpression) {
+  const hasSameExpression = currentFormula.expression.trim() === trimmedExpression
+  const hasSameTypedMetadata = supportsTypedFormulaColumns
+    ? (
+      String(currentFormula.return_type ?? 'number') === returnType &&
+      JSON.stringify(currentFormula.ast_json ?? {}) === JSON.stringify(astJson) &&
+      String(currentFormula.engine_version ?? 'notion_v1') === 'notion_v1'
+    )
+    : true
+
+  if (hasSameExpression && hasSameTypedMetadata) {
     return { ok: true as const }
   }
 
-  const { data: nextFormula, error: insertNextError } = await admin
-    .from('metric_formulas')
-    .insert({
+  const nextFormulaVersion = Number(currentFormula.version ?? 0) + 1
+  const nextFormulaPayload = supportsTypedFormulaColumns
+    ? {
       metric_id: metricId,
       expression: trimmedExpression,
-      version: currentFormula.version + 1,
+      ast_json: astJson,
+      return_type: returnType,
+      engine_version: 'notion_v1',
+      version: nextFormulaVersion,
       is_current: false,
-    })
+    }
+    : {
+      metric_id: metricId,
+      expression: trimmedExpression,
+      version: nextFormulaVersion,
+      is_current: false,
+    }
+
+  const { data: nextFormula, error: insertNextError } = await admin
+    .from('metric_formulas')
+    .insert(nextFormulaPayload)
     .select('formula_id')
     .maybeSingle()
 
@@ -474,44 +738,52 @@ export async function createMetricAction(
     description: field(formData, 'description'),
     dataType: field(formData, 'dataType'),
     unit: resolvedUnit(formData),
-    direction: field(formData, 'direction'),
     inputMode: field(formData, 'inputMode'),
-    precisionScale: field(formData, 'precisionScale'),
     expression: field(formData, 'expression'),
     dependsOnMetricIds: [],
   })
 
   if (!parsed.success) {
-    return { status: 'error', message: zodMessage(parsed.error) }
+    return actionError(zodMessage(parsed.error), zodFieldErrors(parsed.error))
   }
 
   const context = await getActorContext()
   if (!context.ok) {
-    return { status: 'error', message: context.message }
+    return actionError(context.message)
   }
 
   try {
     requireRole(context.role, 'manager')
   } catch {
-    return { status: 'error', message: 'Insufficient permissions.' }
+    return actionError('Insufficient permissions.')
   }
 
   const departmentValidation = await validateDepartment(context.admin, context.companyId, parsed.data.departmentId)
   if (!departmentValidation.ok) {
-    return { status: 'error', message: departmentValidation.message }
+    return actionError(departmentValidation.message, {
+      departmentId: 'Select a valid active department.',
+    })
   }
 
   const metricSettings = buildMetricSettings(parsed.data.dataType, formData)
   if (parsed.data.dataType === 'selection' && (!metricSettings.selectionOptions || metricSettings.selectionOptions.length === 0)) {
-    return { status: 'error', message: 'Selection metrics must have at least one option.' }
+    return actionError('Selection metrics must have at least one option.', {
+      selectionOptions: 'Selection options are required.',
+    })
   }
   const unit = resolveTypedUnit(parsed.data.dataType, parsed.data.unit, metricSettings)
 
   let formulaDependencies: string[] = []
   let normalizedExpression = ''
+  let formulaAstJson: Record<string, unknown> = {}
+  let formulaReturnType: FormulaValueType | null = null
   if (parsed.data.inputMode === 'calculated') {
-    if (!isCalculatedSupportedType(parsed.data.dataType)) {
-      return { status: 'error', message: 'Calculated metrics are only supported for numeric/currency/percent/duration types.' }
+    const expectedReturnType = formulaValueTypeForMetricDataType(parsed.data.dataType)
+    if (!expectedReturnType || !isCalculatedSupportedType(parsed.data.dataType)) {
+      return actionError(
+        'Calculated metrics are only supported for numeric/currency/percent/duration/boolean types.',
+        { dataType: 'Choose a supported data type for calculated mode.' },
+      )
     }
 
     const formulaDependenciesResult = await resolveFormulaDependencies(
@@ -519,42 +791,42 @@ export async function createMetricAction(
       context.companyId,
       parsed.data.departmentId,
       parsed.data.expression ?? '',
+      expectedReturnType,
     )
 
     if (!formulaDependenciesResult.ok) {
-      return { status: 'error', message: formulaDependenciesResult.message }
+      return actionError(formulaDependenciesResult.message, {
+        expression: formulaDependenciesResult.message,
+      })
     }
 
     formulaDependencies = formulaDependenciesResult.metricIds
     normalizedExpression = formulaDependenciesResult.normalizedExpression
+    formulaAstJson = formulaDependenciesResult.astJson
+    formulaReturnType = formulaDependenciesResult.returnType
   }
 
   const code = (parsed.data.code?.trim() || toMetricCode(parsed.data.name)).toLowerCase()
 
-  const { data: metric, error: createMetricError } = await context.admin
-    .from('metrics')
-    .insert({
-      company_id: context.companyId,
-      department_id: parsed.data.departmentId,
-      name: parsed.data.name.trim(),
-      code,
-      description: parsed.data.description?.trim() || null,
-      data_type: parsed.data.dataType,
-      unit,
-      settings: metricSettings,
-      direction: parsed.data.direction,
-      input_mode: parsed.data.inputMode,
-      precision_scale: parsed.data.precisionScale,
-      is_active: true,
-    })
-    .select('metric_id')
-    .maybeSingle()
+  const { data: metric, error: createMetricError } = await insertMetricCompat(context.admin, {
+    company_id: context.companyId,
+    department_id: parsed.data.departmentId,
+    name: parsed.data.name.trim(),
+    code,
+    description: parsed.data.description?.trim() || null,
+    data_type: parsed.data.dataType,
+    unit,
+    settings: metricSettings,
+    input_mode: parsed.data.inputMode,
+    is_active: true,
+  })
 
   if (createMetricError || !metric?.metric_id) {
-    return {
-      status: 'error',
-      message: formatDatabaseError(createMetricError?.message ?? 'Failed to create metric.'),
+    if (createMetricError) {
+      return mapMetricDatabaseError(createMetricError.message)
     }
+
+    return actionError('Failed to create metric.')
   }
 
   if (parsed.data.inputMode === 'calculated') {
@@ -562,10 +834,14 @@ export async function createMetricAction(
       context.admin,
       metric.metric_id,
       normalizedExpression,
+      formulaAstJson,
+      formulaReturnType ?? 'number',
     )
 
     if (!formulaResult.ok) {
-      return { status: 'error', message: formulaResult.message }
+      return actionError(formulaResult.message, {
+        expression: formulaResult.message,
+      })
     }
 
     const dependencyResult = await replaceDependencies(
@@ -575,18 +851,18 @@ export async function createMetricAction(
     )
 
     if (!dependencyResult.ok) {
-      return { status: 'error', message: dependencyResult.message }
+      return actionError(dependencyResult.message, {
+        expression: dependencyResult.message,
+      })
     }
   }
 
   revalidatePath(ROUTES.SETTINGS_METRICS)
-  return {
-    status: 'success',
-    message:
-      parsed.data.inputMode === 'manual'
-        ? 'Manual metric created.'
-        : 'Calculated metric and formula created.',
-  }
+  return actionSuccess(
+    parsed.data.inputMode === 'manual'
+      ? 'Manual metric created.'
+      : 'Calculated metric and formula created.',
+  )
 }
 
 export async function updateMetricAction(
@@ -601,30 +877,30 @@ export async function updateMetricAction(
     description: field(formData, 'description'),
     dataType: field(formData, 'dataType'),
     unit: resolvedUnit(formData),
-    direction: field(formData, 'direction'),
     inputMode: field(formData, 'inputMode'),
-    precisionScale: field(formData, 'precisionScale'),
     expression: field(formData, 'expression'),
     dependsOnMetricIds: [],
   })
 
   if (!parsed.success) {
-    return { status: 'error', message: zodMessage(parsed.error) }
+    return actionError(zodMessage(parsed.error), zodFieldErrors(parsed.error))
   }
 
   if (!parsed.data.metricId) {
-    return { status: 'error', message: 'Metric id is required.' }
+    return actionError('Metric id is required.', {
+      metricId: 'Metric id is required.',
+    })
   }
 
   const context = await getActorContext()
   if (!context.ok) {
-    return { status: 'error', message: context.message }
+    return actionError(context.message)
   }
 
   try {
     requireRole(context.role, 'manager')
   } catch {
-    return { status: 'error', message: 'Insufficient permissions.' }
+    return actionError('Insufficient permissions.')
   }
 
   const { data: existingMetric, error: existingMetricError } = await context.admin
@@ -636,29 +912,41 @@ export async function updateMetricAction(
     .maybeSingle()
 
   if (existingMetricError) {
-    return { status: 'error', message: formatDatabaseError(existingMetricError.message) }
+    return actionError(formatDatabaseError(existingMetricError.message))
   }
 
   if (!existingMetric) {
-    return { status: 'error', message: 'Metric not found.' }
+    return actionError('Metric not found.', {
+      metricId: 'Metric no longer exists.',
+    })
   }
 
   const departmentValidation = await validateDepartment(context.admin, context.companyId, parsed.data.departmentId)
   if (!departmentValidation.ok) {
-    return { status: 'error', message: departmentValidation.message }
+    return actionError(departmentValidation.message, {
+      departmentId: 'Select a valid active department.',
+    })
   }
 
   const metricSettings = buildMetricSettings(parsed.data.dataType, formData)
   if (parsed.data.dataType === 'selection' && (!metricSettings.selectionOptions || metricSettings.selectionOptions.length === 0)) {
-    return { status: 'error', message: 'Selection metrics must have at least one option.' }
+    return actionError('Selection metrics must have at least one option.', {
+      selectionOptions: 'Selection options are required.',
+    })
   }
   const unit = resolveTypedUnit(parsed.data.dataType, parsed.data.unit, metricSettings)
 
   let formulaDependencies: string[] = []
   let normalizedExpression = ''
+  let formulaAstJson: Record<string, unknown> = {}
+  let formulaReturnType: FormulaValueType | null = null
   if (parsed.data.inputMode === 'calculated') {
-    if (!isCalculatedSupportedType(parsed.data.dataType)) {
-      return { status: 'error', message: 'Calculated metrics are only supported for numeric/currency/percent/duration types.' }
+    const expectedReturnType = formulaValueTypeForMetricDataType(parsed.data.dataType)
+    if (!expectedReturnType || !isCalculatedSupportedType(parsed.data.dataType)) {
+      return actionError(
+        'Calculated metrics are only supported for numeric/currency/percent/duration/boolean types.',
+        { dataType: 'Choose a supported data type for calculated mode.' },
+      )
     }
 
     const formulaDependenciesResult = await resolveFormulaDependencies(
@@ -666,15 +954,20 @@ export async function updateMetricAction(
       context.companyId,
       parsed.data.departmentId,
       parsed.data.expression ?? '',
+      expectedReturnType,
       parsed.data.metricId,
     )
 
     if (!formulaDependenciesResult.ok) {
-      return { status: 'error', message: formulaDependenciesResult.message }
+      return actionError(formulaDependenciesResult.message, {
+        expression: formulaDependenciesResult.message,
+      })
     }
 
     formulaDependencies = formulaDependenciesResult.metricIds
     normalizedExpression = formulaDependenciesResult.normalizedExpression
+    formulaAstJson = formulaDependenciesResult.astJson
+    formulaReturnType = formulaDependenciesResult.returnType
   }
 
   const code = (parsed.data.code?.trim() || toMetricCode(parsed.data.name)).toLowerCase()
@@ -689,16 +982,14 @@ export async function updateMetricAction(
       data_type: parsed.data.dataType,
       unit,
       settings: metricSettings,
-      direction: parsed.data.direction,
       input_mode: parsed.data.inputMode,
-      precision_scale: parsed.data.precisionScale,
       updated_at: new Date().toISOString(),
     })
     .eq('metric_id', parsed.data.metricId)
     .eq('company_id', context.companyId)
 
   if (updateMetricError) {
-    return { status: 'error', message: formatDatabaseError(updateMetricError.message) }
+    return mapMetricDatabaseError(updateMetricError.message)
   }
 
   if (parsed.data.inputMode === 'calculated') {
@@ -706,10 +997,14 @@ export async function updateMetricAction(
       context.admin,
       parsed.data.metricId,
       normalizedExpression,
+      formulaAstJson,
+      formulaReturnType ?? 'number',
     )
 
     if (!formulaResult.ok) {
-      return { status: 'error', message: formulaResult.message }
+      return actionError(formulaResult.message, {
+        expression: formulaResult.message,
+      })
     }
 
     const dependencyResult = await replaceDependencies(
@@ -719,7 +1014,9 @@ export async function updateMetricAction(
     )
 
     if (!dependencyResult.ok) {
-      return { status: 'error', message: dependencyResult.message }
+      return actionError(dependencyResult.message, {
+        expression: dependencyResult.message,
+      })
     }
   } else {
     const { error: closeFormulaError } = await context.admin
@@ -732,7 +1029,7 @@ export async function updateMetricAction(
       .eq('is_current', true)
 
     if (closeFormulaError) {
-      return { status: 'error', message: formatDatabaseError(closeFormulaError.message) }
+      return actionError(formatDatabaseError(closeFormulaError.message))
     }
 
     const dependencyResult = await replaceDependencies(
@@ -742,33 +1039,33 @@ export async function updateMetricAction(
     )
 
     if (!dependencyResult.ok) {
-      return { status: 'error', message: dependencyResult.message }
+      return actionError(dependencyResult.message)
     }
   }
 
   revalidatePath(ROUTES.SETTINGS_METRICS)
-  return { status: 'success', message: 'Metric updated.' }
+  return actionSuccess('Metric updated.')
 }
 
-export async function toggleMetricStatusAction(formData: FormData) {
+export async function toggleMetricStatusAction(formData: FormData): Promise<MetricActionState> {
   const parsed = metricStatusSchema.safeParse({
     metricId: field(formData, 'metricId'),
     nextStatus: field(formData, 'nextStatus'),
   })
 
   if (!parsed.success) {
-    return
+    return actionError(zodMessage(parsed.error), zodFieldErrors(parsed.error))
   }
 
   const context = await getActorContext()
   if (!context.ok) {
-    return
+    return actionError(context.message)
   }
 
   try {
     requireRole(context.role, 'manager')
   } catch {
-    return
+    return actionError('Insufficient permissions.')
   }
 
   const { data: metric, error: metricError } = await context.admin
@@ -780,15 +1077,17 @@ export async function toggleMetricStatusAction(formData: FormData) {
     .maybeSingle()
 
   if (metricError || !metric) {
-    return
+    return actionError(formatDatabaseError(metricError?.message ?? 'Metric not found.'), {
+      metricId: 'Metric not found.',
+    })
   }
 
   const nextActive = parsed.data.nextStatus === 'active'
   if (metric.is_active === nextActive) {
-    return
+    return actionSuccess(nextActive ? 'Metric is already active.' : 'Metric is already inactive.')
   }
 
-  await context.admin
+  const { error: updateError } = await context.admin
     .from('metrics')
     .update({
       is_active: nextActive,
@@ -797,40 +1096,48 @@ export async function toggleMetricStatusAction(formData: FormData) {
     })
     .eq('metric_id', metric.metric_id)
     .eq('company_id', context.companyId)
+    .is('deleted_at', null)
+
+  if (updateError) {
+    return actionError(formatDatabaseError(updateError.message))
+  }
 
   revalidatePath(ROUTES.SETTINGS_METRICS)
+  return actionSuccess(nextActive ? 'Metric activated.' : 'Metric deactivated.')
 }
 
-export async function deleteMetricAction(formData: FormData) {
+export async function deleteMetricAction(formData: FormData): Promise<MetricActionState> {
   const parsed = metricDeleteSchema.safeParse({
     metricId: field(formData, 'metricId'),
   })
 
   if (!parsed.success) {
-    return
+    return actionError(zodMessage(parsed.error), zodFieldErrors(parsed.error))
   }
 
   const context = await getActorContext()
   if (!context.ok) {
-    return
+    return actionError(context.message)
   }
 
   try {
     requireRole(context.role, 'manager')
   } catch {
-    return
+    return actionError('Insufficient permissions.')
   }
 
   const { data: metric, error: metricError } = await context.admin
     .from('metrics')
-    .select('metric_id')
+    .select('metric_id, name')
     .eq('metric_id', parsed.data.metricId)
     .eq('company_id', context.companyId)
     .is('deleted_at', null)
     .maybeSingle()
 
   if (metricError || !metric) {
-    return
+    return actionError(formatDatabaseError(metricError?.message ?? 'Metric not found.'), {
+      metricId: 'Metric not found.',
+    })
   }
 
   const { data: dependentLinks, error: dependentLinksError } = await context.admin
@@ -839,7 +1146,7 @@ export async function deleteMetricAction(formData: FormData) {
     .eq('depends_on_metric_id', parsed.data.metricId)
 
   if (dependentLinksError) {
-    return
+    return actionError(formatDatabaseError(dependentLinksError.message))
   }
 
   const dependentMetricIds = Array.from(
@@ -857,17 +1164,19 @@ export async function deleteMetricAction(formData: FormData) {
       .neq('metric_id', parsed.data.metricId)
 
     if (activeDependentsError) {
-      return
+      return actionError(formatDatabaseError(activeDependentsError.message))
     }
 
     if ((activeDependents ?? []).length > 0) {
-      return
+      return actionError('Cannot delete this metric while active calculated metrics depend on it.', {
+        metricId: 'Remove or disable dependent calculated metrics first.',
+      })
     }
   }
 
   const now = new Date().toISOString()
 
-  await context.admin
+  const { error: disableTargetsError } = await context.admin
     .from('targets')
     .update({
       is_active: false,
@@ -877,7 +1186,11 @@ export async function deleteMetricAction(formData: FormData) {
     .eq('metric_id', parsed.data.metricId)
     .is('deleted_at', null)
 
-  await context.admin
+  if (disableTargetsError) {
+    return actionError(formatDatabaseError(disableTargetsError.message))
+  }
+
+  const { error: softDeleteMetricError } = await context.admin
     .from('metrics')
     .update({
       is_active: false,
@@ -888,5 +1201,10 @@ export async function deleteMetricAction(formData: FormData) {
     .eq('company_id', context.companyId)
     .is('deleted_at', null)
 
+  if (softDeleteMetricError) {
+    return actionError(formatDatabaseError(softDeleteMetricError.message))
+  }
+
   revalidatePath(ROUTES.SETTINGS_METRICS)
+  return actionSuccess(`Metric "${metric.name}" deleted.`)
 }

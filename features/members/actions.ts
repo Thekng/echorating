@@ -17,9 +17,12 @@ import { sendEmail } from '@/emails/resend'
 import { InviteMemberTemplate } from '@/emails/templates/invite-member'
 import { type Role } from '@/lib/rbac/roles'
 
-type MemberActionState = {
+type MemberFieldKey = 'name' | 'email' | 'role' | 'departmentId' | 'userId' | 'nextStatus'
+
+export type MemberActionState = {
   status: 'idle' | 'success' | 'error'
   message: string
+  fieldErrors: Partial<Record<MemberFieldKey, string>>
 }
 
 function field(formData: FormData, key: string) {
@@ -29,6 +32,47 @@ function field(formData: FormData, key: string) {
 
 function zodMessage(error: z.ZodError) {
   return error.issues[0]?.message ?? 'Invalid data'
+}
+
+function zodFieldErrors(error: z.ZodError): Partial<Record<MemberFieldKey, string>> {
+  const errors: Partial<Record<MemberFieldKey, string>> = {}
+
+  for (const issue of error.issues) {
+    const key = issue.path[0]
+    if (
+      key === 'name' ||
+      key === 'email' ||
+      key === 'role' ||
+      key === 'departmentId' ||
+      key === 'userId' ||
+      key === 'nextStatus'
+    ) {
+      if (!errors[key]) {
+        errors[key] = issue.message
+      }
+    }
+  }
+
+  return errors
+}
+
+function actionSuccess(message: string): MemberActionState {
+  return {
+    status: 'success',
+    message,
+    fieldErrors: {},
+  }
+}
+
+function actionError(
+  message: string,
+  fieldErrors: Partial<Record<MemberFieldKey, string>> = {},
+): MemberActionState {
+  return {
+    status: 'error',
+    message,
+    fieldErrors,
+  }
 }
 
 function appBaseUrl() {
@@ -189,22 +233,24 @@ export async function createMemberAction(
   })
 
   if (!parsed.success) {
-    return { status: 'error', message: zodMessage(parsed.error) }
+    return actionError(zodMessage(parsed.error), zodFieldErrors(parsed.error))
   }
 
   const context = await getActorContext()
   if (!context.ok) {
-    return { status: 'error', message: context.message }
+    return actionError(context.message)
   }
 
   try {
     requireRole(context.role, 'manager')
   } catch {
-    return { status: 'error', message: 'Insufficient permissions.' }
+    return actionError('Insufficient permissions.')
   }
 
   if (context.role !== 'owner' && parsed.data.role === 'owner') {
-    return { status: 'error', message: 'Only owners can invite another owner.' }
+    return actionError('Only owners can invite another owner.', {
+      role: 'Only owners can invite another owner.',
+    })
   }
 
   const inviteRedirectTo = `${appBaseUrl()}${ROUTES.LOGIN}`
@@ -212,7 +258,7 @@ export async function createMemberAction(
 
   const existingAuthUserResult = await findAuthUserByEmail(context.admin, normalizedEmail)
   if (existingAuthUserResult.error) {
-    return { status: 'error', message: existingAuthUserResult.error }
+    return actionError(existingAuthUserResult.error)
   }
 
   let invitedNow = false
@@ -232,14 +278,11 @@ export async function createMemberAction(
     if (inviteError || !inviteData.user?.id) {
       const fallbackAuthUserResult = await findAuthUserByEmail(context.admin, normalizedEmail)
       if (fallbackAuthUserResult.error) {
-        return { status: 'error', message: fallbackAuthUserResult.error }
+        return actionError(fallbackAuthUserResult.error)
       }
 
       if (!fallbackAuthUserResult.user?.id) {
-        return {
-          status: 'error',
-          message: formatDatabaseError(inviteError?.message ?? 'Unable to create invited user.'),
-        }
+        return actionError(formatDatabaseError(inviteError?.message ?? 'Unable to create invited user.'))
       }
 
       targetUserId = fallbackAuthUserResult.user.id
@@ -250,7 +293,7 @@ export async function createMemberAction(
   }
 
   if (!targetUserId) {
-    return { status: 'error', message: 'Unable to resolve invited user.' }
+    return actionError('Unable to resolve invited user.')
   }
 
   const { data: existingProfile, error: existingProfileError } = await context.admin
@@ -260,11 +303,13 @@ export async function createMemberAction(
     .maybeSingle()
 
   if (existingProfileError) {
-    return { status: 'error', message: formatDatabaseError(existingProfileError.message) }
+    return actionError(formatDatabaseError(existingProfileError.message))
   }
 
   if (existingProfile?.company_id && existingProfile.company_id !== context.companyId) {
-    return { status: 'error', message: 'This user already belongs to another company.' }
+    return actionError('This user already belongs to another company.', {
+      email: 'This email is already tied to another company.',
+    })
   }
 
   const { error: upsertProfileError } = await context.admin.from('profiles').upsert(
@@ -281,12 +326,12 @@ export async function createMemberAction(
   )
 
   if (upsertProfileError) {
-    return { status: 'error', message: formatDatabaseError(upsertProfileError.message) }
+    return actionError(formatDatabaseError(upsertProfileError.message))
   }
 
   const clearDepartmentsResult = await clearMemberDepartments(context.admin, context.companyId, targetUserId)
   if (!clearDepartmentsResult.ok) {
-    return { status: 'error', message: clearDepartmentsResult.message }
+    return actionError(clearDepartmentsResult.message)
   }
 
   if (parsed.data.departmentId) {
@@ -300,11 +345,13 @@ export async function createMemberAction(
       .maybeSingle()
 
     if (departmentError) {
-      return { status: 'error', message: formatDatabaseError(departmentError.message) }
+      return actionError(formatDatabaseError(departmentError.message))
     }
 
     if (!department) {
-      return { status: 'error', message: 'Department not found.' }
+      return actionError('Department not found.', {
+        departmentId: 'Select a valid active department.',
+      })
     }
 
     const { error: assignmentError } = await context.admin.from('department_members').upsert(
@@ -321,7 +368,7 @@ export async function createMemberAction(
     )
 
     if (assignmentError) {
-      return { status: 'error', message: formatDatabaseError(assignmentError.message) }
+      return actionError(formatDatabaseError(assignmentError.message))
     }
   }
 
@@ -351,7 +398,7 @@ export async function createMemberAction(
   }
 
   revalidatePath(ROUTES.SETTINGS_MEMBERS)
-  return { status: 'success', message: emailMessage }
+  return actionSuccess(emailMessage)
 }
 
 export async function updateMemberRoleAction(
@@ -364,18 +411,18 @@ export async function updateMemberRoleAction(
   })
 
   if (!parsed.success) {
-    return { status: 'error', message: zodMessage(parsed.error) }
+    return actionError(zodMessage(parsed.error), zodFieldErrors(parsed.error))
   }
 
   const context = await getActorContext()
   if (!context.ok) {
-    return { status: 'error', message: context.message }
+    return actionError(context.message)
   }
 
   try {
     requireRole(context.role, 'manager')
   } catch {
-    return { status: 'error', message: 'Insufficient permissions.' }
+    return actionError('Insufficient permissions.')
   }
 
   const { data: targetProfile, error: targetProfileError } = await context.admin
@@ -387,15 +434,19 @@ export async function updateMemberRoleAction(
     .maybeSingle()
 
   if (targetProfileError) {
-    return { status: 'error', message: formatDatabaseError(targetProfileError.message) }
+    return actionError(formatDatabaseError(targetProfileError.message))
   }
 
   if (!targetProfile) {
-    return { status: 'error', message: 'Member not found.' }
+    return actionError('Member not found.', {
+      userId: 'Member no longer exists.',
+    })
   }
 
   if (context.role !== 'owner' && (targetProfile.role === 'owner' || parsed.data.role === 'owner')) {
-    return { status: 'error', message: 'Only owners can change owner roles.' }
+    return actionError('Only owners can change owner roles.', {
+      role: 'Only owners can change owner roles.',
+    })
   }
 
   const { error: updateError } = await context.admin
@@ -408,11 +459,11 @@ export async function updateMemberRoleAction(
     .eq('company_id', context.companyId)
 
   if (updateError) {
-    return { status: 'error', message: formatDatabaseError(updateError.message) }
+    return actionError(formatDatabaseError(updateError.message))
   }
 
   revalidatePath(ROUTES.SETTINGS_MEMBERS)
-  return { status: 'success', message: 'Member role updated.' }
+  return actionSuccess('Member role updated.')
 }
 
 export async function assignMemberDepartmentAction(
@@ -425,18 +476,18 @@ export async function assignMemberDepartmentAction(
   })
 
   if (!parsed.success) {
-    return { status: 'error', message: zodMessage(parsed.error) }
+    return actionError(zodMessage(parsed.error), zodFieldErrors(parsed.error))
   }
 
   const context = await getActorContext()
   if (!context.ok) {
-    return { status: 'error', message: context.message }
+    return actionError(context.message)
   }
 
   try {
     requireRole(context.role, 'manager')
   } catch {
-    return { status: 'error', message: 'Insufficient permissions.' }
+    return actionError('Insufficient permissions.')
   }
 
   const { data: targetProfile, error: targetProfileError } = await context.admin
@@ -448,15 +499,17 @@ export async function assignMemberDepartmentAction(
     .maybeSingle()
 
   if (targetProfileError) {
-    return { status: 'error', message: formatDatabaseError(targetProfileError.message) }
+    return actionError(formatDatabaseError(targetProfileError.message))
   }
 
   if (!targetProfile) {
-    return { status: 'error', message: 'Member not found.' }
+    return actionError('Member not found.', {
+      userId: 'Member no longer exists.',
+    })
   }
 
   if (!targetProfile.is_active) {
-    return { status: 'error', message: 'Cannot assign departments to an inactive member.' }
+    return actionError('Cannot assign departments to an inactive member.')
   }
 
   if (parsed.data.departmentId) {
@@ -470,17 +523,19 @@ export async function assignMemberDepartmentAction(
       .maybeSingle()
 
     if (departmentError) {
-      return { status: 'error', message: formatDatabaseError(departmentError.message) }
+      return actionError(formatDatabaseError(departmentError.message))
     }
 
     if (!department) {
-      return { status: 'error', message: 'Department not found.' }
+      return actionError('Department not found.', {
+        departmentId: 'Select a valid active department.',
+      })
     }
   }
 
   const clearDepartmentsResult = await clearMemberDepartments(context.admin, context.companyId, parsed.data.userId)
   if (!clearDepartmentsResult.ok) {
-    return { status: 'error', message: clearDepartmentsResult.message }
+    return actionError(clearDepartmentsResult.message)
   }
 
   if (parsed.data.departmentId) {
@@ -498,33 +553,33 @@ export async function assignMemberDepartmentAction(
     )
 
     if (upsertError) {
-      return { status: 'error', message: formatDatabaseError(upsertError.message) }
+      return actionError(formatDatabaseError(upsertError.message))
     }
   }
 
   revalidatePath(ROUTES.SETTINGS_MEMBERS)
-  return { status: 'success', message: 'Member department updated.' }
+  return actionSuccess('Member department updated.')
 }
 
-export async function toggleMemberStatusAction(formData: FormData) {
+export async function toggleMemberStatusAction(formData: FormData): Promise<MemberActionState> {
   const parsed = toggleMemberStatusSchema.safeParse({
     userId: field(formData, 'userId'),
     nextStatus: field(formData, 'nextStatus'),
   })
 
   if (!parsed.success) {
-    return
+    return actionError(zodMessage(parsed.error), zodFieldErrors(parsed.error))
   }
 
   const context = await getActorContext()
   if (!context.ok) {
-    return
+    return actionError(context.message)
   }
 
   try {
     requireRole(context.role, 'manager')
   } catch {
-    return
+    return actionError('Insufficient permissions.')
   }
 
   const { data: targetProfile, error: targetProfileError } = await context.admin
@@ -536,23 +591,25 @@ export async function toggleMemberStatusAction(formData: FormData) {
     .maybeSingle()
 
   if (targetProfileError || !targetProfile) {
-    return
+    return actionError(formatDatabaseError(targetProfileError?.message ?? 'Member not found.'), {
+      userId: 'Member not found.',
+    })
   }
 
   if (targetProfile.user_id === context.userId && parsed.data.nextStatus === 'inactive') {
-    return
+    return actionError('You cannot deactivate your own account.')
   }
 
   if (context.role !== 'owner' && targetProfile.role === 'owner') {
-    return
+    return actionError('Only owners can change owner status.')
   }
 
   const nextActive = parsed.data.nextStatus === 'active'
   if (targetProfile.is_active === nextActive) {
-    return
+    return actionSuccess(nextActive ? 'Member is already active.' : 'Member is already inactive.')
   }
 
-  await context.admin
+  const { error: updateProfileError } = await context.admin
     .from('profiles')
     .update({
       is_active: nextActive,
@@ -562,9 +619,17 @@ export async function toggleMemberStatusAction(formData: FormData) {
     .eq('user_id', targetProfile.user_id)
     .eq('company_id', context.companyId)
 
+  if (updateProfileError) {
+    return actionError(formatDatabaseError(updateProfileError.message))
+  }
+
   if (!nextActive) {
-    await clearMemberDepartments(context.admin, context.companyId, targetProfile.user_id)
+    const clearDepartmentsResult = await clearMemberDepartments(context.admin, context.companyId, targetProfile.user_id)
+    if (!clearDepartmentsResult.ok) {
+      return actionError(clearDepartmentsResult.message)
+    }
   }
 
   revalidatePath(ROUTES.SETTINGS_MEMBERS)
+  return actionSuccess(nextActive ? 'Member activated.' : 'Member deactivated.')
 }

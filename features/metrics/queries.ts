@@ -22,9 +22,7 @@ type MetricRow = {
   data_type: MetricDataType
   unit: string
   settings: MetricSettings | null
-  direction: 'higher_is_better' | 'lower_is_better'
   input_mode: 'manual' | 'calculated'
-  precision_scale: number
   is_active: boolean
   created_at: string
   updated_at: string
@@ -138,7 +136,7 @@ export async function listMetrics(rawFilters?: {
   let metricsQuery = context.admin
     .from('metrics')
     .select(
-      'metric_id, department_id, name, code, description, data_type, unit, settings, direction, input_mode, precision_scale, is_active, created_at, updated_at',
+      'metric_id, department_id, name, code, description, data_type, unit, settings, input_mode, is_active, created_at, updated_at',
     )
     .eq('company_id', context.companyId)
     .is('deleted_at', null)
@@ -165,7 +163,7 @@ export async function listMetrics(rawFilters?: {
     let fallbackQuery = context.admin
       .from('metrics')
       .select(
-        'metric_id, department_id, name, code, description, data_type, unit, direction, input_mode, precision_scale, is_active, created_at, updated_at',
+        'metric_id, department_id, name, code, description, data_type, unit, input_mode, is_active, created_at, updated_at',
       )
       .eq('company_id', context.companyId)
       .is('deleted_at', null)
@@ -245,28 +243,26 @@ export async function listMetrics(rawFilters?: {
     }
   }
 
-  let allActiveMetricsQuery = context.admin
+  const allActiveMetricsQuery = context.admin
     .from('metrics')
-    .select('metric_id, name, code, department_id')
+    .select('metric_id, name, code, department_id, data_type')
     .eq('company_id', context.companyId)
     .eq('is_active', true)
     .is('deleted_at', null)
     .order('name', { ascending: true })
 
-  if (effectiveDepartmentId !== 'all') {
-    allActiveMetricsQuery = allActiveMetricsQuery.eq('department_id', effectiveDepartmentId)
+  const { data: allActiveMetricsData, error: allActiveMetricsError } = await allActiveMetricsQuery
+  if (allActiveMetricsError) {
+    return { success: false, error: formatDatabaseError(allActiveMetricsError.message), data: null }
   }
 
-  const { data: allActiveMetricsData, error: allActiveMetricsError } = await allActiveMetricsQuery
-  return { success: false, error: formatDatabaseError(allActiveMetricsError.message), data: null }
-}
-
-const allActiveMetrics = (allActiveMetricsData ?? []) as Array<{
-  metric_id: string
-  name: string
-  code: string
-  department_id: string
-}>
+  const allActiveMetrics = (allActiveMetricsData ?? []) as Array<{
+    metric_id: string
+    name: string
+    code: string
+    department_id: string
+    data_type: MetricDataType
+  }>
 
 const metricNameMap = new Map(allActiveMetrics.map((metric) => [metric.metric_id, metric.name]))
 
@@ -318,6 +314,7 @@ return {
       code: metric.code,
       department_id: metric.department_id,
       department_name: departmentMap.get(metric.department_id) ?? 'Unknown department',
+      data_type: metric.data_type,
     })),
     filters: {
       ...filters,
@@ -343,7 +340,7 @@ export async function getMetricById(id: string) {
   const withSettings = await context.admin
     .from('metrics')
     .select(
-      'metric_id, department_id, name, code, description, data_type, unit, settings, direction, input_mode, precision_scale, is_active, created_at, updated_at',
+      'metric_id, department_id, name, code, description, data_type, unit, settings, input_mode, is_active, created_at, updated_at',
     )
     .eq('metric_id', id)
     .eq('company_id', context.companyId)
@@ -357,7 +354,7 @@ export async function getMetricById(id: string) {
     const fallback = await context.admin
       .from('metrics')
       .select(
-        'metric_id, department_id, name, code, description, data_type, unit, direction, input_mode, precision_scale, is_active, created_at, updated_at',
+        'metric_id, department_id, name, code, description, data_type, unit, input_mode, is_active, created_at, updated_at',
       )
       .eq('metric_id', id)
       .eq('company_id', context.companyId)

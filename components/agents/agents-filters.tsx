@@ -13,6 +13,7 @@ type AgentsFiltersProps = {
     name: string
   }>
   selectedDepartmentId: string
+  showDepartment?: boolean
   period: Period
   startDate: string
   endDate: string
@@ -31,6 +32,7 @@ export function AgentsFilters({
   basePath,
   departments,
   selectedDepartmentId,
+  showDepartment = true,
   period,
   startDate,
   endDate,
@@ -75,37 +77,43 @@ export function AgentsFilters({
       }
     }
 
+    if (!showDepartment) {
+      params.delete('departmentId')
+    }
+
     const query = params.toString()
     router.push(query ? `${basePath}?${query}` : basePath)
   }
 
   return (
     <section className="rounded-xl border bg-card p-4">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <div>
-          <label htmlFor="agents-department" className="mb-1 block text-sm font-medium">
-            Department
-          </label>
-          <select
-            id="agents-department"
-            value={selectedDepartmentId}
-            className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
-            onChange={(event) =>
-              pushWith({
-                departmentId: event.currentTarget.value,
-              })
-            }
-            disabled={!hasDepartments}
-          >
-            {!hasDepartments ? <option value="">No departments found</option> : null}
-            {allowAllDepartment ? <option value="all">All departments</option> : null}
-            {departments.map((department) => (
-              <option key={department.department_id} value={department.department_id}>
-                {department.name}
-              </option>
-            ))}
-          </select>
-        </div>
+      <div className={`grid gap-4 md:grid-cols-2 ${showDepartment ? 'xl:grid-cols-5' : 'xl:grid-cols-4'}`}>
+        {showDepartment ? (
+          <div>
+            <label htmlFor="agents-department" className="mb-1 block text-sm font-medium">
+              Department
+            </label>
+            <select
+              id="agents-department"
+              value={selectedDepartmentId}
+              className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
+              onChange={(event) =>
+                pushWith({
+                  departmentId: event.currentTarget.value,
+                })
+              }
+              disabled={!hasDepartments}
+            >
+              {!hasDepartments ? <option value="">No departments found</option> : null}
+              {allowAllDepartment ? <option value="all">All departments</option> : null}
+              {departments.map((department) => (
+                <option key={department.department_id} value={department.department_id}>
+                  {department.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
 
         <div>
           <label htmlFor="agents-period" className="mb-1 block text-sm font-medium">

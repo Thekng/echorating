@@ -57,7 +57,6 @@ type RecentAgentEntry = {
 type ScoreMetric = {
   metric_id: string
   data_type: MetricDataType
-  direction: 'higher_is_better' | 'lower_is_better'
 }
 
 type DepartmentMetric = {
@@ -66,7 +65,6 @@ type DepartmentMetric = {
   code: string
   data_type: MetricDataType
   unit: string
-  direction: 'higher_is_better' | 'lower_is_better'
   settings: MetricSettings | null
 }
 
@@ -337,7 +335,7 @@ async function resolveScoreMetrics(
 ) {
   const { data, error } = await admin
     .from('metrics')
-    .select('metric_id, data_type, direction')
+    .select('metric_id, data_type')
     .eq('company_id', companyId)
     .eq('department_id', departmentId)
     .eq('is_active', true)
@@ -362,7 +360,7 @@ async function resolveDepartmentMetrics(
 ) {
   const withSettings = await admin
     .from('metrics')
-    .select('metric_id, name, code, data_type, unit, direction, settings')
+    .select('metric_id, name, code, data_type, unit, settings')
     .eq('company_id', companyId)
     .eq('department_id', departmentId)
     .eq('is_active', true)
@@ -383,7 +381,7 @@ async function resolveDepartmentMetrics(
 
   const fallback = await admin
     .from('metrics')
-    .select('metric_id, name, code, data_type, unit, direction')
+    .select('metric_id, name, code, data_type, unit')
     .eq('company_id', companyId)
     .eq('department_id', departmentId)
     .eq('is_active', true)
@@ -612,8 +610,6 @@ async function computeDepartmentScores(
 
       if (span <= 0) {
         normalized = 1
-      } else if (metric.direction === 'lower_is_better') {
-        normalized = (stats.max - rawValue) / span
       } else {
         normalized = (rawValue - stats.min) / span
       }
@@ -1293,8 +1289,7 @@ export async function getAgentProfile(
         continue
       }
 
-      const met =
-        metric.direction === 'lower_is_better' ? comparable <= targetValue : comparable >= targetValue
+      const met = comparable >= targetValue
 
       if (met) {
         metTargetsCount += 1

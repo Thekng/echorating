@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { ROUTES } from '@/lib/constants/routes'
+import { formatPercent } from '@/lib/metrics/format'
 import { formatDateShort } from '@/lib/utils/date-formatter'
 import { AgentsFilters } from '@/components/agents/agents-filters'
 import { getAgentsList } from '@/features/agents/queries'
@@ -27,7 +28,6 @@ export default async function AgentsPage({ searchParams }: AgentsPageProps) {
   const params = await searchParams
 
   const result = await getAgentsList({
-    departmentId: params.departmentId,
     period: params.period,
     startDate: params.startDate,
     endDate: params.endDate,
@@ -45,13 +45,11 @@ export default async function AgentsPage({ searchParams }: AgentsPageProps) {
 
   const {
     departments,
-    selectedDepartmentId,
     period,
     startDate,
     endDate,
     q,
     status,
-    scoringMetricsCount,
     rows,
   } = result.data
 
@@ -65,7 +63,8 @@ export default async function AgentsPage({ searchParams }: AgentsPageProps) {
       <AgentsFilters
         basePath={ROUTES.AGENTS}
         departments={departments}
-        selectedDepartmentId={selectedDepartmentId}
+        selectedDepartmentId="all"
+        showDepartment={false}
         period={period}
         startDate={startDate}
         endDate={endDate}
@@ -80,9 +79,7 @@ export default async function AgentsPage({ searchParams }: AgentsPageProps) {
           <div>
             <p className="text-sm font-semibold">Team Member Roster</p>
             <p className="text-xs text-muted-foreground">
-              {selectedDepartmentId === 'all'
-                ? 'Showing all teams'
-                : `Score by ${scoringMetricsCount} team stats`}
+              Showing members for the selected period.
             </p>
           </div>
         </header>
@@ -94,11 +91,9 @@ export default async function AgentsPage({ searchParams }: AgentsPageProps) {
                 <th className="px-4 py-2 text-left font-medium">Team Member</th>
                 <th className="px-4 py-2 text-left font-medium">Role</th>
                 <th className="px-4 py-2 text-left font-medium">Status</th>
-                <th className="px-4 py-2 text-left font-medium">Teams</th>
                 <th className="px-4 py-2 text-left font-medium">Submitted</th>
                 <th className="px-4 py-2 text-left font-medium">Draft</th>
                 <th className="px-4 py-2 text-left font-medium">Completion</th>
-                <th className="px-4 py-2 text-left font-medium">Score</th>
                 <th className="px-4 py-2 text-left font-medium">Last Log</th>
                 <th className="px-4 py-2 text-right font-medium">Profile</th>
               </tr>
@@ -106,7 +101,7 @@ export default async function AgentsPage({ searchParams }: AgentsPageProps) {
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                     No team members found for this filter.
                   </td>
                 </tr>
@@ -127,15 +122,9 @@ export default async function AgentsPage({ searchParams }: AgentsPageProps) {
                       {row.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {row.departments.length > 0 ? row.departments.join(', ') : '-'}
-                  </td>
                   <td className="px-4 py-3">{row.submitted_count}</td>
                   <td className="px-4 py-3">{row.draft_count}</td>
-                  <td className="px-4 py-3">{row.completion_rate.toFixed(1)}%</td>
-                  <td className="px-4 py-3">
-                    {row.department_score === null ? '-' : `${row.department_score.toFixed(1)}%`}
-                  </td>
+                  <td className="px-4 py-3">{formatPercent(row.completion_rate, 1)}</td>
                   <td className="px-4 py-3 text-muted-foreground">{formatDate(row.last_entry_date)}</td>
                   <td className="px-4 py-3 text-right">
                     <Link

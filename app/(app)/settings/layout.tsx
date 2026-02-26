@@ -1,16 +1,16 @@
 import type { ReactNode } from 'react'
 import { SettingsTabs } from '@/components/settings/settings-tabs'
-import { SettingsShell } from '@/components/settings/settings-shell'
+import { SettingsLayout } from '@/components/settings/settings-layout'
 
-export default function SettingsLayout({
-  children,
-}: {
+type SettingsRootLayoutProps = {
   children: ReactNode
-}) {
+}
+
+export default function SettingsRootLayout({ children }: SettingsRootLayoutProps) {
   return (
-    <SettingsShell>
+    <div className="space-y-6">
       <SettingsTabs />
-      {children}
-    </SettingsShell>
+      <SettingsLayout>{children}</SettingsLayout>
+    </div>
   )
 }

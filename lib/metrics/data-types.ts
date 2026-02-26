@@ -52,13 +52,10 @@ export type MetricSettings = {
   fileKind?: FileKind
 }
 
-const BOOLEAN_PRESET_LABELS: Record<BooleanPreset, { trueLabel: string; falseLabel: string }> = {
-  yes_no: { trueLabel: 'Yes', falseLabel: 'No' },
-  true_false: { trueLabel: 'True', falseLabel: 'False' },
-  active_inactive: { trueLabel: 'Active', falseLabel: 'Inactive' },
-  qualified_not_qualified: { trueLabel: 'Qualified', falseLabel: 'Not Qualified' },
-  completed_not_completed: { trueLabel: 'Completed', falseLabel: 'Not Completed' },
-}
+const BOOLEAN_LABELS = {
+  trueLabel: 'Yes',
+  falseLabel: 'No',
+} as const
 
 function asRecord(value: unknown) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -100,11 +97,9 @@ export function normalizeMetricSettings(dataType: MetricDataType, raw: unknown):
   }
 
   if (dataType === 'boolean') {
-    const preset = text(value.booleanPreset)
     return {
-      booleanPreset: BOOLEAN_PRESETS.includes(preset as BooleanPreset)
-        ? (preset as BooleanPreset)
-        : 'yes_no',
+      // Keep boolean metrics consistent and agency-friendly across all screens.
+      booleanPreset: 'yes_no',
     }
   }
 
@@ -158,11 +153,16 @@ export function normalizeMetricSettings(dataType: MetricDataType, raw: unknown):
 }
 
 export function booleanLabels(settings: MetricSettings) {
-  const preset = settings.booleanPreset ?? 'yes_no'
-  return BOOLEAN_PRESET_LABELS[preset]
+  void settings
+  return BOOLEAN_LABELS
 }
 
 export function isCalculatedSupportedType(dataType: MetricDataType) {
-  return dataType === 'number' || dataType === 'currency' || dataType === 'percent' || dataType === 'duration'
+  return (
+    dataType === 'number' ||
+    dataType === 'currency' ||
+    dataType === 'percent' ||
+    dataType === 'duration' ||
+    dataType === 'boolean'
+  )
 }
-

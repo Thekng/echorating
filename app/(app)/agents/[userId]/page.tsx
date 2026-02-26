@@ -2,8 +2,8 @@ import Link from 'next/link'
 import { ROUTES } from '@/lib/constants/routes'
 import { AgentsFilters } from '@/components/agents/agents-filters'
 import { getAgentProfile } from '@/features/agents/queries'
-import { formatSecondsToDuration } from '@/lib/daily-log/value-parser'
 import { booleanLabels, normalizeMetricSettings } from '@/lib/metrics/data-types'
+import { formatMetricNumber, formatPercent } from '@/lib/metrics/format'
 
 type MetricDataTypeInput = Parameters<typeof normalizeMetricSettings>[0]
 
@@ -42,43 +42,12 @@ function formatMetricValue(
   },
   value: number,
 ) {
-  const settings = normalizeMetricSettings(metric.data_type as MetricDataTypeInput, metric.settings)
-
-  if (metric.data_type === 'duration') {
-    if (settings.durationFormat === 'minutes') {
-      return `${Number((value / 60).toFixed(2))}m`
-    }
-    if (settings.durationFormat === 'hours') {
-      return `${Number((value / 3600).toFixed(2))}h`
-    }
-    if (settings.durationFormat === 'days') {
-      return `${Number((value / 86400).toFixed(2))}d`
-    }
-    return formatSecondsToDuration(value) || '00:00:00'
-  }
-
-  if (metric.data_type === 'currency') {
-    const currencyCode = (settings.currencyCode || metric.unit || 'USD').toUpperCase()
-    return new Intl.NumberFormat(undefined, {
-      style: 'currency',
-      currency: currencyCode,
-      maximumFractionDigits: 2,
-    }).format(value)
-  }
-
-  if (metric.data_type === 'percent') {
-    return `${Number(value.toFixed(2))}%`
-  }
-
-  if (metric.data_type === 'boolean') {
-    return String(Math.round(value))
-  }
-
-  if (metric.data_type === 'number' && settings.numberKind === 'integer') {
-    return String(Math.round(value))
-  }
-
-  return Number.isInteger(value) ? String(value) : Number(value.toFixed(2)).toString()
+  return formatMetricNumber(value, {
+    dataType: metric.data_type as MetricDataTypeInput,
+    unit: metric.unit,
+    settings: metric.settings,
+    booleanMode: 'count',
+  })
 }
 
 function formatLogMetricValue(
@@ -116,16 +85,11 @@ function formatLogMetricValue(
     if (raw.value_numeric === null || raw.value_numeric === undefined) {
       return '-'
     }
-    if (settings.durationFormat === 'minutes') {
-      return `${Number((raw.value_numeric / 60).toFixed(2))}m`
-    }
-    if (settings.durationFormat === 'hours') {
-      return `${Number((raw.value_numeric / 3600).toFixed(2))}h`
-    }
-    if (settings.durationFormat === 'days') {
-      return `${Number((raw.value_numeric / 86400).toFixed(2))}d`
-    }
-    return formatSecondsToDuration(raw.value_numeric) || '-'
+    return formatMetricNumber(Number(raw.value_numeric), {
+      dataType: metric.data_type as MetricDataTypeInput,
+      unit: metric.unit,
+      settings: metric.settings,
+    })
   }
 
   if (metric.data_type === 'text' || metric.data_type === 'datetime' || metric.data_type === 'file') {
@@ -174,7 +138,6 @@ export default async function AgentProfilePage({ params, searchParams }: AgentPr
   const query = await searchParams
 
   const result = await getAgentProfile(userId, {
-    departmentId: query.departmentId,
     period: query.period,
     startDate: query.startDate,
     endDate: query.endDate,
@@ -227,6 +190,7 @@ export default async function AgentProfilePage({ params, searchParams }: AgentPr
         basePath={`${ROUTES.AGENTS}/${profile.user_id}`}
         departments={departments}
         selectedDepartmentId={selectedDepartmentId}
+        showDepartment={false}
         period={period}
         startDate={startDate}
         endDate={endDate}
@@ -243,7 +207,7 @@ export default async function AgentProfilePage({ params, searchParams }: AgentPr
         <article className="rounded-xl border bg-card p-4">
           <p className="text-xs uppercase text-muted-foreground">Department Score</p>
           <p className="mt-2 text-2xl font-semibold">
-            {stats.department_score === null ? '-' : `${stats.department_score.toFixed(1)}%`}
+            {stats.department_score === null ? '-' : formatPercent(stats.department_score, 1)}
           </p>
           <p className="text-xs text-muted-foreground">
             {stats.scoring_metrics_count > 0 ? `${stats.scoring_metrics_count} metrics` : 'No metrics'}
@@ -257,7 +221,7 @@ export default async function AgentProfilePage({ params, searchParams }: AgentPr
 
         <article className="rounded-xl border bg-card p-4">
           <p className="text-xs uppercase text-muted-foreground">Completion</p>
-          <p className="mt-2 text-2xl font-semibold">{stats.completion_rate.toFixed(1)}%</p>
+          <p className="mt-2 text-2xl font-semibold">{formatPercent(stats.completion_rate, 1)}</p>
         </article>
       </section>
 

@@ -1,69 +1,186 @@
-import { CompanySettingsForm } from '@/components/company/company-settings-form'
-import { toggleCompanyStatusAction } from '@/features/company/actions'
-import { getCompanyDetails } from '@/features/company/queries'
-import { SettingsPageHeader } from '@/components/settings/settings-page-header'
+'use client'
+
+import { useState, useEffect } from 'react'
+import { SettingsHeader } from '@/components/settings/settings-header'
 import { SettingsSurface } from '@/components/settings/settings-surface'
 import { SettingsError } from '@/components/settings/settings-error'
-import { SettingsChip } from '@/components/settings/settings-chip'
+import { getCompanyDetails } from '@/features/company/queries'
+import { updateCompanyAction } from '@/features/company/actions'
+import { useActionState } from 'react'
 
-export default async function CompanySettingsPage() {
-  const result = await getCompanyDetails()
+type CompanyActionState = {
+  status: 'idle' | 'success' | 'error'
+  message: string
+}
 
-  if (!result.success || !result.data) {
-    return <SettingsError error={result.error || 'Failed to load company details'} />
+export default function CompanySettingsPage() {
+  const [company, setCompany] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [state, formAction] = useActionState(
+    updateCompanyAction,
+    { status: 'idle', message: '' } as CompanyActionState
+  )
+
+  useEffect(() => {
+    const fetchCompany = async () => {
+      try {
+        const result = await getCompanyDetails()
+        if (result.success && result.data) {
+          setCompany(result.data.company)
+        } else {
+          setError(result.error || 'Failed to load company details')
+        }
+      } catch (err) {
+        setError('An unexpected error occurred')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchCompany()
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <SettingsHeader title="Company" description="Loading..." />
+        <SettingsSurface>
+          <p className="text-sm text-muted-foreground">Loading company details...</p>
+        </SettingsSurface>
+      </div>
+    )
   }
 
-  const { company, role, profileName } = result.data
-  const canEdit = role === 'owner'
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <SettingsHeader title="Company" description="Manage organization profile." />
+        <SettingsError error={error} />
+      </div>
+    )
+  }
+
+  if (!company) {
+    return (
+      <div className="space-y-6">
+        <SettingsHeader title="Company" description="Manage organization profile." />
+        <SettingsError error="Company not found" />
+      </div>
+    )
+  }
 
   return (
-    <div className="space-y-5">
-      <SettingsPageHeader
+    <div className="space-y-6">
+      <SettingsHeader
         title="Company"
-        description="Manage organization profile details and account state."
+        description="Manage organization profile, timezone, and account status."
       />
 
-      <div className="grid gap-5 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <CompanySettingsForm name={company.name} timezone={company.timezone} canEdit={canEdit} />
+      {state.status === 'success' && (
+        <SettingsSurface className="bg-green-50 border border-green-200">
+          <p className="text-sm text-green-800">{state.message}</p>
+        </SettingsSurface>
+      )}
+
+      {state.status === 'error' && (
+        <SettingsSurface className="bg-red-50 border border-red-200">
+          <p className="text-sm text-red-800">{state.message}</p>
+        </SettingsSurface>
+      )}
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-2 space-y-6">
+          <form action={formAction}>
+            <SettingsSurface>
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <label htmlFor="name" className="text-sm font-medium">
+                    Company Name
+                  </label>
+                  <input
+                    id="name"
+                    name="name"
+                    placeholder="Enter company name"
+                    defaultValue={company.name}
+                    required
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground">Used in reports and team invitations</p>
+                </div>
+
+                <div className="space-y-2">
+                  <label htmlFor="timezone" className="text-sm font-medium">
+                    Timezone
+                  </label>
+                  <select
+                    id="timezone"
+                    name="timezone"
+                    defaultValue={company.timezone}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="UTC">UTC</option>
+                    <option value="America/New_York">Eastern Time</option>
+                    <option value="America/Chicago">Central Time</option>
+                    <option value="America/Denver">Mountain Time</option>
+                    <option value="America/Los_Angeles">Pacific Time</option>
+                    <option value="America/Anchorage">Alaska</option>
+                    <option value="Pacific/Honolulu">Hawaii</option>
+                    <option value="Europe/London">London</option>
+                    <option value="Europe/Paris">Paris</option>
+                    <option value="Europe/Berlin">Berlin</option>
+                    <option value="Asia/Tokyo">Tokyo</option>
+                    <option value="Asia/Hong_Kong">Hong Kong</option>
+                    <option value="Asia/Shanghai">Shanghai</option>
+                    <option value="Asia/Singapore">Singapore</option>
+                    <option value="Australia/Sydney">Sydney</option>
+                    <option value="Australia/Melbourne">Melbourne</option>
+                  </select>
+                  <p className="text-xs text-muted-foreground">Used for daily reset times and reporting periods</p>
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    type="submit"
+                    className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                  >
+                    Save Changes
+                  </button>
+                </div>
+              </div>
+            </SettingsSurface>
+          </form>
         </div>
 
         <aside className="space-y-4">
           <SettingsSurface>
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              Access
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-4">
+              Status
             </h3>
-            <p className="mt-2 text-sm">
-              Logged as <span className="font-medium">{profileName}</span>
-            </p>
-            <div className="mt-3">
-              <SettingsChip tone={role === 'owner' ? 'success' : 'info'}>{role}</SettingsChip>
+            <div className="space-y-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Status</span>
+                <span className="font-medium">
+                  {company.is_active ? (
+                    <span className="text-green-600">Active</span>
+                  ) : (
+                    <span className="text-yellow-600">Inactive</span>
+                  )}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Created</span>
+                <span className="font-medium">
+                  {new Date(company.created_at).toLocaleDateString()}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Updated</span>
+                <span className="font-medium">
+                  {new Date(company.updated_at).toLocaleDateString()}
+                </span>
+              </div>
             </div>
-          </SettingsSurface>
-
-          <SettingsSurface>
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              Company Status
-            </h3>
-            <div className="mt-2">
-              <SettingsChip tone={company.is_active ? 'success' : 'neutral'}>
-                {company.is_active ? 'Active' : 'Inactive'}
-              </SettingsChip>
-            </div>
-
-            {canEdit ? (
-              <form action={toggleCompanyStatusAction} className="mt-4">
-                <input type="hidden" name="nextStatus" value={company.is_active ? 'inactive' : 'active'} />
-                <button
-                  type="submit"
-                  className="h-9 rounded-md border border-input px-3 text-sm hover:bg-muted/40"
-                >
-                  {company.is_active ? 'Deactivate company' : 'Activate company'}
-                </button>
-              </form>
-            ) : (
-              <p className="mt-3 text-sm text-muted-foreground">Only owners can change company status.</p>
-            )}
           </SettingsSurface>
         </aside>
       </div>

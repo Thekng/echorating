@@ -2,9 +2,8 @@ import Link from 'next/link'
 import { ROUTES } from '@/lib/constants/routes'
 import { AgentsFilters } from '@/components/agents/agents-filters'
 import { getAgentProfile } from '@/features/agents/queries'
-import { getDepartmentById } from '@/features/departments/queries'
-import { formatSecondsToDuration } from '@/lib/daily-log/value-parser'
 import { booleanLabels, normalizeMetricSettings } from '@/lib/metrics/data-types'
+import { formatMetricNumber, formatPercent } from '@/lib/metrics/format'
 
 type MetricDataTypeInput = Parameters<typeof normalizeMetricSettings>[0]
 
@@ -42,42 +41,12 @@ function formatMetricValue(
   },
   value: number,
 ) {
-  const settings = normalizeMetricSettings(metric.data_type as MetricDataTypeInput, metric.settings)
-  if (metric.data_type === 'duration') {
-    if (settings.durationFormat === 'minutes') {
-      return `${Number((value / 60).toFixed(2))}m`
-    }
-    if (settings.durationFormat === 'hours') {
-      return `${Number((value / 3600).toFixed(2))}h`
-    }
-    if (settings.durationFormat === 'days') {
-      return `${Number((value / 86400).toFixed(2))}d`
-    }
-    return formatSecondsToDuration(value) || '00:00:00'
-  }
-
-  if (metric.data_type === 'currency') {
-    const currencyCode = (settings.currencyCode || metric.unit || 'USD').toUpperCase()
-    return new Intl.NumberFormat(undefined, {
-      style: 'currency',
-      currency: currencyCode,
-      maximumFractionDigits: 2,
-    }).format(value)
-  }
-
-  if (metric.data_type === 'percent') {
-    return `${Number(value.toFixed(2))}%`
-  }
-
-  if (metric.data_type === 'boolean') {
-    return String(Math.round(value))
-  }
-
-  if (metric.data_type === 'number' && (settings as any).numberKind === 'integer') {
-    return String(Math.round(value))
-  }
-
-  return Number.isInteger(value) ? String(value) : Number(value.toFixed(2)).toString()
+  return formatMetricNumber(value, {
+    dataType: metric.data_type as MetricDataTypeInput,
+    unit: metric.unit,
+    settings: metric.settings,
+    booleanMode: 'count',
+  })
 }
 
 function formatLogMetricValue(
@@ -114,16 +83,11 @@ function formatLogMetricValue(
     if (raw.value_numeric === null || raw.value_numeric === undefined) {
       return '-'
     }
-    if (settings.durationFormat === 'minutes') {
-      return `${Number((raw.value_numeric / 60).toFixed(2))}m`
-    }
-    if (settings.durationFormat === 'hours') {
-      return `${Number((raw.value_numeric / 3600).toFixed(2))}h`
-    }
-    if (settings.durationFormat === 'days') {
-      return `${Number((raw.value_numeric / 86400).toFixed(2))}d`
-    }
-    return formatSecondsToDuration(raw.value_numeric) || '-'
+    return formatMetricNumber(Number(raw.value_numeric), {
+      dataType: metric.data_type as MetricDataTypeInput,
+      unit: metric.unit,
+      settings: metric.settings,
+    })
   }
 
   if (metric.data_type === 'text' || metric.data_type === 'datetime' || metric.data_type === 'file') {
@@ -134,7 +98,7 @@ function formatLogMetricValue(
     if (!raw.value_text) {
       return '-'
     }
-    if ((settings as any).selectionMode === 'multi') {
+    if (settings.selectionMode === 'multi') {
       try {
         const parsed = JSON.parse(raw.value_text) as string[]
         if (Array.isArray(parsed) && parsed.length > 0) {
@@ -171,7 +135,6 @@ export default async function Agent1To1Page({ params, searchParams }: Agent1To1P
   const { departmentId, userId } = await params
   const query = await searchParams
 
-  const dept = await getDepartmentById(departmentId)
   const result = await getAgentProfile(userId, {
     departmentId,
     period: query.period,
@@ -187,7 +150,6 @@ export default async function Agent1To1Page({ params, searchParams }: Agent1To1P
 
   const {
     profile,
-    memberships,
     departments,
     selectedDepartmentId,
     period,
@@ -239,7 +201,7 @@ export default async function Agent1To1Page({ params, searchParams }: Agent1To1P
 
         <article className="rounded-xl border bg-card p-4">
           <p className="text-xs uppercase text-muted-foreground">Team Score</p>
-          <p className="mt-2 text-2xl font-semibold">{stats.department_score === null ? '-' : `${stats.department_score.toFixed(1)}%`}</p>
+          <p className="mt-2 text-2xl font-semibold">{stats.department_score === null ? '-' : formatPercent(stats.department_score, 1)}</p>
         </article>
 
         <article className="rounded-xl border bg-card p-4">
@@ -249,7 +211,7 @@ export default async function Agent1To1Page({ params, searchParams }: Agent1To1P
 
         <article className="rounded-xl border bg-card p-4">
           <p className="text-xs uppercase text-muted-foreground">Completion</p>
-          <p className="mt-2 text-2xl font-semibold">{stats.completion_rate.toFixed(1)}%</p>
+          <p className="mt-2 text-2xl font-semibold">{formatPercent(stats.completion_rate, 1)}</p>
         </article>
       </section>
 
@@ -260,8 +222,10 @@ export default async function Agent1To1Page({ params, searchParams }: Agent1To1P
             <div key={metric.metric_id} className="rounded-md border p-3">
               <div className={`inline-flex items-center justify-center h-10 w-10 rounded-full ${kpiRingTone(idx)} border-2`} />
               <p className="mt-2 text-sm font-medium">{metric.name}</p>
-              <p className="text-2xl font-semibold">{metric.current_value}{metric.unit}</p>
-              <p className="text-xs text-muted-foreground">Target: {metric.target_value ?? '-'}</p>
+              <p className="text-2xl font-semibold">{formatMetricValue(metric, metric.current_value)}</p>
+              <p className="text-xs text-muted-foreground">
+                Target: {metric.target_value === null ? '-' : formatMetricValue(metric, metric.target_value)}
+              </p>
             </div>
           ))}
         </div>
@@ -315,8 +279,8 @@ export default async function Agent1To1Page({ params, searchParams }: Agent1To1P
                   <td className="px-4 py-3">{formatDate(log.entry_date)}</td>
                   <td className="px-4 py-3">{log.status}</td>
                   <td className="px-4 py-3 max-w-xs truncate text-muted-foreground">{log.notes || '-'}</td>
-                  {log.metric_values.map((mv) => (
-                    <td key={mv.metric_id} className="px-4 py-3">{mv.value_numeric !== null ? mv.value_numeric : mv.value_text || mv.value_bool || '-'}</td>
+                  {department_metrics.map((metric) => (
+                    <td key={metric.metric_id} className="px-4 py-3">{formatLogMetricValue(log, metric)}</td>
                   ))}
                 </tr>
               ))}

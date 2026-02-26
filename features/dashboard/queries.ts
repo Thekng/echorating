@@ -16,11 +16,16 @@ type DateRangeResult =
     period: DashboardPeriod
     startDate: string
     endDate: string
+    cutoffDate: string
     previousStartDate: string
     previousEndDate: string
+    previousCutoffDate: string
     windowDays: number
     elapsedDays: number
     remainingDays: number
+    paceTotalUnits: number
+    paceElapsedUnits: number
+    paceUnitLabel: 'workday'
   }
   | { ok: false; message: string }
 
@@ -99,6 +104,9 @@ type DashboardResultData = {
   windowDays: number
   elapsedDays: number
   remainingDays: number
+  paceTotalUnits: number
+  paceElapsedUnits: number
+  paceUnitLabel: 'workday'
   kpis: DashboardKpi[]
   primaryMetric: DashboardMetric | null
   trend: DashboardTrendPoint[]
@@ -164,6 +172,43 @@ function diffDaysInclusive(startDate: string, endDate: string) {
   return Math.floor((end - start) / 86400000) + 1
 }
 
+function countWeekdaysInclusive(startDate: string, endDate: string) {
+  if (endDate < startDate) {
+    return 0
+  }
+
+  const start = new Date(`${startDate}T00:00:00Z`)
+  const end = new Date(`${endDate}T00:00:00Z`)
+  let count = 0
+
+  for (let cursor = start; cursor <= end; cursor = addUtcDays(cursor, 1)) {
+    const day = cursor.getUTCDay()
+    if (day >= 1 && day <= 5) {
+      count += 1
+    }
+  }
+
+  return count
+}
+
+function resolvePaceUnits(startDate: string, endDate: string, today: string) {
+  const paceTotalUnits = countWeekdaysInclusive(startDate, endDate)
+  if (today < startDate) {
+    return {
+      paceTotalUnits,
+      paceElapsedUnits: 0,
+      paceUnitLabel: 'workday' as const,
+    }
+  }
+
+  const effectiveEnd = today < endDate ? today : endDate
+  return {
+    paceTotalUnits,
+    paceElapsedUnits: Math.min(paceTotalUnits, countWeekdaysInclusive(startDate, effectiveEnd)),
+    paceUnitLabel: 'workday' as const,
+  }
+}
+
 function resolveDateRange(
   rawPeriod?: string | null,
   customStartDate?: string | null,
@@ -174,16 +219,21 @@ function resolveDateRange(
   const today = dateKeyUtc(now)
 
   if (period === 'today') {
+    const pace = resolvePaceUnits(today, today, today)
+    const previousDay = dateKeyUtc(addUtcDays(now, -1))
     return {
       ok: true,
       period,
       startDate: today,
       endDate: today,
+      cutoffDate: today,
       previousStartDate: dateKeyUtc(addUtcDays(now, -1)),
       previousEndDate: dateKeyUtc(addUtcDays(now, -1)),
+      previousCutoffDate: previousDay,
       windowDays: 1,
       elapsedDays: 1,
       remainingDays: 0,
+      ...pace,
     }
   }
 
@@ -194,21 +244,27 @@ function resolveDateRange(
     const sunday = addUtcDays(monday, 6)
     const startDate = dateKeyUtc(monday)
     const endDate = dateKeyUtc(sunday)
+    const cutoffDate = today < startDate ? startDate : today > endDate ? endDate : today
     const windowDays = diffDaysInclusive(startDate, endDate)
-    const elapsedDays = diffDaysInclusive(startDate, today)
+    const elapsedDays = diffDaysInclusive(startDate, cutoffDate)
     const previousEnd = addUtcDays(monday, -1)
     const previousStart = addUtcDays(previousEnd, -(windowDays - 1))
+    const previousCutoff = addUtcDays(previousStart, Math.max(0, elapsedDays - 1))
+    const pace = resolvePaceUnits(startDate, endDate, today)
 
     return {
       ok: true,
       period,
       startDate,
       endDate,
+      cutoffDate,
       previousStartDate: dateKeyUtc(previousStart),
       previousEndDate: dateKeyUtc(previousEnd),
+      previousCutoffDate: dateKeyUtc(previousCutoff),
       windowDays,
       elapsedDays: Math.max(1, Math.min(windowDays, elapsedDays)),
       remainingDays: Math.max(0, windowDays - Math.max(1, Math.min(windowDays, elapsedDays))),
+      ...pace,
     }
   }
 
@@ -219,21 +275,28 @@ function resolveDateRange(
     const end = new Date(Date.UTC(year, month + 1, 0))
     const startDate = dateKeyUtc(start)
     const endDate = dateKeyUtc(end)
+    const cutoffDate = today < startDate ? startDate : today > endDate ? endDate : today
     const windowDays = diffDaysInclusive(startDate, endDate)
-    const elapsedDays = diffDaysInclusive(startDate, today)
-    const previousEnd = addUtcDays(start, -1)
-    const previousStart = addUtcDays(previousEnd, -(windowDays - 1))
+    const elapsedDays = diffDaysInclusive(startDate, cutoffDate)
+    const previousStart = new Date(Date.UTC(year, month - 1, 1))
+    const previousEnd = new Date(Date.UTC(year, month, 0))
+    const previousMonthDays = diffDaysInclusive(dateKeyUtc(previousStart), dateKeyUtc(previousEnd))
+    const previousCutoff = addUtcDays(previousStart, Math.min(previousMonthDays - 1, Math.max(0, elapsedDays - 1)))
+    const pace = resolvePaceUnits(startDate, endDate, today)
 
     return {
       ok: true,
       period,
       startDate,
       endDate,
+      cutoffDate,
       previousStartDate: dateKeyUtc(previousStart),
       previousEndDate: dateKeyUtc(previousEnd),
+      previousCutoffDate: dateKeyUtc(previousCutoff),
       windowDays,
       elapsedDays: Math.max(1, Math.min(windowDays, elapsedDays)),
       remainingDays: Math.max(0, windowDays - Math.max(1, Math.min(windowDays, elapsedDays))),
+      ...pace,
     }
   }
 
@@ -249,20 +312,30 @@ function resolveDateRange(
     const windowDays = diffDaysInclusive(customStartDate, customEndDate)
     const previousEnd = addUtcDays(new Date(`${customStartDate}T00:00:00Z`), -1)
     const previousStart = addUtcDays(previousEnd, -(windowDays - 1))
+    const cutoffDate =
+      today < customStartDate
+        ? customStartDate
+        : today > customEndDate
+          ? customEndDate
+          : today
+    const elapsedDays = today < customStartDate ? 0 : diffDaysInclusive(customStartDate, cutoffDate)
+    const previousCutoff = addUtcDays(previousStart, elapsedDays <= 0 ? -1 : elapsedDays - 1)
+    const pace = resolvePaceUnits(customStartDate, customEndDate, today)
+    const clampedElapsedDays = Math.max(0, Math.min(windowDays, elapsedDays))
 
     return {
       ok: true,
       period,
       startDate: customStartDate,
       endDate: customEndDate,
+      cutoffDate,
       previousStartDate: dateKeyUtc(previousStart),
       previousEndDate: dateKeyUtc(previousEnd),
+      previousCutoffDate: dateKeyUtc(previousCutoff),
       windowDays,
-      elapsedDays: Math.max(1, Math.min(windowDays, diffDaysInclusive(customStartDate, today))),
-      remainingDays: Math.max(
-        0,
-        windowDays - Math.max(1, Math.min(windowDays, diffDaysInclusive(customStartDate, today))),
-      ),
+      elapsedDays: clampedElapsedDays,
+      remainingDays: Math.max(0, windowDays - clampedElapsedDays),
+      ...pace,
     }
   }
   return { ok: false, message: 'Invalid period.' }
@@ -421,6 +494,11 @@ function parseMetricValue(
   return Number(row.value_numeric)
 }
 
+function isMissingProfileNameColumn(message: string) {
+  const normalized = message.toLowerCase()
+  return normalized.includes('column profiles_1.name does not exist')
+}
+
 function ensureDailyTrendDates(startDate: string, windowDays: number) {
   const list: DashboardTrendPoint[] = []
   const start = new Date(`${startDate}T00:00:00Z`)
@@ -489,6 +567,9 @@ export async function getDashboardData(filters?: {
       windowDays: range.windowDays,
       elapsedDays: range.elapsedDays,
       remainingDays: range.remainingDays,
+      paceTotalUnits: range.paceTotalUnits,
+      paceElapsedUnits: range.paceElapsedUnits,
+      paceUnitLabel: range.paceUnitLabel,
       kpis: [],
       primaryMetric: null,
       trend: [],
@@ -558,21 +639,38 @@ export async function getDashboardData(filters?: {
   const primaryMetric = prioritizedMetrics[0] ?? null
   const selectedMetricIds = prioritizedMetrics.map((metric) => metric.metric_id)
 
-  const { data: activeMembersData, error: activeMembersError } = await context.admin
+  const activeMembersWithName = await context.admin
     .from('department_members')
-    .select('user_id, profiles!inner(full_name)')
+    .select('user_id, profiles!inner(name)')
     .eq('department_id', selectedDepartmentId)
     .eq('is_active', true)
     .is('deleted_at', null)
 
-  if (activeMembersError) {
-    return { success: false as const, error: formatDatabaseError(activeMembersError.message), data: null }
+  let activeMembersData: unknown[] = []
+  if (!activeMembersWithName.error) {
+    activeMembersData = (activeMembersWithName.data as unknown[]) ?? []
+  } else if (isMissingProfileNameColumn(activeMembersWithName.error.message)) {
+    const fallbackMembers = await context.admin
+      .from('department_members')
+      .select('user_id, profiles!inner(full_name)')
+      .eq('department_id', selectedDepartmentId)
+      .eq('is_active', true)
+      .is('deleted_at', null)
+
+    if (fallbackMembers.error) {
+      return { success: false as const, error: formatDatabaseError(fallbackMembers.error.message), data: null }
+    }
+
+    activeMembersData = (fallbackMembers.data as unknown[]) ?? []
+  } else {
+    return { success: false as const, error: formatDatabaseError(activeMembersWithName.error.message), data: null }
   }
 
-  const agents: AgentOption[] = ((activeMembersData as any) ?? []).map((row: any) => ({
-    user_id: row.user_id,
-    name: row.profiles?.full_name || 'Unknown',
-  }))
+  const agents: AgentOption[] = (activeMembersData as Array<{ user_id: string; profiles?: { name?: string; full_name?: string } }>)
+    .map((row) => ({
+      user_id: row.user_id,
+      name: row.profiles?.name || row.profiles?.full_name || 'Unknown',
+    }))
 
   const activeAgentIds = agents.map((agent) => agent.user_id)
 
@@ -587,7 +685,7 @@ export async function getDashboardData(filters?: {
     .eq('company_id', context.companyId)
     .eq('department_id', selectedDepartmentId)
     .gte('entry_date', range.startDate)
-    .lte('entry_date', range.endDate)
+    .lte('entry_date', range.cutoffDate)
 
   if (effectiveUserId) {
     entriesCurrentQuery = entriesCurrentQuery.eq('user_id', effectiveUserId)
@@ -631,7 +729,7 @@ export async function getDashboardData(filters?: {
       .eq('department_id', selectedDepartmentId)
       .eq('status', 'submitted')
       .gte('entry_date', range.previousStartDate)
-      .lte('entry_date', range.endDate)
+      .lte('entry_date', range.cutoffDate)
 
     if (effectiveUserId) {
       entriesBothQuery = entriesBothQuery.eq('user_id', effectiveUserId)
@@ -684,7 +782,7 @@ export async function getDashboardData(filters?: {
           continue
         }
 
-        if (entryDate >= range.startDate && entryDate <= range.endDate) {
+        if (entryDate >= range.startDate && entryDate <= range.cutoffDate) {
           currentTotals.set(row.metric_id, (currentTotals.get(row.metric_id) ?? 0) + value)
           const metricTrend = trendByMetricDate.get(row.metric_id)
           if (metricTrend) {
@@ -694,7 +792,7 @@ export async function getDashboardData(filters?: {
           if (primaryMetric?.metric_id === row.metric_id) {
             trendPrimaryByDate.set(entryDate, (trendPrimaryByDate.get(entryDate) ?? 0) + value)
           }
-        } else if (entryDate >= range.previousStartDate && entryDate <= range.previousEndDate) {
+        } else if (entryDate >= range.previousStartDate && entryDate <= range.previousCutoffDate) {
           previousTotals.set(row.metric_id, (previousTotals.get(row.metric_id) ?? 0) + value)
         }
       }
@@ -756,6 +854,9 @@ export async function getDashboardData(filters?: {
     windowDays: range.windowDays,
     elapsedDays: range.elapsedDays,
     remainingDays: range.remainingDays,
+    paceTotalUnits: range.paceTotalUnits,
+    paceElapsedUnits: range.paceElapsedUnits,
+    paceUnitLabel: range.paceUnitLabel,
     kpis,
     primaryMetric,
     trend,

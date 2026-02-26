@@ -2,7 +2,6 @@ import { z } from 'zod'
 import { METRIC_DATA_TYPES } from '@/lib/metrics/data-types'
 
 export const metricDataTypeSchema = z.enum(METRIC_DATA_TYPES)
-export const metricDirectionSchema = z.enum(['higher_is_better', 'lower_is_better'])
 export const metricInputModeSchema = z.enum(['manual', 'calculated'])
 
 const optionalStringSchema = z.preprocess(
@@ -36,9 +35,7 @@ export const metricFormSchema = z
     description: optionalStringSchema,
     dataType: metricDataTypeSchema,
     unit: z.string().min(1, 'Unit is required'),
-    direction: metricDirectionSchema,
     inputMode: metricInputModeSchema,
-    precisionScale: z.coerce.number().int().min(0).max(6).default(0),
     expression: optionalStringSchema,
     dependsOnMetricIds: optionalMetricIdsSchema,
   })

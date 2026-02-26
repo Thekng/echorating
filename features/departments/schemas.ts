@@ -7,6 +7,10 @@ export const departmentSchema = z.object({
   type: departmentTypeSchema,
 })
 
+export const departmentIdSchema = z.object({
+  departmentId: z.string().uuid('Invalid department'),
+})
+
 export const departmentFilterSchema = z.object({
   q: z.string().optional(),
   status: z.enum(['all', 'active', 'inactive']).default('all'),
