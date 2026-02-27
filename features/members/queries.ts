@@ -5,11 +5,15 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { requireRole } from '@/lib/rbac/guards'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
 import { memberFilterSchema } from './schemas'
-import { type Role } from '@/lib/rbac/roles'
+import { type Role, isRole } from '@/lib/rbac/roles'
 
-type ProfileRow = {
+type ProfileNameRow = {
   user_id: string
   name: string
+}
+
+type CompanyMembershipRow = {
+  user_id: string
   role: Role
   is_active: boolean
   created_at: string
@@ -37,6 +41,17 @@ type MemberRow = {
   departments: MemberDepartment[]
 }
 
+function isMissingCompanyMembershipsTable(message: string) {
+  return message.toLowerCase().includes('relation "company_memberships" does not exist')
+}
+
+function membershipErrorMessage(message: string) {
+  if (isMissingCompanyMembershipsTable(message)) {
+    return 'Database migration missing: run 2026-02-27_add_company_memberships.sql in Supabase.'
+  }
+  return formatDatabaseError(message)
+}
+
 async function getViewerContext() {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return { ok: false as const, message: 'SUPABASE_SERVICE_ROLE_KEY is missing in environment variables.' }
@@ -55,7 +70,7 @@ async function getViewerContext() {
 
   const { data: profile, error: profileError } = await admin
     .from('profiles')
-    .select('company_id, role')
+    .select('company_id, role, is_active, deleted_at')
     .eq('user_id', user.id)
     .maybeSingle()
 
@@ -63,15 +78,32 @@ async function getViewerContext() {
     return { ok: false as const, message: formatDatabaseError(profileError.message) }
   }
 
-  if (!profile?.company_id || !profile?.role) {
+  if (!profile?.company_id || profile.is_active === false || profile.deleted_at) {
     return { ok: false as const, message: 'Company profile not found.' }
+  }
+
+  const { data: viewerMembership, error: viewerMembershipError } = await admin
+    .from('company_memberships')
+    .select('role, is_active')
+    .eq('company_id', profile.company_id)
+    .eq('user_id', user.id)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (viewerMembershipError) {
+    return { ok: false as const, message: membershipErrorMessage(viewerMembershipError.message) }
+  }
+
+  const viewerRole = viewerMembership?.role ?? profile.role
+  if (!isRole(viewerRole) || viewerMembership?.is_active === false) {
+    return { ok: false as const, message: 'Active company membership not found.' }
   }
 
   return {
     ok: true as const,
     admin,
     companyId: profile.company_id as string,
-    role: profile.role as Role,
+    role: viewerRole,
   }
 }
 
@@ -119,31 +151,46 @@ export async function listMembers(rawFilters?: {
 
   const filters = parsedFilters.data
 
-  let profilesQuery = context.admin
-    .from('profiles')
-    .select('user_id, name, role, is_active, created_at, updated_at')
+  let membershipsQuery = context.admin
+    .from('company_memberships')
+    .select('user_id, role, is_active, created_at, updated_at')
     .eq('company_id', context.companyId)
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
 
   if (filters.role !== 'all') {
-    profilesQuery = profilesQuery.eq('role', filters.role)
+    membershipsQuery = membershipsQuery.eq('role', filters.role)
   }
 
   if (filters.status !== 'all') {
-    profilesQuery = profilesQuery.eq('is_active', filters.status === 'active')
+    membershipsQuery = membershipsQuery.eq('is_active', filters.status === 'active')
   }
 
-  const { data: profilesData, error: profilesError } = await profilesQuery
+  const { data: membershipsData, error: membershipsError } = await membershipsQuery
 
-  if (profilesError) {
-    return { success: false, error: formatDatabaseError(profilesError.message), data: null }
+  if (membershipsError) {
+    return { success: false, error: membershipErrorMessage(membershipsError.message), data: null }
   }
 
-  const profiles = (profilesData ?? []) as ProfileRow[]
-  const userIds = profiles.map((profile) => profile.user_id)
+  const memberships = (membershipsData ?? []) as CompanyMembershipRow[]
+  const userIds = memberships.map((membership) => membership.user_id)
+  const profileNameMap = new Map<string, string>()
+  if (userIds.length > 0) {
+    const { data: profilesData, error: profilesError } = await context.admin
+      .from('profiles')
+      .select('user_id, name')
+      .in('user_id', userIds)
 
-  const emailMap = await getUserEmailMap(context.admin, userIds)
+    if (profilesError) {
+      return { success: false, error: formatDatabaseError(profilesError.message), data: null }
+    }
+
+    for (const profile of (profilesData ?? []) as ProfileNameRow[]) {
+      profileNameMap.set(profile.user_id, profile.name)
+    }
+  }
+
+  const emailMap = userIds.length > 0 ? await getUserEmailMap(context.admin, userIds) : new Map<string, string>()
 
   const { data: companyDepartmentsData, error: companyDepartmentsError } = await context.admin
     .from('departments')
@@ -163,19 +210,19 @@ export async function listMembers(rawFilters?: {
   let membershipsByUser = new Map<string, MemberDepartment[]>()
 
   if (userIds.length > 0) {
-    const { data: membershipsData, error: membershipsError } = await context.admin
+    const { data: departmentMembershipsData, error: departmentMembershipsError } = await context.admin
       .from('department_members')
       .select('user_id, department_id')
       .in('user_id', userIds)
       .eq('is_active', true)
       .is('deleted_at', null)
 
-    if (membershipsError) {
-      return { success: false, error: formatDatabaseError(membershipsError.message), data: null }
+    if (departmentMembershipsError) {
+      return { success: false, error: formatDatabaseError(departmentMembershipsError.message), data: null }
     }
 
-    const memberships = (membershipsData ?? []) as Array<{ user_id: string; department_id: string }>
-    membershipsByUser = memberships.reduce((acc, membership) => {
+    const departmentMemberships = (departmentMembershipsData ?? []) as Array<{ user_id: string; department_id: string }>
+    membershipsByUser = departmentMemberships.reduce((acc, membership) => {
       const departmentName = departmentMap.get(membership.department_id)
       if (!departmentName) {
         return acc
@@ -191,15 +238,15 @@ export async function listMembers(rawFilters?: {
     }, new Map<string, MemberDepartment[]>())
   }
 
-  let members: MemberRow[] = profiles.map((profile) => ({
-    userId: profile.user_id,
-    name: profile.name,
-    email: emailMap.get(profile.user_id) ?? '',
-    role: profile.role,
-    isActive: profile.is_active,
-    createdAt: profile.created_at,
-    updatedAt: profile.updated_at,
-    departments: membershipsByUser.get(profile.user_id) ?? [],
+  let members: MemberRow[] = memberships.map((membership) => ({
+    userId: membership.user_id,
+    name: profileNameMap.get(membership.user_id) ?? 'Unknown user',
+    email: emailMap.get(membership.user_id) ?? '',
+    role: membership.role,
+    isActive: membership.is_active,
+    createdAt: membership.created_at,
+    updatedAt: membership.updated_at,
+    departments: membershipsByUser.get(membership.user_id) ?? [],
   }))
 
   if (filters.q?.trim()) {

@@ -15,7 +15,7 @@ import { ROUTES } from '@/lib/constants/routes'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
 import { sendEmail } from '@/emails/resend'
 import { InviteMemberTemplate } from '@/emails/templates/invite-member'
-import { type Role } from '@/lib/rbac/roles'
+import { type Role, isRole } from '@/lib/rbac/roles'
 
 type MemberFieldKey = 'name' | 'email' | 'role' | 'departmentId' | 'userId' | 'nextStatus'
 
@@ -89,6 +89,93 @@ function hasConfiguredResendKey() {
   return Boolean(key && !key.startsWith('your_'))
 }
 
+function isMissingCompanyMembershipsTable(message: string) {
+  return message.toLowerCase().includes('relation "company_memberships" does not exist')
+}
+
+function membershipErrorMessage(message: string) {
+  if (isMissingCompanyMembershipsTable(message)) {
+    return 'Database migration missing: run 2026-02-27_add_company_memberships.sql in Supabase.'
+  }
+  return formatDatabaseError(message)
+}
+
+async function upsertCompanyMembership(
+  admin: ReturnType<typeof createAdminClient>,
+  companyId: string,
+  userId: string,
+  role: Role,
+  isActive: boolean,
+) {
+  const { error } = await admin.from('company_memberships').upsert(
+    {
+      company_id: companyId,
+      user_id: userId,
+      role,
+      is_active: isActive,
+      deleted_at: null,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'company_id,user_id' },
+  )
+
+  if (error) {
+    return { ok: false as const, message: membershipErrorMessage(error.message) }
+  }
+
+  return { ok: true as const }
+}
+
+async function syncProfileForActiveCompany(
+  admin: ReturnType<typeof createAdminClient>,
+  companyId: string,
+  userId: string,
+  updates: {
+    role?: Role
+    isActive?: boolean
+  },
+) {
+  const { data: profile, error: profileError } = await admin
+    .from('profiles')
+    .select('company_id')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (profileError) {
+    return { ok: false as const, message: formatDatabaseError(profileError.message) }
+  }
+
+  if (!profile || profile.company_id !== companyId) {
+    return { ok: true as const }
+  }
+
+  const payload: {
+    updated_at: string
+    role?: Role
+    is_active?: boolean
+    deleted_at?: null
+  } = {
+    updated_at: new Date().toISOString(),
+  }
+
+  if (updates.role) {
+    payload.role = updates.role
+  }
+
+  if (typeof updates.isActive === 'boolean') {
+    payload.is_active = updates.isActive
+    payload.deleted_at = null
+  }
+
+  const { error: updateError } = await admin.from('profiles').update(payload).eq('user_id', userId)
+
+  if (updateError) {
+    return { ok: false as const, message: formatDatabaseError(updateError.message) }
+  }
+
+  return { ok: true as const }
+}
+
 async function getActorContext() {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return {
@@ -110,7 +197,7 @@ async function getActorContext() {
 
   const { data: profile, error: profileError } = await admin
     .from('profiles')
-    .select('company_id, role')
+    .select('company_id, role, is_active, deleted_at')
     .eq('user_id', user.id)
     .maybeSingle()
 
@@ -118,8 +205,25 @@ async function getActorContext() {
     return { ok: false as const, message: formatDatabaseError(profileError.message) }
   }
 
-  if (!profile?.company_id || !profile?.role) {
+  if (!profile?.company_id || profile.is_active === false || profile.deleted_at) {
     return { ok: false as const, message: 'Company profile not found.' }
+  }
+
+  const { data: actorMembership, error: actorMembershipError } = await admin
+    .from('company_memberships')
+    .select('role, is_active')
+    .eq('company_id', profile.company_id)
+    .eq('user_id', user.id)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (actorMembershipError) {
+    return { ok: false as const, message: membershipErrorMessage(actorMembershipError.message) }
+  }
+
+  const actorRole = actorMembership?.role ?? profile.role
+  if (!isRole(actorRole) || actorMembership?.is_active === false) {
+    return { ok: false as const, message: 'Active company membership not found.' }
   }
 
   const { data: company, error: companyError } = await admin
@@ -137,7 +241,7 @@ async function getActorContext() {
     admin,
     userId: user.id,
     companyId: profile.company_id as string,
-    role: profile.role as Role,
+    role: actorRole,
     companyName: company?.name ?? 'your company',
   }
 }
@@ -298,7 +402,7 @@ export async function createMemberAction(
 
   const { data: existingProfile, error: existingProfileError } = await context.admin
     .from('profiles')
-    .select('company_id')
+    .select('company_id, name')
     .eq('user_id', targetUserId)
     .maybeSingle()
 
@@ -306,27 +410,56 @@ export async function createMemberAction(
     return actionError(formatDatabaseError(existingProfileError.message))
   }
 
-  if (existingProfile?.company_id && existingProfile.company_id !== context.companyId) {
-    return actionError('This user already belongs to another company.', {
-      email: 'This email is already tied to another company.',
-    })
-  }
+  const nextName = parsed.data.name.trim()
+  if (existingProfile) {
+    const shouldUpdateName = (existingProfile.name ?? '').trim() !== nextName
+    if (shouldUpdateName) {
+      const { error: updateProfileError } = await context.admin
+        .from('profiles')
+        .update({
+          name: nextName,
+          deleted_at: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('user_id', targetUserId)
 
-  const { error: upsertProfileError } = await context.admin.from('profiles').upsert(
-    {
+      if (updateProfileError) {
+        return actionError(formatDatabaseError(updateProfileError.message))
+      }
+    }
+  } else {
+    const { error: insertProfileError } = await context.admin.from('profiles').insert({
       user_id: targetUserId,
       company_id: context.companyId,
-      name: parsed.data.name.trim(),
+      name: nextName,
       role: parsed.data.role,
       is_active: true,
       deleted_at: null,
       updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'user_id' },
-  )
+    })
 
-  if (upsertProfileError) {
-    return actionError(formatDatabaseError(upsertProfileError.message))
+    if (insertProfileError) {
+      return actionError(formatDatabaseError(insertProfileError.message))
+    }
+  }
+
+  const upsertMembershipResult = await upsertCompanyMembership(
+    context.admin,
+    context.companyId,
+    targetUserId,
+    parsed.data.role,
+    true,
+  )
+  if (!upsertMembershipResult.ok) {
+    return actionError(upsertMembershipResult.message)
+  }
+
+  const syncProfileResult = await syncProfileForActiveCompany(context.admin, context.companyId, targetUserId, {
+    role: parsed.data.role,
+    isActive: true,
+  })
+  if (!syncProfileResult.ok) {
+    return actionError(syncProfileResult.message)
   }
 
   const clearDepartmentsResult = await clearMemberDepartments(context.admin, context.companyId, targetUserId)
@@ -372,9 +505,8 @@ export async function createMemberAction(
     }
   }
 
-  let emailMessage = invitedNow
-    ? 'Member invited and profile created.'
-    : 'Member profile created for existing auth user.'
+  let inviteSent = invitedNow
+  let inviteFailed = false
 
   if (isResendInviteEnabled() && hasConfiguredResendKey()) {
     const inviteUrl = `${appBaseUrl()}${ROUTES.LOGIN}?email=${encodeURIComponent(normalizedEmail)}`
@@ -389,13 +521,17 @@ export async function createMemberAction(
     })
 
     if (!emailResult.success) {
-      emailMessage += ' Invite email failed to send via Resend.'
+      inviteFailed = !invitedNow
     } else {
-      emailMessage += ' Invite email sent via Resend.'
+      inviteSent = true
     }
-  } else {
-    emailMessage += ' Invite delivery configured via Supabase Auth email.'
   }
+
+  const emailMessage = inviteSent
+    ? 'Invitation sent. Check invitee inbox.'
+    : inviteFailed
+      ? 'Member added, but we could not send the invitation email. Please try again.'
+      : 'Member added successfully.'
 
   revalidatePath(ROUTES.SETTINGS_MEMBERS)
   return actionSuccess(emailMessage)
@@ -425,41 +561,49 @@ export async function updateMemberRoleAction(
     return actionError('Insufficient permissions.')
   }
 
-  const { data: targetProfile, error: targetProfileError } = await context.admin
-    .from('profiles')
+  const { data: targetMembership, error: targetMembershipError } = await context.admin
+    .from('company_memberships')
     .select('user_id, role')
     .eq('user_id', parsed.data.userId)
     .eq('company_id', context.companyId)
     .is('deleted_at', null)
     .maybeSingle()
 
-  if (targetProfileError) {
-    return actionError(formatDatabaseError(targetProfileError.message))
+  if (targetMembershipError) {
+    return actionError(membershipErrorMessage(targetMembershipError.message))
   }
 
-  if (!targetProfile) {
+  if (!targetMembership) {
     return actionError('Member not found.', {
       userId: 'Member no longer exists.',
     })
   }
 
-  if (context.role !== 'owner' && (targetProfile.role === 'owner' || parsed.data.role === 'owner')) {
+  if (context.role !== 'owner' && (targetMembership.role === 'owner' || parsed.data.role === 'owner')) {
     return actionError('Only owners can change owner roles.', {
       role: 'Only owners can change owner roles.',
     })
   }
 
   const { error: updateError } = await context.admin
-    .from('profiles')
+    .from('company_memberships')
     .update({
       role: parsed.data.role,
+      deleted_at: null,
       updated_at: new Date().toISOString(),
     })
-    .eq('user_id', targetProfile.user_id)
+    .eq('user_id', targetMembership.user_id)
     .eq('company_id', context.companyId)
 
   if (updateError) {
-    return actionError(formatDatabaseError(updateError.message))
+    return actionError(membershipErrorMessage(updateError.message))
+  }
+
+  const syncProfileResult = await syncProfileForActiveCompany(context.admin, context.companyId, targetMembership.user_id, {
+    role: parsed.data.role,
+  })
+  if (!syncProfileResult.ok) {
+    return actionError(syncProfileResult.message)
   }
 
   revalidatePath(ROUTES.SETTINGS_MEMBERS)
@@ -490,25 +634,25 @@ export async function assignMemberDepartmentAction(
     return actionError('Insufficient permissions.')
   }
 
-  const { data: targetProfile, error: targetProfileError } = await context.admin
-    .from('profiles')
+  const { data: targetMembership, error: targetMembershipError } = await context.admin
+    .from('company_memberships')
     .select('user_id, is_active')
     .eq('user_id', parsed.data.userId)
     .eq('company_id', context.companyId)
     .is('deleted_at', null)
     .maybeSingle()
 
-  if (targetProfileError) {
-    return actionError(formatDatabaseError(targetProfileError.message))
+  if (targetMembershipError) {
+    return actionError(membershipErrorMessage(targetMembershipError.message))
   }
 
-  if (!targetProfile) {
+  if (!targetMembership) {
     return actionError('Member not found.', {
       userId: 'Member no longer exists.',
     })
   }
 
-  if (!targetProfile.is_active) {
+  if (!targetMembership.is_active) {
     return actionError('Cannot assign departments to an inactive member.')
   }
 
@@ -582,49 +726,56 @@ export async function toggleMemberStatusAction(formData: FormData): Promise<Memb
     return actionError('Insufficient permissions.')
   }
 
-  const { data: targetProfile, error: targetProfileError } = await context.admin
-    .from('profiles')
+  const { data: targetMembership, error: targetMembershipError } = await context.admin
+    .from('company_memberships')
     .select('user_id, role, is_active')
     .eq('user_id', parsed.data.userId)
     .eq('company_id', context.companyId)
     .is('deleted_at', null)
     .maybeSingle()
 
-  if (targetProfileError || !targetProfile) {
-    return actionError(formatDatabaseError(targetProfileError?.message ?? 'Member not found.'), {
+  if (targetMembershipError || !targetMembership) {
+    return actionError(membershipErrorMessage(targetMembershipError?.message ?? 'Member not found.'), {
       userId: 'Member not found.',
     })
   }
 
-  if (targetProfile.user_id === context.userId && parsed.data.nextStatus === 'inactive') {
+  if (targetMembership.user_id === context.userId && parsed.data.nextStatus === 'inactive') {
     return actionError('You cannot deactivate your own account.')
   }
 
-  if (context.role !== 'owner' && targetProfile.role === 'owner') {
+  if (context.role !== 'owner' && targetMembership.role === 'owner') {
     return actionError('Only owners can change owner status.')
   }
 
   const nextActive = parsed.data.nextStatus === 'active'
-  if (targetProfile.is_active === nextActive) {
+  if (targetMembership.is_active === nextActive) {
     return actionSuccess(nextActive ? 'Member is already active.' : 'Member is already inactive.')
   }
 
-  const { error: updateProfileError } = await context.admin
-    .from('profiles')
+  const { error: updateMembershipError } = await context.admin
+    .from('company_memberships')
     .update({
       is_active: nextActive,
       deleted_at: null,
       updated_at: new Date().toISOString(),
     })
-    .eq('user_id', targetProfile.user_id)
+    .eq('user_id', targetMembership.user_id)
     .eq('company_id', context.companyId)
 
-  if (updateProfileError) {
-    return actionError(formatDatabaseError(updateProfileError.message))
+  if (updateMembershipError) {
+    return actionError(membershipErrorMessage(updateMembershipError.message))
+  }
+
+  const syncProfileResult = await syncProfileForActiveCompany(context.admin, context.companyId, targetMembership.user_id, {
+    isActive: nextActive,
+  })
+  if (!syncProfileResult.ok) {
+    return actionError(syncProfileResult.message)
   }
 
   if (!nextActive) {
-    const clearDepartmentsResult = await clearMemberDepartments(context.admin, context.companyId, targetProfile.user_id)
+    const clearDepartmentsResult = await clearMemberDepartments(context.admin, context.companyId, targetMembership.user_id)
     if (!clearDepartmentsResult.ok) {
       return actionError(clearDepartmentsResult.message)
     }
