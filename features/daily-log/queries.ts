@@ -27,6 +27,11 @@ function isMissingMetricsSettingsColumn(message: string) {
   return normalized.includes('column metrics.settings does not exist')
 }
 
+function isMissingMetricsSortOrderColumn(message: string) {
+  const normalized = message.toLowerCase()
+  return normalized.includes('column metrics.sort_order does not exist')
+}
+
 async function getManualMetricsForDailyLog(
   admin: ReturnType<typeof createAdminClient>,
   companyId: string,
@@ -34,12 +39,13 @@ async function getManualMetricsForDailyLog(
 ) {
   const withSettingsQuery = admin
     .from('metrics')
-    .select('metric_id, name, code, data_type, unit, settings, description')
+    .select('metric_id, name, code, data_type, unit, settings, description, sort_order')
     .eq('company_id', companyId)
     .eq('department_id', departmentId)
     .eq('is_active', true)
     .eq('input_mode', 'manual')
     .is('deleted_at', null)
+    .order('sort_order', { ascending: true, nullsFirst: false })
     .order('name', { ascending: true })
 
   const withSettings = await withSettingsQuery
@@ -50,7 +56,32 @@ async function getManualMetricsForDailyLog(
     }
   }
 
-  if (!isMissingMetricsSettingsColumn(withSettings.error.message)) {
+  if (isMissingMetricsSortOrderColumn(withSettings.error.message)) {
+    const sortFallback = await admin
+      .from('metrics')
+      .select('metric_id, name, code, data_type, unit, settings, description')
+      .eq('company_id', companyId)
+      .eq('department_id', departmentId)
+      .eq('is_active', true)
+      .eq('input_mode', 'manual')
+      .is('deleted_at', null)
+      .order('name', { ascending: true })
+
+    if (!sortFallback.error) {
+      return {
+        ok: true as const,
+        metrics: (sortFallback.data ?? []) as DailyLogMetric[],
+      }
+    }
+
+    if (!isMissingMetricsSettingsColumn(sortFallback.error.message)) {
+      return {
+        ok: false as const,
+        message: formatDatabaseError(sortFallback.error.message),
+        metrics: [] as DailyLogMetric[],
+      }
+    }
+  } else if (!isMissingMetricsSettingsColumn(withSettings.error.message)) {
     return {
       ok: false as const,
       message: formatDatabaseError(withSettings.error.message),
@@ -60,19 +91,52 @@ async function getManualMetricsForDailyLog(
 
   const fallback = await admin
     .from('metrics')
-    .select('metric_id, name, code, data_type, unit, description')
+    .select('metric_id, name, code, data_type, unit, description, sort_order')
     .eq('company_id', companyId)
     .eq('department_id', departmentId)
     .eq('is_active', true)
     .eq('input_mode', 'manual')
     .is('deleted_at', null)
+    .order('sort_order', { ascending: true, nullsFirst: false })
     .order('name', { ascending: true })
 
-  if (fallback.error) {
+  if (fallback.error && !isMissingMetricsSortOrderColumn(fallback.error.message)) {
     return {
       ok: false as const,
       message: formatDatabaseError(fallback.error.message),
       metrics: [] as DailyLogMetric[],
+    }
+  }
+
+  if (fallback.error && isMissingMetricsSortOrderColumn(fallback.error.message)) {
+    const noSortFallback = await admin
+      .from('metrics')
+      .select('metric_id, name, code, data_type, unit, description')
+      .eq('company_id', companyId)
+      .eq('department_id', departmentId)
+      .eq('is_active', true)
+      .eq('input_mode', 'manual')
+      .is('deleted_at', null)
+      .order('name', { ascending: true })
+
+    if (noSortFallback.error) {
+      return {
+        ok: false as const,
+        message: formatDatabaseError(noSortFallback.error.message),
+        metrics: [] as DailyLogMetric[],
+      }
+    }
+
+    const metrics = ((noSortFallback.data ?? []) as Array<Omit<DailyLogMetric, 'settings'> & { settings?: unknown }>).map(
+      (metric) => ({
+        ...metric,
+        settings: null,
+      }),
+    )
+
+    return {
+      ok: true as const,
+      metrics,
     }
   }
 
@@ -296,9 +360,7 @@ async function getKeyMetrics(
   departmentId: string,
   metrics: DailyLogMetric[],
 ) {
-  const candidates = metrics
-    .slice()
-    .sort((a, b) => a.name.localeCompare(b.name))
+  const candidates = metrics.slice()
 
   const { data: configuredRows, error: configuredRowsError } = await admin
     .from('department_log_key_metrics')

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from 'react'
 import { listMetrics } from '@/features/metrics/queries'
-import { deleteMetricAction, toggleMetricStatusAction } from '@/features/metrics/actions'
+import { deleteMetricAction, reorderMetricAction, toggleMetricStatusAction } from '@/features/metrics/actions'
 import { SettingsHeader } from '@/components/settings/settings-header'
 import { SettingsSurface } from '@/components/settings/settings-surface'
 import { SettingsEmptyState } from '@/components/settings/settings-empty-state'
@@ -11,7 +11,7 @@ import { CreateMetricModal } from '@/components/metrics/create-metric-modal'
 import { EditMetricModal } from '@/components/metrics/edit-metric-modal'
 import { Button } from '@/components/ui/button'
 import { areMetricFiltersEqual } from '@/features/settings/helpers'
-import { Gauge, Power, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Gauge, Power, Trash2 } from 'lucide-react'
 
 type MetricSettings = Record<string, unknown> | null
 
@@ -26,6 +26,7 @@ type MetricListItem = {
   unit: string
   settings: MetricSettings
   input_mode: 'manual' | 'calculated'
+  sort_order: number | null
   is_active: boolean
   formula_expression: string | null
   created_at: string
@@ -89,7 +90,10 @@ export default function MetricsSettingsPage() {
   const [error, setError] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<Feedback | null>(null)
 
-  const [pendingAction, setPendingAction] = useState<{ metricId: string; type: 'toggle' | 'delete' } | null>(null)
+  const [pendingAction, setPendingAction] = useState<{
+    metricId: string
+    type: 'toggle' | 'delete' | 'move-up' | 'move-down'
+  } | null>(null)
   const [isMutating, startMutationTransition] = useTransition()
 
   async function fetchMetrics(filters: MetricFilters) {
@@ -196,6 +200,28 @@ export default function MetricsSettingsPage() {
     })
   }
 
+  function handleReorderMetric(metric: MetricListItem, direction: 'up' | 'down') {
+    setPendingAction({ metricId: metric.metric_id, type: direction === 'up' ? 'move-up' : 'move-down' })
+
+    startMutationTransition(async () => {
+      const formData = new FormData()
+      formData.set('metricId', metric.metric_id)
+      formData.set('direction', direction)
+
+      const result = await reorderMetricAction(formData)
+      setFeedback({
+        tone: result.status === 'success' ? 'success' : 'error',
+        message: result.message,
+      })
+
+      if (result.status === 'success') {
+        await fetchMetrics(queryFilters)
+      }
+
+      setPendingAction(null)
+    })
+  }
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -248,6 +274,11 @@ export default function MetricsSettingsPage() {
       ) : null}
 
       <SettingsSurface>
+        {queryFilters.departmentId === 'all' ? (
+          <p className="mb-3 text-xs text-muted-foreground">
+            Select a specific department to reorder metrics.
+          </p>
+        ) : null}
         <form
           className="grid gap-3 md:grid-cols-5"
           onSubmit={(event) => {
@@ -355,10 +386,13 @@ export default function MetricsSettingsPage() {
                 </tr>
               </thead>
               <tbody>
-                {metrics.map((metric) => {
+                {metrics.map((metric, index) => {
                   const rowPending = isMutating && pendingAction?.metricId === metric.metric_id
                   const togglePending = rowPending && pendingAction?.type === 'toggle'
                   const deletePending = rowPending && pendingAction?.type === 'delete'
+                  const moveUpPending = rowPending && pendingAction?.type === 'move-up'
+                  const moveDownPending = rowPending && pendingAction?.type === 'move-down'
+                  const reorderEnabled = queryFilters.departmentId !== 'all'
 
                   return (
                     <tr key={metric.metric_id} className="border-b align-top">
@@ -390,6 +424,30 @@ export default function MetricsSettingsPage() {
                       </td>
                       <td className="px-3 py-3">
                         <div className="flex justify-end gap-2">
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            title={`Move ${metric.name} up`}
+                            aria-label={`Move ${metric.name} up`}
+                            onClick={() => handleReorderMetric(metric, 'up')}
+                            disabled={!reorderEnabled || moveUpPending || index === 0}
+                          >
+                            <ArrowUp className="size-4" />
+                          </Button>
+
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            title={`Move ${metric.name} down`}
+                            aria-label={`Move ${metric.name} down`}
+                            onClick={() => handleReorderMetric(metric, 'down')}
+                            disabled={!reorderEnabled || moveDownPending || index === metrics.length - 1}
+                          >
+                            <ArrowDown className="size-4" />
+                          </Button>
+
                           <EditMetricModal
                             metric={metric}
                             departments={departments}

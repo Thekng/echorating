@@ -13,6 +13,7 @@ type DashboardInteractiveProps = {
   primaryMetricId?: string | null
   period: 'today' | 'current_week' | 'this_month' | 'custom'
   windowDays: number
+  elapsedDays: number
   paceTotalUnits: number
   paceElapsedUnits: number
   paceUnitLabel: 'workday'
@@ -102,6 +103,7 @@ export function DashboardInteractive({
   primaryMetricId,
   period,
   windowDays,
+  elapsedDays,
   paceTotalUnits,
   paceElapsedUnits,
   paceUnitLabel,
@@ -147,7 +149,7 @@ export function DashboardInteractive({
             const averageValue =
               kpi.data_type === 'percent'
                 ? null
-                : calculateAverageValue(kpi.current_value, paceElapsedUnits)
+                : calculateAverageValue(kpi.current_value, elapsedDays)
             const projectedLabel =
               projectedValue === null
                 ? '—'
@@ -202,9 +204,9 @@ export function DashboardInteractive({
                 <div className="mt-2 flex items-center justify-between gap-2">
                   <p
                     className="truncate text-[11px] text-muted-foreground"
-                    title={`Average per ${paceUnitLabel} so far. Avg = Actual ÷ ${paceElapsedUnits} elapsed.`}
+                    title={`Average per day so far. Avg = Actual ÷ ${elapsedDays} elapsed day${elapsedDays === 1 ? '' : 's'}.`}
                   >
-                    Avg/{paceUnitLabel}: {averageLabel}
+                    Avg/day: {averageLabel}
                   </p>
                   <span
                     className={`rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${changeChipTone(changeToneValue)}`}

@@ -31,6 +31,7 @@ export type LeaderboardMetric = {
   code: string
   data_type: MetricDataType
   unit: string
+  sort_order?: number | null
 }
 
 export type LeaderboardRow = {
@@ -62,25 +63,6 @@ const PERIOD_ALIASES: Record<IncomingLeaderboardPeriod, LeaderboardPeriod> = {
   this_month: 'this_month',
   custom: 'custom',
 }
-
-const DEFAULT_DEPARTMENT_METRIC_PRIORITY = [
-  'premium',
-  'premium_quoted',
-  'premium_sold',
-  'households',
-  'quoted_households',
-  'policies',
-  'policies_sold',
-  'items',
-  'items_sold',
-  'calls',
-  'outbound_calls',
-  'talk_time',
-  'talk_time_min',
-  'life_apps',
-  'new_conversations',
-  'follow_ups_completed',
-]
 
 function dateKeyUtc(date: Date) {
   return [
@@ -167,6 +149,10 @@ function resolveDateRange(
 function isMissingProfileNameColumn(message: string) {
   const normalized = message.toLowerCase()
   return normalized.includes('column profiles_1.name does not exist')
+}
+
+function isMissingMetricsSortOrderColumn(message: string) {
+  return message.toLowerCase().includes('column metrics.sort_order does not exist')
 }
 
 async function getViewerContext() {
@@ -279,51 +265,50 @@ async function getDepartmentMetrics(
   companyId: string,
   departmentId: string,
 ) {
-  const { data: metricsData, error: metricsError } = await admin
+  const withSort = await admin
     .from('metrics')
-    .select('metric_id, name, code, data_type, unit')
+    .select('metric_id, name, code, data_type, unit, sort_order')
     .eq('company_id', companyId)
     .eq('department_id', departmentId)
     .eq('is_active', true)
     .in('data_type', RANKING_METRIC_TYPES)
     .is('deleted_at', null)
+    .order('sort_order', { ascending: true, nullsFirst: false })
+    .order('name', { ascending: true })
 
-  if (metricsError) {
+  let metrics: LeaderboardMetric[] = []
+  if (!withSort.error) {
+    metrics = (withSort.data ?? []) as LeaderboardMetric[]
+  } else if (isMissingMetricsSortOrderColumn(withSort.error.message)) {
+    const fallback = await admin
+      .from('metrics')
+      .select('metric_id, name, code, data_type, unit')
+      .eq('company_id', companyId)
+      .eq('department_id', departmentId)
+      .eq('is_active', true)
+      .in('data_type', RANKING_METRIC_TYPES)
+      .is('deleted_at', null)
+      .order('name', { ascending: true })
+
+    if (fallback.error) {
+      return {
+        ok: false as const,
+        message: formatDatabaseError(fallback.error.message),
+        metrics: [] as LeaderboardMetric[],
+      }
+    }
+
+    metrics = (fallback.data ?? []) as LeaderboardMetric[]
+  } else {
     return {
       ok: false as const,
-      message: formatDatabaseError(metricsError.message),
+      message: formatDatabaseError(withSort.error.message),
       metrics: [] as LeaderboardMetric[],
     }
   }
 
-  const metrics = (metricsData ?? []) as LeaderboardMetric[]
   if (metrics.length === 0) {
     return { ok: true as const, metrics: [] as LeaderboardMetric[] }
-  }
-
-  const { data: keyMetricRows } = await admin
-    .from('department_log_key_metrics')
-    .select('slot, metric_id')
-    .eq('department_id', departmentId)
-    .order('slot', { ascending: true })
-
-  const keyMetricRank = new Map<string, number>()
-  for (const row of (keyMetricRows ?? []) as Array<{ slot: number; metric_id: string }>) {
-    keyMetricRank.set(row.metric_id, row.slot)
-  }
-
-  const metricPriority = (metric: LeaderboardMetric) => {
-    const slot = keyMetricRank.get(metric.metric_id)
-    if (slot !== undefined) {
-      return slot
-    }
-
-    const codeIndex = DEFAULT_DEPARTMENT_METRIC_PRIORITY.indexOf(metric.code)
-    if (codeIndex !== -1) {
-      return 100 + codeIndex
-    }
-
-    return 1000
   }
 
   return {
@@ -331,8 +316,8 @@ async function getDepartmentMetrics(
     metrics: metrics
       .slice()
       .sort((left, right) => {
-        const leftPriority = metricPriority(left)
-        const rightPriority = metricPriority(right)
+        const leftPriority = left.sort_order ?? Number.MAX_SAFE_INTEGER
+        const rightPriority = right.sort_order ?? Number.MAX_SAFE_INTEGER
         if (leftPriority !== rightPriority) {
           return leftPriority - rightPriority
         }
@@ -624,4 +609,3 @@ export async function getLeaderboard(opts: {
     },
   }
 }
-

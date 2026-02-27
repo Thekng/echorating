@@ -353,6 +353,10 @@ function isMissingMetricsSettingsColumn(message: string) {
   return message.toLowerCase().includes('column metrics.settings does not exist')
 }
 
+function isMissingMetricsSortOrderColumn(message: string) {
+  return message.toLowerCase().includes('column metrics.sort_order does not exist')
+}
+
 async function resolveDepartmentMetrics(
   admin: ReturnType<typeof createAdminClient>,
   companyId: string,
@@ -360,15 +364,39 @@ async function resolveDepartmentMetrics(
 ) {
   const withSettings = await admin
     .from('metrics')
-    .select('metric_id, name, code, data_type, unit, settings')
+    .select('metric_id, name, code, data_type, unit, settings, sort_order')
     .eq('company_id', companyId)
     .eq('department_id', departmentId)
     .eq('is_active', true)
     .is('deleted_at', null)
+    .order('sort_order', { ascending: true, nullsFirst: false })
     .order('name', { ascending: true })
 
   if (!withSettings.error) {
     return { ok: true as const, metrics: (withSettings.data ?? []) as DepartmentMetric[] }
+  }
+
+  if (isMissingMetricsSortOrderColumn(withSettings.error.message)) {
+    const sortFallback = await admin
+      .from('metrics')
+      .select('metric_id, name, code, data_type, unit, settings')
+      .eq('company_id', companyId)
+      .eq('department_id', departmentId)
+      .eq('is_active', true)
+      .is('deleted_at', null)
+      .order('name', { ascending: true })
+
+    if (!sortFallback.error) {
+      return { ok: true as const, metrics: (sortFallback.data ?? []) as DepartmentMetric[] }
+    }
+
+    if (!isMissingMetricsSettingsColumn(sortFallback.error.message)) {
+      return {
+        ok: false as const,
+        message: formatDatabaseError(sortFallback.error.message),
+        metrics: [] as DepartmentMetric[],
+      }
+    }
   }
 
   if (!isMissingMetricsSettingsColumn(withSettings.error.message)) {
@@ -381,18 +409,46 @@ async function resolveDepartmentMetrics(
 
   const fallback = await admin
     .from('metrics')
-    .select('metric_id, name, code, data_type, unit')
+    .select('metric_id, name, code, data_type, unit, sort_order')
     .eq('company_id', companyId)
     .eq('department_id', departmentId)
     .eq('is_active', true)
     .is('deleted_at', null)
+    .order('sort_order', { ascending: true, nullsFirst: false })
     .order('name', { ascending: true })
 
-  if (fallback.error) {
+  if (fallback.error && !isMissingMetricsSortOrderColumn(fallback.error.message)) {
     return {
       ok: false as const,
       message: formatDatabaseError(fallback.error.message),
       metrics: [] as DepartmentMetric[],
+    }
+  }
+
+  if (fallback.error && isMissingMetricsSortOrderColumn(fallback.error.message)) {
+    const noSortFallback = await admin
+      .from('metrics')
+      .select('metric_id, name, code, data_type, unit')
+      .eq('company_id', companyId)
+      .eq('department_id', departmentId)
+      .eq('is_active', true)
+      .is('deleted_at', null)
+      .order('name', { ascending: true })
+
+    if (noSortFallback.error) {
+      return {
+        ok: false as const,
+        message: formatDatabaseError(noSortFallback.error.message),
+        metrics: [] as DepartmentMetric[],
+      }
+    }
+
+    return {
+      ok: true as const,
+      metrics: ((noSortFallback.data ?? []) as Array<Omit<DepartmentMetric, 'settings'>>).map((metric) => ({
+        ...metric,
+        settings: null,
+      })),
     }
   }
 

@@ -73,6 +73,7 @@ async function DashboardContent({
     startDate: resolvedStartDate,
     endDate: resolvedEndDate,
     windowDays,
+    elapsedDays,
     paceTotalUnits,
     paceElapsedUnits,
     paceUnitLabel,
@@ -112,6 +113,7 @@ async function DashboardContent({
           primaryMetricId={primaryMetric?.metric_id ?? null}
           period={resolvedPeriod}
           windowDays={windowDays}
+          elapsedDays={elapsedDays}
           paceTotalUnits={paceTotalUnits}
           paceElapsedUnits={paceElapsedUnits}
           paceUnitLabel={paceUnitLabel}

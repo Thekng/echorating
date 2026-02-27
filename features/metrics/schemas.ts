@@ -64,3 +64,8 @@ export const metricStatusSchema = z.object({
 export const metricDeleteSchema = z.object({
   metricId: z.string().uuid('Invalid metric'),
 })
+
+export const metricReorderSchema = z.object({
+  metricId: z.string().uuid('Invalid metric'),
+  direction: z.enum(['up', 'down']),
+})

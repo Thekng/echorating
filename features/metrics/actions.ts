@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-import { metricDeleteSchema, metricFormSchema, metricStatusSchema } from './schemas'
+import { metricDeleteSchema, metricFormSchema, metricReorderSchema, metricStatusSchema } from './schemas'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireRole } from '@/lib/rbac/guards'
@@ -213,12 +213,24 @@ function mapMetricDatabaseError(message: string): MetricActionState {
   return actionError(formatDatabaseError(message))
 }
 
+function revalidateMetricConsumerPaths() {
+  revalidateMetricConsumerPaths()
+  revalidatePath(ROUTES.DAILY_LOG)
+  revalidatePath(ROUTES.DASHBOARD)
+  revalidatePath(ROUTES.LEADERBOARD)
+  revalidatePath(ROUTES.ACCOUNTABILITY)
+}
+
 function requiresLegacyMetricColumns(message: string) {
   const lowered = message.toLowerCase()
   return (
     lowered.includes('null value in column "direction"') ||
     lowered.includes('null value in column "precision_scale"')
   )
+}
+
+function isMissingMetricsSortOrderColumn(message: string) {
+  return message.toLowerCase().includes('column metrics.sort_order does not exist')
 }
 
 function isMissingTypedFormulaColumns(message: string) {
@@ -242,6 +254,139 @@ function legacyPrecisionScaleForDataType(dataType: MetricDataType) {
   return 0
 }
 
+async function getNextMetricSortOrder(
+  admin: ReturnType<typeof createAdminClient>,
+  companyId: string,
+  departmentId: string,
+  excludeMetricId?: string,
+) {
+  let withSortQuery = admin
+    .from('metrics')
+    .select('sort_order')
+    .eq('company_id', companyId)
+    .eq('department_id', departmentId)
+    .is('deleted_at', null)
+    .order('sort_order', { ascending: false, nullsFirst: false })
+    .limit(1)
+
+  if (excludeMetricId) {
+    withSortQuery = withSortQuery.neq('metric_id', excludeMetricId)
+  }
+
+  const withSort = await withSortQuery.maybeSingle()
+
+  if (!withSort.error) {
+    const currentMax = typeof withSort.data?.sort_order === 'number' ? withSort.data.sort_order : 0
+    return { ok: true as const, nextSortOrder: currentMax + 1 }
+  }
+
+  if (!isMissingMetricsSortOrderColumn(withSort.error.message)) {
+    return { ok: false as const, message: formatDatabaseError(withSort.error.message), nextSortOrder: 1 }
+  }
+
+  let fallbackCountQuery = admin
+    .from('metrics')
+    .select('metric_id', { count: 'exact', head: true })
+    .eq('company_id', companyId)
+    .eq('department_id', departmentId)
+    .is('deleted_at', null)
+
+  if (excludeMetricId) {
+    fallbackCountQuery = fallbackCountQuery.neq('metric_id', excludeMetricId)
+  }
+
+  const fallbackCount = await fallbackCountQuery
+  if (fallbackCount.error) {
+    return {
+      ok: false as const,
+      message: formatDatabaseError(fallbackCount.error.message),
+      nextSortOrder: 1,
+    }
+  }
+
+  return { ok: true as const, nextSortOrder: (fallbackCount.count ?? 0) + 1 }
+}
+
+async function listDepartmentMetricIdsInOrder(
+  admin: ReturnType<typeof createAdminClient>,
+  companyId: string,
+  departmentId: string,
+) {
+  const withSort = await admin
+    .from('metrics')
+    .select('metric_id, sort_order, created_at')
+    .eq('company_id', companyId)
+    .eq('department_id', departmentId)
+    .is('deleted_at', null)
+    .order('sort_order', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: true })
+    .order('metric_id', { ascending: true })
+
+  if (!withSort.error) {
+    return {
+      ok: true as const,
+      metricIds: ((withSort.data ?? []) as Array<{ metric_id: string }>).map((row) => row.metric_id),
+    }
+  }
+
+  if (!isMissingMetricsSortOrderColumn(withSort.error.message)) {
+    return {
+      ok: false as const,
+      message: formatDatabaseError(withSort.error.message),
+      metricIds: [] as string[],
+    }
+  }
+
+  const fallback = await admin
+    .from('metrics')
+    .select('metric_id, created_at')
+    .eq('company_id', companyId)
+    .eq('department_id', departmentId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: true })
+    .order('metric_id', { ascending: true })
+
+  if (fallback.error) {
+    return {
+      ok: false as const,
+      message: formatDatabaseError(fallback.error.message),
+      metricIds: [] as string[],
+    }
+  }
+
+  return {
+    ok: true as const,
+    metricIds: ((fallback.data ?? []) as Array<{ metric_id: string }>).map((row) => row.metric_id),
+  }
+}
+
+async function persistDepartmentMetricOrder(
+  admin: ReturnType<typeof createAdminClient>,
+  companyId: string,
+  departmentId: string,
+  orderedMetricIds: string[],
+) {
+  for (let index = 0; index < orderedMetricIds.length; index += 1) {
+    const metricId = orderedMetricIds[index]
+    const { error: updateError } = await admin
+      .from('metrics')
+      .update({
+        sort_order: index + 1,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('company_id', companyId)
+      .eq('department_id', departmentId)
+      .eq('metric_id', metricId)
+      .is('deleted_at', null)
+
+    if (updateError) {
+      return { ok: false as const, message: formatDatabaseError(updateError.message) }
+    }
+  }
+
+  return { ok: true as const }
+}
+
 async function insertMetricCompat(
   admin: ReturnType<typeof createAdminClient>,
   payload: {
@@ -254,16 +399,51 @@ async function insertMetricCompat(
     unit: string
     settings: MetricSettings
     input_mode: 'manual' | 'calculated'
+    sort_order?: number
     is_active: boolean
   },
 ) {
+  const payloadWithoutSort = Object.fromEntries(
+    Object.entries(payload).filter(([key]) => key !== 'sort_order'),
+  ) as Omit<typeof payload, 'sort_order'>
+
   const firstAttempt = await admin
     .from('metrics')
     .insert(payload)
     .select('metric_id')
     .maybeSingle()
 
-  if (!firstAttempt.error || !requiresLegacyMetricColumns(firstAttempt.error.message)) {
+  if (!firstAttempt.error) {
+    return firstAttempt
+  }
+
+  if (isMissingMetricsSortOrderColumn(firstAttempt.error.message)) {
+    const retryWithoutSort = await admin
+      .from('metrics')
+      .insert(payloadWithoutSort)
+      .select('metric_id')
+      .maybeSingle()
+
+    if (!retryWithoutSort.error) {
+      return retryWithoutSort
+    }
+
+    if (!requiresLegacyMetricColumns(retryWithoutSort.error.message)) {
+      return retryWithoutSort
+    }
+
+    return admin
+      .from('metrics')
+      .insert({
+        ...payloadWithoutSort,
+        direction: 'higher_is_better',
+        precision_scale: legacyPrecisionScaleForDataType(payload.data_type),
+      })
+      .select('metric_id')
+      .maybeSingle()
+  }
+
+  if (!requiresLegacyMetricColumns(firstAttempt.error.message)) {
     return firstAttempt
   }
 
@@ -807,6 +987,14 @@ export async function createMetricAction(
   }
 
   const code = (parsed.data.code?.trim() || toMetricCode(parsed.data.name)).toLowerCase()
+  const sortOrderResult = await getNextMetricSortOrder(
+    context.admin,
+    context.companyId,
+    parsed.data.departmentId,
+  )
+  if (!sortOrderResult.ok) {
+    return actionError(sortOrderResult.message)
+  }
 
   const { data: metric, error: createMetricError } = await insertMetricCompat(context.admin, {
     company_id: context.companyId,
@@ -818,6 +1006,7 @@ export async function createMetricAction(
     unit,
     settings: metricSettings,
     input_mode: parsed.data.inputMode,
+    sort_order: sortOrderResult.nextSortOrder,
     is_active: true,
   })
 
@@ -857,7 +1046,7 @@ export async function createMetricAction(
     }
   }
 
-  revalidatePath(ROUTES.SETTINGS_METRICS)
+  revalidateMetricConsumerPaths()
   return actionSuccess(
     parsed.data.inputMode === 'manual'
       ? 'Manual metric created.'
@@ -905,7 +1094,7 @@ export async function updateMetricAction(
 
   const { data: existingMetric, error: existingMetricError } = await context.admin
     .from('metrics')
-    .select('metric_id')
+    .select('metric_id, department_id, sort_order')
     .eq('metric_id', parsed.data.metricId)
     .eq('company_id', context.companyId)
     .is('deleted_at', null)
@@ -971,25 +1160,68 @@ export async function updateMetricAction(
   }
 
   const code = (parsed.data.code?.trim() || toMetricCode(parsed.data.name)).toLowerCase()
+  const departmentChanged = existingMetric.department_id !== parsed.data.departmentId
+  let nextSortOrder: number | null = typeof existingMetric.sort_order === 'number' ? existingMetric.sort_order : null
 
-  const { error: updateMetricError } = await context.admin
+  if (departmentChanged) {
+    const sortOrderResult = await getNextMetricSortOrder(
+      context.admin,
+      context.companyId,
+      parsed.data.departmentId,
+      parsed.data.metricId,
+    )
+    if (!sortOrderResult.ok) {
+      return actionError(sortOrderResult.message)
+    }
+    nextSortOrder = sortOrderResult.nextSortOrder
+  } else if (nextSortOrder === null) {
+    const sortOrderResult = await getNextMetricSortOrder(
+      context.admin,
+      context.companyId,
+      parsed.data.departmentId,
+      parsed.data.metricId,
+    )
+    if (!sortOrderResult.ok) {
+      return actionError(sortOrderResult.message)
+    }
+    nextSortOrder = sortOrderResult.nextSortOrder
+  }
+
+  const updatePayload = {
+    department_id: parsed.data.departmentId,
+    name: parsed.data.name.trim(),
+    code,
+    description: parsed.data.description?.trim() || null,
+    data_type: parsed.data.dataType,
+    unit,
+    settings: metricSettings,
+    input_mode: parsed.data.inputMode,
+    sort_order: nextSortOrder,
+    updated_at: new Date().toISOString(),
+  }
+
+  const updateWithSort = await context.admin
     .from('metrics')
-    .update({
-      department_id: parsed.data.departmentId,
-      name: parsed.data.name.trim(),
-      code,
-      description: parsed.data.description?.trim() || null,
-      data_type: parsed.data.dataType,
-      unit,
-      settings: metricSettings,
-      input_mode: parsed.data.inputMode,
-      updated_at: new Date().toISOString(),
-    })
+    .update(updatePayload)
     .eq('metric_id', parsed.data.metricId)
     .eq('company_id', context.companyId)
 
-  if (updateMetricError) {
-    return mapMetricDatabaseError(updateMetricError.message)
+  if (updateWithSort.error && !isMissingMetricsSortOrderColumn(updateWithSort.error.message)) {
+    return mapMetricDatabaseError(updateWithSort.error.message)
+  }
+
+  if (updateWithSort.error && isMissingMetricsSortOrderColumn(updateWithSort.error.message)) {
+    const updateWithoutSort = { ...updatePayload }
+    delete (updateWithoutSort as { sort_order?: number | null }).sort_order
+    const updateFallback = await context.admin
+      .from('metrics')
+      .update(updateWithoutSort)
+      .eq('metric_id', parsed.data.metricId)
+      .eq('company_id', context.companyId)
+
+    if (updateFallback.error) {
+      return mapMetricDatabaseError(updateFallback.error.message)
+    }
   }
 
   if (parsed.data.inputMode === 'calculated') {
@@ -1043,8 +1275,81 @@ export async function updateMetricAction(
     }
   }
 
-  revalidatePath(ROUTES.SETTINGS_METRICS)
+  revalidateMetricConsumerPaths()
   return actionSuccess('Metric updated.')
+}
+
+export async function reorderMetricAction(formData: FormData): Promise<MetricActionState> {
+  const parsed = metricReorderSchema.safeParse({
+    metricId: field(formData, 'metricId'),
+    direction: field(formData, 'direction'),
+  })
+
+  if (!parsed.success) {
+    return actionError(zodMessage(parsed.error), zodFieldErrors(parsed.error))
+  }
+
+  const context = await getActorContext()
+  if (!context.ok) {
+    return actionError(context.message)
+  }
+
+  try {
+    requireRole(context.role, 'manager')
+  } catch {
+    return actionError('Insufficient permissions.')
+  }
+
+  const { data: metric, error: metricError } = await context.admin
+    .from('metrics')
+    .select('metric_id, department_id')
+    .eq('metric_id', parsed.data.metricId)
+    .eq('company_id', context.companyId)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (metricError || !metric) {
+    return actionError(formatDatabaseError(metricError?.message ?? 'Metric not found.'), {
+      metricId: 'Metric not found.',
+    })
+  }
+
+  const orderedResult = await listDepartmentMetricIdsInOrder(
+    context.admin,
+    context.companyId,
+    metric.department_id as string,
+  )
+  if (!orderedResult.ok) {
+    return actionError(orderedResult.message)
+  }
+
+  const orderedMetricIds = orderedResult.metricIds
+  const currentIndex = orderedMetricIds.findIndex((metricId) => metricId === parsed.data.metricId)
+  if (currentIndex === -1) {
+    return actionError('Metric not found in department order.')
+  }
+
+  const targetIndex = parsed.data.direction === 'up' ? currentIndex - 1 : currentIndex + 1
+  if (targetIndex < 0 || targetIndex >= orderedMetricIds.length) {
+    return actionSuccess('Metric order unchanged.')
+  }
+
+  const reordered = orderedMetricIds.slice()
+  const [current] = reordered.splice(currentIndex, 1)
+  reordered.splice(targetIndex, 0, current)
+
+  const persistResult = await persistDepartmentMetricOrder(
+    context.admin,
+    context.companyId,
+    metric.department_id as string,
+    reordered,
+  )
+  if (!persistResult.ok) {
+    return actionError(persistResult.message)
+  }
+
+  revalidateMetricConsumerPaths()
+  return actionSuccess('Metric order updated.')
 }
 
 export async function toggleMetricStatusAction(formData: FormData): Promise<MetricActionState> {
@@ -1102,7 +1407,7 @@ export async function toggleMetricStatusAction(formData: FormData): Promise<Metr
     return actionError(formatDatabaseError(updateError.message))
   }
 
-  revalidatePath(ROUTES.SETTINGS_METRICS)
+  revalidateMetricConsumerPaths()
   return actionSuccess(nextActive ? 'Metric activated.' : 'Metric deactivated.')
 }
 

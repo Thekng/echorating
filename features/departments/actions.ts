@@ -79,6 +79,10 @@ function requiresLegacyMetricColumns(message: string) {
   )
 }
 
+function isMissingMetricsSortOrderColumn(message: string) {
+  return message.toLowerCase().includes('column metrics.sort_order does not exist')
+}
+
 async function getUserCompanyAndRole() {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return {
@@ -134,11 +138,38 @@ async function createDefaultDepartmentMetrics(
     data_type: 'boolean',
     unit: 'bool',
     input_mode: 'manual',
+    sort_order: 1,
     is_active: true,
   }
 
   const firstAttempt = await admin.from('metrics').insert(payload)
   if (!firstAttempt.error) {
+    return { ok: true as const }
+  }
+
+  if (isMissingMetricsSortOrderColumn(firstAttempt.error.message)) {
+    const withoutSortOrder = { ...payload }
+    delete (withoutSortOrder as { sort_order?: number }).sort_order
+    const retry = await admin.from('metrics').insert(withoutSortOrder)
+
+    if (!retry.error) {
+      return { ok: true as const }
+    }
+
+    if (!requiresLegacyMetricColumns(retry.error.message)) {
+      return { ok: false as const, message: formatDatabaseError(retry.error.message) }
+    }
+
+    const { error: legacyRetryError } = await admin.from('metrics').insert({
+      ...withoutSortOrder,
+      direction: 'higher_is_better',
+      precision_scale: 0,
+    })
+
+    if (legacyRetryError) {
+      return { ok: false as const, message: formatDatabaseError(legacyRetryError.message) }
+    }
+
     return { ok: true as const }
   }
 

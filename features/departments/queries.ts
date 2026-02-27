@@ -120,6 +120,10 @@ function toPercent(numerator: number, denominator: number) {
   return Number(((numerator / denominator) * 100).toFixed(1))
 }
 
+function isMissingMetricsSortOrderColumn(message: string) {
+  return message.toLowerCase().includes('column metrics.sort_order does not exist')
+}
+
 async function getViewerContext() {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return { ok: false as const, message: 'SUPABASE_SERVICE_ROLE_KEY is missing in environment variables.' }
@@ -526,18 +530,35 @@ export async function getDepartmentProfile(
   const memberIds = (membersData ?? []).map((m) => m.user_id)
 
   // Get metrics for this department
-  const { data: metricsData, error: metricsError } = await context.admin
+  const metricsWithSort = await context.admin
     .from('metrics')
-    .select('metric_id, name, code, data_type, unit, settings')
+    .select('metric_id, name, code, data_type, unit, settings, sort_order')
     .eq('company_id', context.companyId)
     .eq('department_id', departmentId)
     .eq('is_active', true)
+    .order('sort_order', { ascending: true, nullsFirst: false })
+    .order('name', { ascending: true })
 
-  if (metricsError) {
-    return { success: false as const, error: formatDatabaseError(metricsError.message), data: null }
+  let metrics: DepartmentMetricData[] = []
+  if (!metricsWithSort.error) {
+    metrics = (metricsWithSort.data ?? []) as DepartmentMetricData[]
+  } else if (isMissingMetricsSortOrderColumn(metricsWithSort.error.message)) {
+    const metricsFallback = await context.admin
+      .from('metrics')
+      .select('metric_id, name, code, data_type, unit, settings')
+      .eq('company_id', context.companyId)
+      .eq('department_id', departmentId)
+      .eq('is_active', true)
+      .order('name', { ascending: true })
+
+    if (metricsFallback.error) {
+      return { success: false as const, error: formatDatabaseError(metricsFallback.error.message), data: null }
+    }
+
+    metrics = (metricsFallback.data ?? []) as DepartmentMetricData[]
+  } else {
+    return { success: false as const, error: formatDatabaseError(metricsWithSort.error.message), data: null }
   }
-
-  const metrics = (metricsData ?? []) as DepartmentMetricData[]
 
   // Get all entries for all members
   const { data: entriesData, error: entriesError } = await context.admin

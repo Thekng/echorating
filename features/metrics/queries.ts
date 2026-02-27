@@ -23,6 +23,7 @@ type MetricRow = {
   unit: string
   settings: MetricSettings | null
   input_mode: 'manual' | 'calculated'
+  sort_order: number | null
   is_active: boolean
   created_at: string
   updated_at: string
@@ -44,6 +45,10 @@ type DailyTargetRow = {
 
 function isMissingMetricsSettingsColumn(message: string) {
   return message.toLowerCase().includes('column metrics.settings does not exist')
+}
+
+function isMissingMetricsSortOrderColumn(message: string) {
+  return message.toLowerCase().includes('column metrics.sort_order does not exist')
 }
 
 async function getViewerContext() {
@@ -136,11 +141,13 @@ export async function listMetrics(rawFilters?: {
   let metricsQuery = context.admin
     .from('metrics')
     .select(
-      'metric_id, department_id, name, code, description, data_type, unit, settings, input_mode, is_active, created_at, updated_at',
+      'metric_id, department_id, name, code, description, data_type, unit, settings, input_mode, sort_order, is_active, created_at, updated_at',
     )
     .eq('company_id', context.companyId)
     .is('deleted_at', null)
-    .order('created_at', { ascending: false })
+    .order('department_id', { ascending: true })
+    .order('sort_order', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: true })
 
   if (effectiveDepartmentId !== 'all') {
     metricsQuery = metricsQuery.eq('department_id', effectiveDepartmentId)
@@ -159,15 +166,49 @@ export async function listMetrics(rawFilters?: {
   let metrics: MetricRow[] = []
   if (!withSettings.error) {
     metrics = (withSettings.data ?? []) as MetricRow[]
+  } else if (isMissingMetricsSortOrderColumn(withSettings.error.message)) {
+    let sortFallbackQuery = context.admin
+      .from('metrics')
+      .select(
+        'metric_id, department_id, name, code, description, data_type, unit, settings, input_mode, is_active, created_at, updated_at',
+      )
+      .eq('company_id', context.companyId)
+      .is('deleted_at', null)
+      .order('department_id', { ascending: true })
+      .order('created_at', { ascending: true })
+
+    if (effectiveDepartmentId !== 'all') {
+      sortFallbackQuery = sortFallbackQuery.eq('department_id', effectiveDepartmentId)
+    }
+
+    if (filters.mode !== 'all') {
+      sortFallbackQuery = sortFallbackQuery.eq('input_mode', filters.mode)
+    }
+
+    if (filters.status !== 'all') {
+      sortFallbackQuery = sortFallbackQuery.eq('is_active', filters.status === 'active')
+    }
+
+    const sortFallback = await sortFallbackQuery
+    if (sortFallback.error) {
+      return { success: false, error: formatDatabaseError(sortFallback.error.message), data: null }
+    }
+
+    metrics = ((sortFallback.data ?? []) as Array<Omit<MetricRow, 'sort_order'> & { sort_order?: number | null }>).map((metric) => ({
+      ...metric,
+      sort_order: null,
+    }))
   } else if (isMissingMetricsSettingsColumn(withSettings.error.message)) {
     let fallbackQuery = context.admin
       .from('metrics')
       .select(
-        'metric_id, department_id, name, code, description, data_type, unit, input_mode, is_active, created_at, updated_at',
+        'metric_id, department_id, name, code, description, data_type, unit, input_mode, sort_order, is_active, created_at, updated_at',
       )
       .eq('company_id', context.companyId)
       .is('deleted_at', null)
-      .order('created_at', { ascending: false })
+      .order('department_id', { ascending: true })
+      .order('sort_order', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: true })
 
     if (effectiveDepartmentId !== 'all') {
       fallbackQuery = fallbackQuery.eq('department_id', effectiveDepartmentId)
@@ -182,16 +223,53 @@ export async function listMetrics(rawFilters?: {
     }
 
     const fallback = await fallbackQuery
-    if (fallback.error) {
+    if (fallback.error && !isMissingMetricsSortOrderColumn(fallback.error.message)) {
       return { success: false, error: formatDatabaseError(fallback.error.message), data: null }
     }
 
-    metrics = (
-      (fallback.data ?? []) as Array<Omit<MetricRow, 'settings'> & { settings?: MetricSettings | null }>
-    ).map((metric) => ({
-      ...metric,
-      settings: null,
-    }))
+    if (fallback.error && isMissingMetricsSortOrderColumn(fallback.error.message)) {
+      let fallbackNoSortQuery = context.admin
+        .from('metrics')
+        .select(
+          'metric_id, department_id, name, code, description, data_type, unit, input_mode, is_active, created_at, updated_at',
+        )
+        .eq('company_id', context.companyId)
+        .is('deleted_at', null)
+        .order('department_id', { ascending: true })
+        .order('created_at', { ascending: true })
+
+      if (effectiveDepartmentId !== 'all') {
+        fallbackNoSortQuery = fallbackNoSortQuery.eq('department_id', effectiveDepartmentId)
+      }
+
+      if (filters.mode !== 'all') {
+        fallbackNoSortQuery = fallbackNoSortQuery.eq('input_mode', filters.mode)
+      }
+
+      if (filters.status !== 'all') {
+        fallbackNoSortQuery = fallbackNoSortQuery.eq('is_active', filters.status === 'active')
+      }
+
+      const fallbackNoSort = await fallbackNoSortQuery
+      if (fallbackNoSort.error) {
+        return { success: false, error: formatDatabaseError(fallbackNoSort.error.message), data: null }
+      }
+
+      metrics = (
+        (fallbackNoSort.data ?? []) as Array<Omit<MetricRow, 'settings' | 'sort_order'> & { settings?: MetricSettings | null }>
+      ).map((metric) => ({
+        ...metric,
+        settings: null,
+        sort_order: null,
+      }))
+    } else {
+      metrics = (
+        (fallback.data ?? []) as Array<Omit<MetricRow, 'settings'> & { settings?: MetricSettings | null }>
+      ).map((metric) => ({
+        ...metric,
+        settings: null,
+      }))
+    }
   } else {
     return { success: false, error: formatDatabaseError(withSettings.error.message), data: null }
   }
@@ -245,26 +323,86 @@ export async function listMetrics(rawFilters?: {
 
   const allActiveMetricsQuery = context.admin
     .from('metrics')
-    .select('metric_id, name, code, department_id, data_type')
+    .select('metric_id, name, code, department_id, data_type, sort_order')
     .eq('company_id', context.companyId)
     .eq('is_active', true)
     .is('deleted_at', null)
+    .order('department_id', { ascending: true })
+    .order('sort_order', { ascending: true, nullsFirst: false })
     .order('name', { ascending: true })
 
-  const { data: allActiveMetricsData, error: allActiveMetricsError } = await allActiveMetricsQuery
-  if (allActiveMetricsError) {
-    return { success: false, error: formatDatabaseError(allActiveMetricsError.message), data: null }
+  const allActiveMetrics = await allActiveMetricsQuery
+  if (allActiveMetrics.error && !isMissingMetricsSortOrderColumn(allActiveMetrics.error.message)) {
+    return { success: false, error: formatDatabaseError(allActiveMetrics.error.message), data: null }
   }
 
-  const allActiveMetrics = (allActiveMetricsData ?? []) as Array<{
+  let allActiveMetricsData: Array<{
     metric_id: string
     name: string
     code: string
     department_id: string
     data_type: MetricDataType
+    sort_order?: number | null
+  }> = []
+
+  if (!allActiveMetrics.error) {
+    allActiveMetricsData = (allActiveMetrics.data ?? []) as typeof allActiveMetricsData
+  } else {
+    const noSort = await context.admin
+      .from('metrics')
+      .select('metric_id, name, code, department_id, data_type')
+      .eq('company_id', context.companyId)
+      .eq('is_active', true)
+      .is('deleted_at', null)
+      .order('department_id', { ascending: true })
+      .order('name', { ascending: true })
+
+    if (noSort.error) {
+      return { success: false, error: formatDatabaseError(noSort.error.message), data: null }
+    }
+
+    allActiveMetricsData = (noSort.data ?? []) as typeof allActiveMetricsData
+  }
+
+  if (allActiveMetricsData.length === 0) {
+    return {
+      success: true,
+      data: {
+        metrics: metrics.map((metric) => {
+          const dependencyIds = dependencyMap.get(metric.metric_id) ?? []
+          const dailyTarget = dailyTargetMap.get(`${metric.department_id}:${metric.metric_id}`)
+          return {
+            ...metric,
+            department_name: departmentMap.get(metric.department_id) ?? 'Unknown department',
+            formula_expression: currentFormulaMap.get(metric.metric_id)?.expression ?? null,
+            formula_version: currentFormulaMap.get(metric.metric_id)?.version ?? null,
+            depends_on_metric_ids: dependencyIds,
+            depends_on_metric_names: [],
+            daily_target_id: dailyTarget?.target_id ?? null,
+            daily_target_value: dailyTarget ? Number(dailyTarget.value) : null,
+          }
+        }),
+        departments,
+        dependencyMetrics: [],
+        filters: {
+          ...filters,
+          departmentId: effectiveDepartmentId,
+        },
+        viewerRole: context.role,
+      },
+    }
+  }
+
+  const allActiveMetricsRows = allActiveMetricsData as Array<{
+    metric_id: string
+    name: string
+    code: string
+    department_id: string
+    data_type: MetricDataType
+    sort_order?: number | null
   }>
 
-const metricNameMap = new Map(allActiveMetrics.map((metric) => [metric.metric_id, metric.name]))
+  const metricNameMap = new Map(allActiveMetricsRows.map((metric) => [metric.metric_id, metric.name]))
 
 let targetsQuery = context.admin
   .from('targets')
@@ -308,7 +446,7 @@ return {
       }
     }),
     departments,
-    dependencyMetrics: allActiveMetrics.map((metric) => ({
+    dependencyMetrics: allActiveMetricsRows.map((metric) => ({
       metric_id: metric.metric_id,
       name: metric.name,
       code: metric.code,
@@ -340,7 +478,7 @@ export async function getMetricById(id: string) {
   const withSettings = await context.admin
     .from('metrics')
     .select(
-      'metric_id, department_id, name, code, description, data_type, unit, settings, input_mode, is_active, created_at, updated_at',
+      'metric_id, department_id, name, code, description, data_type, unit, settings, input_mode, sort_order, is_active, created_at, updated_at',
     )
     .eq('metric_id', id)
     .eq('company_id', context.companyId)
@@ -354,7 +492,7 @@ export async function getMetricById(id: string) {
     const fallback = await context.admin
       .from('metrics')
       .select(
-        'metric_id, department_id, name, code, description, data_type, unit, input_mode, is_active, created_at, updated_at',
+        'metric_id, department_id, name, code, description, data_type, unit, input_mode, sort_order, is_active, created_at, updated_at',
       )
       .eq('metric_id', id)
       .eq('company_id', context.companyId)

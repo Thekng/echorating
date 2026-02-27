@@ -45,6 +45,7 @@ type DashboardMetric = {
   code: string
   data_type: MetricDataType
   unit: string
+  sort_order?: number | null
 }
 
 type EntryRow = {
@@ -115,25 +116,6 @@ type DashboardResultData = {
 }
 
 const SUPPORTED_KPI_TYPES: MetricDataType[] = ['number', 'currency', 'percent', 'duration', 'boolean']
-
-const DEFAULT_DEPARTMENT_METRIC_PRIORITY = [
-  'premium',
-  'premium_quoted',
-  'premium_sold',
-  'households',
-  'quoted_households',
-  'policies',
-  'policies_sold',
-  'items',
-  'items_sold',
-  'calls',
-  'outbound_calls',
-  'talk_time',
-  'talk_time_min',
-  'life_apps',
-  'new_conversations',
-  'follow_ups_completed',
-]
 
 const PERIOD_ALIASES: Record<IncomingDashboardPeriod, DashboardPeriod> = {
   today: 'today',
@@ -448,20 +430,6 @@ async function getAccessibleDepartments(
   return { ok: true as const, departments: (data ?? []) as DepartmentOption[] }
 }
 
-function metricPriority(metric: DashboardMetric, keyMetricRank: Map<string, number>) {
-  const keyRank = keyMetricRank.get(metric.metric_id)
-  if (keyRank !== undefined) {
-    return keyRank
-  }
-
-  const codeRank = DEFAULT_DEPARTMENT_METRIC_PRIORITY.indexOf(metric.code)
-  if (codeRank !== -1) {
-    return 100 + codeRank
-  }
-
-  return 1000
-}
-
 function toPercent(numerator: number, denominator: number) {
   if (denominator <= 0) {
     return 0
@@ -497,6 +465,10 @@ function parseMetricValue(
 function isMissingProfileNameColumn(message: string) {
   const normalized = message.toLowerCase()
   return normalized.includes('column profiles_1.name does not exist')
+}
+
+function isMissingMetricsSortOrderColumn(message: string) {
+  return message.toLowerCase().includes('column metrics.sort_order does not exist')
 }
 
 function ensureDailyTrendDates(startDate: string, windowDays: number) {
@@ -590,45 +562,44 @@ export async function getDashboardData(filters?: {
       ? filters.departmentId
       : departments[0].department_id
 
-  const { data: metricsData, error: metricsError } = await context.admin
+  const metricsWithSort = await context.admin
     .from('metrics')
-    .select('metric_id, name, code, data_type, unit')
+    .select('metric_id, name, code, data_type, unit, sort_order')
     .eq('company_id', context.companyId)
     .eq('department_id', selectedDepartmentId)
     .eq('is_active', true)
     .in('data_type', SUPPORTED_KPI_TYPES)
     .is('deleted_at', null)
+    .order('sort_order', { ascending: true, nullsFirst: false })
+    .order('name', { ascending: true })
 
-  if (metricsError) {
-    return { success: false as const, error: formatDatabaseError(metricsError.message), data: null }
-  }
+  let metrics: DashboardMetric[] = []
+  if (!metricsWithSort.error) {
+    metrics = (metricsWithSort.data ?? []) as DashboardMetric[]
+  } else if (isMissingMetricsSortOrderColumn(metricsWithSort.error.message)) {
+    const metricsFallback = await context.admin
+      .from('metrics')
+      .select('metric_id, name, code, data_type, unit')
+      .eq('company_id', context.companyId)
+      .eq('department_id', selectedDepartmentId)
+      .eq('is_active', true)
+      .in('data_type', SUPPORTED_KPI_TYPES)
+      .is('deleted_at', null)
+      .order('name', { ascending: true })
 
-  const metrics = (metricsData ?? []) as DashboardMetric[]
-  const metricById = new Map(metrics.map((metric) => [metric.metric_id, metric]))
-
-  const { data: keyMetricRows, error: keyMetricRowsError } = await context.admin
-    .from('department_log_key_metrics')
-    .select('slot, metric_id')
-    .eq('department_id', selectedDepartmentId)
-    .order('slot', { ascending: true })
-
-  if (keyMetricRowsError) {
-    return { success: false as const, error: formatDatabaseError(keyMetricRowsError.message), data: null }
-  }
-
-  const keyMetricRank = new Map<string, number>()
-  for (const row of (keyMetricRows ?? []) as Array<{ slot: number; metric_id: string }>) {
-    if (!metricById.has(row.metric_id)) {
-      continue
+    if (metricsFallback.error) {
+      return { success: false as const, error: formatDatabaseError(metricsFallback.error.message), data: null }
     }
-    keyMetricRank.set(row.metric_id, row.slot)
-  }
 
+    metrics = (metricsFallback.data ?? []) as DashboardMetric[]
+  } else {
+    return { success: false as const, error: formatDatabaseError(metricsWithSort.error.message), data: null }
+  }
   const prioritizedMetrics = metrics
     .slice()
     .sort((left, right) => {
-      const leftPriority = metricPriority(left, keyMetricRank)
-      const rightPriority = metricPriority(right, keyMetricRank)
+      const leftPriority = left.sort_order ?? Number.MAX_SAFE_INTEGER
+      const rightPriority = right.sort_order ?? Number.MAX_SAFE_INTEGER
       if (leftPriority !== rightPriority) {
         return leftPriority - rightPriority
       }
@@ -638,6 +609,7 @@ export async function getDashboardData(filters?: {
 
   const primaryMetric = prioritizedMetrics[0] ?? null
   const selectedMetricIds = prioritizedMetrics.map((metric) => metric.metric_id)
+  const metricById = new Map(prioritizedMetrics.map((metric) => [metric.metric_id, metric]))
 
   const activeMembersWithName = await context.admin
     .from('department_members')
