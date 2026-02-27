@@ -1,7 +1,7 @@
 'use client'
 
 import { useActionState, useEffect, useState } from 'react'
-import { createDepartmentAction } from '@/features/departments/actions'
+import { createDepartmentAction, type DepartmentActionState } from '@/features/departments/actions'
 import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
 
@@ -13,14 +13,10 @@ const DEPARTMENT_TYPES = [
   { value: 'custom', label: 'Custom' },
 ] as const
 
-type ActionState = {
-  status: 'idle' | 'success' | 'error'
-  message: string
-}
-
-const INITIAL_STATE: ActionState = {
+const INITIAL_STATE: DepartmentActionState = {
   status: 'idle',
   message: '',
+  fieldErrors: {},
 }
 
 export function CreateDepartmentModal() {
