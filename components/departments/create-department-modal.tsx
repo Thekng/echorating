@@ -21,7 +21,10 @@ const INITIAL_STATE: DepartmentActionState = {
 
 export function CreateDepartmentModal() {
   const [open, setOpen] = useState(false)
-  const [state, formAction, pending] = useActionState(createDepartmentAction, INITIAL_STATE)
+  const [state, formAction, pending] = useActionState<DepartmentActionState, FormData>(
+    createDepartmentAction,
+    INITIAL_STATE,
+  )
 
   useEffect(() => {
     if (state.status === 'success') {

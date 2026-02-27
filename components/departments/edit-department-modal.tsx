@@ -27,7 +27,10 @@ type EditDepartmentModalProps = {
 
 export function EditDepartmentModal({ departmentId, name, type }: EditDepartmentModalProps) {
   const [open, setOpen] = useState(false)
-  const [state, formAction, pending] = useActionState(updateDepartmentAction, INITIAL_STATE)
+  const [state, formAction, pending] = useActionState<DepartmentActionState, FormData>(
+    updateDepartmentAction,
+    INITIAL_STATE,
+  )
 
   useEffect(() => {
     if (state.status === 'success') {
