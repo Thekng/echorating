@@ -73,13 +73,13 @@ async function DashboardContent({
     startDate: resolvedStartDate,
     endDate: resolvedEndDate,
     windowDays,
-    elapsedDays,
     paceTotalUnits,
     paceElapsedUnits,
     paceUnitLabel,
     kpis,
     primaryMetric,
     metricTrends,
+    stats,
   } = result.data
 
   if (departments.length === 0) {
@@ -113,7 +113,7 @@ async function DashboardContent({
           primaryMetricId={primaryMetric?.metric_id ?? null}
           period={resolvedPeriod}
           windowDays={windowDays}
-          elapsedDays={elapsedDays}
+          submittedLogs={stats.submitted_logs}
           paceTotalUnits={paceTotalUnits}
           paceElapsedUnits={paceElapsedUnits}
           paceUnitLabel={paceUnitLabel}

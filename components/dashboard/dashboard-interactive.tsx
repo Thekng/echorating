@@ -13,7 +13,7 @@ type DashboardInteractiveProps = {
   primaryMetricId?: string | null
   period: 'today' | 'current_week' | 'this_month' | 'custom'
   windowDays: number
-  elapsedDays: number
+  submittedLogs: number
   paceTotalUnits: number
   paceElapsedUnits: number
   paceUnitLabel: 'workday'
@@ -90,11 +90,11 @@ function calculateProjectedValue(currentValue: number, totalUnits: number, elaps
   return currentValue * (totalUnits / elapsedUnits)
 }
 
-function calculateAverageValue(currentValue: number, elapsedUnits: number) {
-  if (elapsedUnits <= 0) {
+function calculateAverageValue(currentValue: number, submittedLogs: number) {
+  if (submittedLogs <= 0) {
     return null
   }
-  return currentValue / elapsedUnits
+  return currentValue / submittedLogs
 }
 
 export function DashboardInteractive({
@@ -103,7 +103,7 @@ export function DashboardInteractive({
   primaryMetricId,
   period,
   windowDays,
-  elapsedDays,
+  submittedLogs,
   paceTotalUnits,
   paceElapsedUnits,
   paceUnitLabel,
@@ -149,7 +149,7 @@ export function DashboardInteractive({
             const averageValue =
               kpi.data_type === 'percent'
                 ? null
-                : calculateAverageValue(kpi.current_value, elapsedDays)
+                : calculateAverageValue(kpi.current_value, submittedLogs)
             const projectedLabel =
               projectedValue === null
                 ? '—'
@@ -204,9 +204,9 @@ export function DashboardInteractive({
                 <div className="mt-2 flex items-center justify-between gap-2">
                   <p
                     className="truncate text-[11px] text-muted-foreground"
-                    title={`Average per day so far. Avg = Actual ÷ ${elapsedDays} elapsed day${elapsedDays === 1 ? '' : 's'}.`}
+                    title={`Average per submitted log. Avg = Actual ÷ ${submittedLogs} submitted log${submittedLogs === 1 ? '' : 's'}.`}
                   >
-                    Avg/day: {averageLabel}
+                    Avg/log: {averageLabel}
                   </p>
                   <span
                     className={`rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${changeChipTone(changeToneValue)}`}
