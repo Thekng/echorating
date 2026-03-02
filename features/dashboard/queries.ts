@@ -109,9 +109,6 @@ type DashboardResultData = {
   paceElapsedUnits: number
   paceUnitLabel: 'workday'
   kpis: DashboardKpi[]
-  primaryMetric: DashboardMetric | null
-  trend: DashboardTrendPoint[]
-  metricTrends: DashboardMetricTrend[]
   stats: DashboardStats
 }
 
@@ -471,27 +468,6 @@ function isMissingMetricsSortOrderColumn(message: string) {
   return message.toLowerCase().includes('column metrics.sort_order does not exist')
 }
 
-function ensureDailyTrendDates(startDate: string, windowDays: number) {
-  const list: DashboardTrendPoint[] = []
-  const start = new Date(`${startDate}T00:00:00Z`)
-
-  for (let i = 0; i < windowDays; i += 1) {
-    const date = addUtcDays(start, i)
-    const key = dateKeyUtc(date)
-    const label = new Intl.DateTimeFormat(undefined, { month: 'short', day: '2-digit' }).format(
-      new Date(`${key}T00:00:00`),
-    )
-    list.push({
-      date: key,
-      label,
-      submitted_logs: 0,
-      primary_metric_value: 0,
-    })
-  }
-
-  return list
-}
-
 export async function getDashboardData(filters?: {
   departmentId?: string | null
   userId?: string | null
@@ -543,9 +519,6 @@ export async function getDashboardData(filters?: {
       paceElapsedUnits: range.paceElapsedUnits,
       paceUnitLabel: range.paceUnitLabel,
       kpis: [],
-      primaryMetric: null,
-      trend: [],
-      metricTrends: [],
       stats: {
         active_agents: 0,
         submitted_logs: 0,
@@ -607,7 +580,6 @@ export async function getDashboardData(filters?: {
     })
     .slice(0, 8)
 
-  const primaryMetric = prioritizedMetrics[0] ?? null
   const selectedMetricIds = prioritizedMetrics.map((metric) => metric.metric_id)
   const metricById = new Map(prioritizedMetrics.map((metric) => [metric.metric_id, metric]))
 
@@ -673,11 +645,6 @@ export async function getDashboardData(filters?: {
   const submittedCurrent = entriesCurrent.filter((entry) => entry.status === 'submitted')
   const draftCurrent = entriesCurrent.filter((entry) => entry.status === 'draft')
 
-  const submittedLogsByDate = new Map<string, number>()
-  for (const entry of submittedCurrent) {
-    submittedLogsByDate.set(entry.entry_date, (submittedLogsByDate.get(entry.entry_date) ?? 0) + 1)
-  }
-
   const consistencyRate = toPercent(new Set(submittedCurrent.map((entry) => entry.entry_date)).size, range.windowDays)
   const submissionRate = toPercent(submittedCurrent.length, submittedCurrent.length + draftCurrent.length)
 
@@ -690,8 +657,6 @@ export async function getDashboardData(filters?: {
   }
 
   let kpis: DashboardKpi[] = []
-  let trend = ensureDailyTrendDates(range.startDate, range.windowDays)
-  let metricTrends: DashboardMetricTrend[] = []
 
   if (selectedMetricIds.length > 0) {
     let entriesBothQuery = context.admin
@@ -730,12 +695,6 @@ export async function getDashboardData(filters?: {
 
       const currentTotals = new Map<string, number>()
       const previousTotals = new Map<string, number>()
-      const trendPrimaryByDate = new Map<string, number>()
-      const trendByMetricDate = new Map<string, Map<string, number>>()
-
-      for (const metric of prioritizedMetrics) {
-        trendByMetricDate.set(metric.metric_id, new Map<string, number>())
-      }
 
       for (const row of (valuesData ?? []) as Array<{
         entry_id: string
@@ -756,14 +715,6 @@ export async function getDashboardData(filters?: {
 
         if (entryDate >= range.startDate && entryDate <= range.cutoffDate) {
           currentTotals.set(row.metric_id, (currentTotals.get(row.metric_id) ?? 0) + value)
-          const metricTrend = trendByMetricDate.get(row.metric_id)
-          if (metricTrend) {
-            metricTrend.set(entryDate, (metricTrend.get(entryDate) ?? 0) + value)
-          }
-
-          if (primaryMetric?.metric_id === row.metric_id) {
-            trendPrimaryByDate.set(entryDate, (trendPrimaryByDate.get(entryDate) ?? 0) + value)
-          }
         } else if (entryDate >= range.previousStartDate && entryDate <= range.previousCutoffDate) {
           previousTotals.set(row.metric_id, (previousTotals.get(row.metric_id) ?? 0) + value)
         }
@@ -784,34 +735,7 @@ export async function getDashboardData(filters?: {
           change_pct: calcChangePct(currentValue, previousValue),
         }
       })
-
-      trend = trend.map((point) => ({
-        ...point,
-        submitted_logs: submittedLogsByDate.get(point.date) ?? 0,
-        primary_metric_value: Number((trendPrimaryByDate.get(point.date) ?? 0).toFixed(2)),
-      }))
-
-      metricTrends = prioritizedMetrics.map((metric) => {
-        const metricDaily = trendByMetricDate.get(metric.metric_id)
-        return {
-          metric_id: metric.metric_id,
-          points: trend.map((point) => ({
-            date: point.date,
-            label: point.label,
-            submitted_logs: point.submitted_logs,
-            value: Number((metricDaily?.get(point.date) ?? 0).toFixed(2)),
-          })),
-        }
-      })
     }
-  } else {
-    trend = trend.map((point) => ({
-      ...point,
-      submitted_logs: submittedLogsByDate.get(point.date) ?? 0,
-      primary_metric_value: 0,
-    }))
-
-    metricTrends = []
   }
 
   const data: DashboardResultData = {
@@ -830,9 +754,6 @@ export async function getDashboardData(filters?: {
     paceElapsedUnits: range.paceElapsedUnits,
     paceUnitLabel: range.paceUnitLabel,
     kpis,
-    primaryMetric,
-    trend,
-    metricTrends,
     stats,
   }
 

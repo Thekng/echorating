@@ -1,18 +1,11 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { MinimalistTrendChart } from '@/components/charts/minimalist-trend-chart'
-import { type DashboardKpi, type DashboardMetricTrend } from '@/features/dashboard/queries'
+import { type DashboardKpi } from '@/features/dashboard/queries'
 import { formatDecimal, formatMetricNumber, formatPercent } from '@/lib/metrics/format'
 import { getMetricIcon } from '@/lib/utils/metric-helpers'
-import { cn } from '@/lib/utils'
 
 type DashboardInteractiveProps = {
   kpis: DashboardKpi[]
-  metricTrends: DashboardMetricTrend[]
-  primaryMetricId?: string | null
-  period: 'today' | 'current_week' | 'this_month' | 'custom'
-  windowDays: number
   submittedLogs: number
   paceTotalUnits: number
   paceElapsedUnits: number
@@ -99,142 +92,85 @@ function calculateAverageValue(currentValue: number, submittedLogs: number) {
 
 export function DashboardInteractive({
   kpis,
-  metricTrends,
-  primaryMetricId,
-  period,
-  windowDays,
   submittedLogs,
   paceTotalUnits,
   paceElapsedUnits,
   paceUnitLabel,
 }: DashboardInteractiveProps) {
-  const defaultMetricId = useMemo(() => {
-    if (primaryMetricId && kpis.some((kpi) => kpi.metric_id === primaryMetricId)) {
-      return primaryMetricId
-    }
-    return kpis[0]?.metric_id ?? ''
-  }, [kpis, primaryMetricId])
-
-  const [selectedMetricId, setSelectedMetricId] = useState(defaultMetricId)
-
-  useEffect(() => {
-    setSelectedMetricId(defaultMetricId)
-  }, [defaultMetricId])
-
-  const selectedKpi = kpis.find((kpi) => kpi.metric_id === selectedMetricId) ?? kpis[0] ?? null
-  const selectedTrend = metricTrends.find((series) => series.metric_id === selectedMetricId)?.points ?? []
-  /* Time estimates removed: no projection label */
-  const periodTitle =
-    period === 'today'
-      ? 'Today'
-      : period === 'current_week'
-        ? 'Current week'
-        : period === 'this_month'
-          ? 'This month'
-          : `Custom (${windowDays} days)`
-
   return (
-    <>
-      <section className="space-y-2">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground">Click a KPI to change the graph</p>
-        </div>
-
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {kpis.map((kpi) => {
-            const projectedValue =
-              kpi.data_type === 'percent'
-                ? null
-                : calculateProjectedValue(kpi.current_value, paceTotalUnits, paceElapsedUnits)
-            const averageValue =
-              kpi.data_type === 'percent'
-                ? null
-                : calculateAverageValue(kpi.current_value, submittedLogs)
-            const projectedLabel =
-              projectedValue === null
-                ? '—'
-                : `${projectedValue < 0 ? '↘' : '↗'} ${formatCompactKpiValue(kpi, projectedValue)}`
-            const averageLabel = averageValue === null ? '—' : formatCompactKpiValue(kpi, averageValue)
-            const percentPointDelta = kpi.current_value - kpi.previous_value
-            const changeLabel =
-              kpi.data_type === 'percent'
-                ? (
-                  kpi.previous_value === 0 && kpi.current_value === 0
-                    ? '0pp'
-                    : kpi.previous_value === 0
-                      ? 'new'
-                      : `${percentPointDelta > 0 ? '+' : ''}${formatDecimal(percentPointDelta, 1)}pp`
-                )
-                : (
-                  kpi.change_pct === null
+    <section className="space-y-2">
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {kpis.map((kpi) => {
+          const projectedValue =
+            kpi.data_type === 'percent'
+              ? null
+              : calculateProjectedValue(kpi.current_value, paceTotalUnits, paceElapsedUnits)
+          const averageValue =
+            kpi.data_type === 'percent'
+              ? null
+              : calculateAverageValue(kpi.current_value, submittedLogs)
+          const projectedLabel =
+            projectedValue === null
+              ? '—'
+              : `${projectedValue < 0 ? '↘' : '↗'} ${formatCompactKpiValue(kpi, projectedValue)}`
+          const averageLabel = averageValue === null ? '—' : formatCompactKpiValue(kpi, averageValue)
+          const percentPointDelta = kpi.current_value - kpi.previous_value
+          const changeLabel =
+            kpi.data_type === 'percent'
+              ? (
+                kpi.previous_value === 0 && kpi.current_value === 0
+                  ? '0pp'
+                  : kpi.previous_value === 0
                     ? 'new'
-                    : `${kpi.change_pct > 0 ? '+' : ''}${formatPercent(kpi.change_pct, 1)}`
-                )
-            const changeToneValue =
-              kpi.data_type === 'percent'
-                ? (kpi.previous_value === 0 && kpi.current_value !== 0 ? null : percentPointDelta)
-                : kpi.change_pct
+                    : `${percentPointDelta > 0 ? '+' : ''}${formatDecimal(percentPointDelta, 1)}pp`
+              )
+              : (
+                kpi.change_pct === null
+                  ? 'new'
+                  : `${kpi.change_pct > 0 ? '+' : ''}${formatPercent(kpi.change_pct, 1)}`
+              )
+          const changeToneValue =
+            kpi.data_type === 'percent'
+              ? (kpi.previous_value === 0 && kpi.current_value !== 0 ? null : percentPointDelta)
+              : kpi.change_pct
 
-            return (
-              <button
-                key={kpi.metric_id}
-                type="button"
-                onClick={() => setSelectedMetricId(kpi.metric_id)}
-                className={cn(
-                  'min-w-[210px] shrink-0 rounded-lg border bg-card p-3 text-left transition-colors',
-                  selectedMetricId === kpi.metric_id
-                    ? 'border-primary bg-primary/5 shadow-sm'
-                    : 'hover:bg-muted/40',
-                )}
-              >
-                <div className="mb-2 flex items-start justify-between gap-2">
-                  <span className="text-lg" aria-hidden="true">
-                    {getMetricIcon(kpi.code)}
-                  </span>
-                  <span
-                    className={`rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${projectedTone(projectedValue)}`}
-                    title={`Projected total at current pace. Projection = Actual × (${paceTotalUnits} ${paceUnitLabel}${paceTotalUnits === 1 ? '' : 's'} total / ${paceElapsedUnits} elapsed).`}
-                  >
-                    {projectedLabel}
-                  </span>
-                </div>
+          return (
+            <div
+              key={kpi.metric_id}
+              className="min-w-[210px] shrink-0 rounded-lg border bg-card p-3 text-left transition-colors"
+            >
+              <div className="mb-2 flex items-start justify-between gap-2">
+                <span className="text-lg" aria-hidden="true">
+                  {getMetricIcon(kpi.code)}
+                </span>
+                <span
+                  className={`rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${projectedTone(projectedValue)}`}
+                  title={`Projected total at current pace. Projection = Actual × (${paceTotalUnits} ${paceUnitLabel}${paceTotalUnits === 1 ? '' : 's'} total / ${paceElapsedUnits} elapsed).`}
+                >
+                  {projectedLabel}
+                </span>
+              </div>
 
-                <p className="text-xl font-bold tracking-tight">{formatKpiValue(kpi, kpi.current_value)}</p>
-                <p className="mt-0.5 truncate text-xs text-muted-foreground">{kpi.name}</p>
-                <div className="mt-2 flex items-center justify-between gap-2">
-                  <p
-                    className="truncate text-[11px] text-muted-foreground"
-                    title={`Average per submitted log. Avg = Actual ÷ ${submittedLogs} submitted log${submittedLogs === 1 ? '' : 's'}.`}
-                  >
-                    Avg/log: {averageLabel}
-                  </p>
-                  <span
-                    className={`rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${changeChipTone(changeToneValue)}`}
-                    title={kpi.data_type === 'percent' ? 'Change in percentage points vs previous period.' : 'Change vs previous period.'}
-                  >
-                    {changeLabel}
-                  </span>
-                </div>
-              </button>
-            )
-          })}
-        </div>
-      </section>
-
-      {selectedKpi ? (
-        <section>
-          <MinimalistTrendChart
-            data={selectedTrend.map((point) => ({
-              date: point.date,
-              value: point.value,
-            }))}
-            title={selectedKpi.name}
-            periodLabel={periodTitle}
-            valueFormatter={(value) => formatKpiValue(selectedKpi, value)}
-            height={210}
-          />
-        </section>
-      ) : null}
-    </>
+              <p className="text-xl font-bold tracking-tight">{formatKpiValue(kpi, kpi.current_value)}</p>
+              <p className="mt-0.5 truncate text-xs text-muted-foreground">{kpi.name}</p>
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <p
+                  className="truncate text-[11px] text-muted-foreground"
+                  title={`Average per submitted log. Avg = Actual ÷ ${submittedLogs} submitted log${submittedLogs === 1 ? '' : 's'}.`}
+                >
+                  Avg/log: {averageLabel}
+                </p>
+                <span
+                  className={`rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${changeChipTone(changeToneValue)}`}
+                  title={kpi.data_type === 'percent' ? 'Change in percentage points vs previous period.' : 'Change vs previous period.'}
+                >
+                  {changeLabel}
+                </span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </section>
   )
 }
