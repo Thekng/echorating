@@ -3,6 +3,22 @@ import { redirect } from 'next/navigation'
 import { ROUTES } from '@/lib/constants/routes'
 import { SelectCompanyForm } from '@/components/auth/select-company-form'
 
+type CompanyRelation = { name: string | null } | Array<{ name: string | null }> | null
+
+type CompanyMembership = {
+  company_id: string
+  role: string
+  companies: CompanyRelation
+}
+
+function getCompanyName(companies: CompanyRelation) {
+  if (Array.isArray(companies)) {
+    return companies[0]?.name ?? 'Unknown Company'
+  }
+
+  return companies?.name ?? 'Unknown Company'
+}
+
 export default async function SelectCompanyPage() {
   const supabase = await createClient()
 
@@ -29,9 +45,9 @@ export default async function SelectCompanyPage() {
     )
   }
 
-  const companies = memberships.map((membership) => ({
+  const companies = (memberships as CompanyMembership[]).map((membership) => ({
     company_id: membership.company_id,
-    name: Array.isArray(membership.companies) ? membership.companies[0]?.name : membership.companies?.name || 'Unknown Company',
+    name: getCompanyName(membership.companies),
     role: membership.role
   }))
 
