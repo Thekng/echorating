@@ -12,6 +12,7 @@ const protectedRoutes = [
   ROUTES.DAILY_LOG,
   ROUTES.LEADERBOARD,
   ROUTES.ONBOARDING,
+  ROUTES.SELECT_COMPANY,
 ]
 
 const appRoutes = [

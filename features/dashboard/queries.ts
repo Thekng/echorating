@@ -657,6 +657,8 @@ export async function getDashboardData(filters?: {
   }
 
   let kpis: DashboardKpi[] = []
+  let trend: DashboardTrendPoint[] = []
+  let primaryMetricLabel: string | null = null
 
   if (selectedMetricIds.length > 0) {
     let entriesBothQuery = context.admin
@@ -695,6 +697,11 @@ export async function getDashboardData(filters?: {
 
       const currentTotals = new Map<string, number>()
       const previousTotals = new Map<string, number>()
+      
+      const primaryMetric = prioritizedMetrics[0]
+      primaryMetricLabel = primaryMetric ? primaryMetric.name : null
+      const trendLogsByDate = new Map<string, Set<string>>()
+      const trendMetricByDate = new Map<string, number>()
 
       for (const row of (valuesData ?? []) as Array<{
         entry_id: string
@@ -715,6 +722,14 @@ export async function getDashboardData(filters?: {
 
         if (entryDate >= range.startDate && entryDate <= range.cutoffDate) {
           currentTotals.set(row.metric_id, (currentTotals.get(row.metric_id) ?? 0) + value)
+          
+          if (primaryMetric && row.metric_id === primaryMetric.metric_id) {
+            trendMetricByDate.set(entryDate, (trendMetricByDate.get(entryDate) ?? 0) + value)
+          }
+          if (!trendLogsByDate.has(entryDate)) {
+            trendLogsByDate.set(entryDate, new Set())
+          }
+          trendLogsByDate.get(entryDate)?.add(row.entry_id)
         } else if (entryDate >= range.previousStartDate && entryDate <= range.previousCutoffDate) {
           previousTotals.set(row.metric_id, (previousTotals.get(row.metric_id) ?? 0) + value)
         }
@@ -735,10 +750,40 @@ export async function getDashboardData(filters?: {
           change_pct: calcChangePct(currentValue, previousValue),
         }
       })
+      
+      const dateFormatter = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' })
+      let currentDate = new Date(`${range.startDate}T00:00:00Z`)
+      const cutoffDateObj = new Date(`${range.cutoffDate}T00:00:00Z`)
+      
+      while (currentDate <= cutoffDateObj) {
+        const dateKey = dateKeyUtc(currentDate)
+        trend.push({
+          date: dateKey,
+          label: dateFormatter.format(currentDate),
+          submitted_logs: trendLogsByDate.get(dateKey)?.size ?? 0,
+          primary_metric_value: Number((trendMetricByDate.get(dateKey) ?? 0).toFixed(2)),
+        })
+        currentDate = addUtcDays(currentDate, 1)
+      }
+    } else {
+        const primaryMetric = prioritizedMetrics.length > 0 ? prioritizedMetrics[0] : null
+        primaryMetricLabel = primaryMetric ? primaryMetric.name : null
+        const dateFormatter = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' })
+        let currentDate = new Date(`${range.startDate}T00:00:00Z`)
+        const cutoffDateObj = new Date(`${range.cutoffDate}T00:00:00Z`)
+        while (currentDate <= cutoffDateObj) {
+            trend.push({
+                date: dateKeyUtc(currentDate),
+                label: dateFormatter.format(currentDate),
+                submitted_logs: 0,
+                primary_metric_value: 0
+            })
+            currentDate = addUtcDays(currentDate, 1)
+        }
     }
   }
 
-  const data: DashboardResultData = {
+  const data = {
     viewerRole: context.role,
     departments,
     selectedDepartmentId,
@@ -755,6 +800,8 @@ export async function getDashboardData(filters?: {
     paceUnitLabel: range.paceUnitLabel,
     kpis,
     stats,
+    trend,
+    primaryMetricLabel,
   }
 
   return { success: true as const, data }

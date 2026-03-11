@@ -1,5 +1,6 @@
 import { DashboardFilters } from '@/components/dashboard/dashboard-filters'
 import { DashboardInteractive } from '@/components/dashboard/dashboard-interactive'
+import { DashboardTrendChart } from '@/components/dashboard/dashboard-trend-chart'
 import { getDashboardData } from '@/features/dashboard/queries'
 import Link from 'next/link'
 
@@ -77,6 +78,8 @@ async function DashboardContent({
     paceUnitLabel,
     kpis,
     stats,
+    trend,
+    primaryMetricLabel,
   } = result.data
 
   if (departments.length === 0) {
@@ -104,13 +107,16 @@ async function DashboardContent({
           No active stats found for this team. Configure stats in Settings first.
         </div>
       ) : (
-        <DashboardInteractive
-          kpis={kpis}
-          submittedLogs={stats.submitted_logs}
-          paceTotalUnits={paceTotalUnits}
-          paceElapsedUnits={paceElapsedUnits}
-          paceUnitLabel={paceUnitLabel}
-        />
+        <>
+          <DashboardInteractive
+            kpis={kpis}
+            submittedLogs={stats.submitted_logs}
+            paceTotalUnits={paceTotalUnits}
+            paceElapsedUnits={paceElapsedUnits}
+            paceUnitLabel={paceUnitLabel}
+          />
+          <DashboardTrendChart points={trend} metricLabel={primaryMetricLabel ?? 'Metric'} />
+        </>
       )}
     </div>
   )

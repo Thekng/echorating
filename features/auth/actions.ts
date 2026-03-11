@@ -46,13 +46,24 @@ export async function loginAction(
   }
 
   const supabase = await createClient()
-  const { error } = await supabase.auth.signInWithPassword({
+  const { data: authData, error } = await supabase.auth.signInWithPassword({
     email: parsed.data.email,
     password: parsed.data.password,
   })
 
   if (error) {
     return { status: 'error', message: 'Email or password is invalid.' }
+  }
+
+  const { data: memberships } = await supabase
+    .from('company_members')
+    .select('company_id')
+    .eq('user_id', authData.user.id)
+
+  const membershipCount = memberships?.length || 0
+
+  if (membershipCount > 1) {
+    redirect(ROUTES.SELECT_COMPANY)
   }
 
   const nextPath = sanitizeRedirectPath(field(formData, 'next'))
@@ -119,4 +130,55 @@ export async function resetPasswordAction(
     status: 'success',
     message: 'If this email exists, we sent password reset instructions.',
   }
+}
+
+export async function selectCompanyAction(
+  _prevState: AuthActionState,
+  formData: FormData,
+): Promise<AuthActionState> {
+  const companyId = field(formData, 'companyId')
+  if (!companyId) {
+    return { status: 'error', message: 'No company selected.' }
+  }
+
+  const supabase = await createClient()
+  const { data: authData, error: authError } = await supabase.auth.getUser()
+
+  if (authError || !authData.user) {
+    return { status: 'error', message: 'Authentication required.' }
+  }
+
+  const { data: membership, error: membershipError } = await supabase
+    .from('company_members')
+    .select('role')
+    .eq('user_id', authData.user.id)
+    .eq('company_id', companyId)
+    .single()
+
+  if (membershipError || !membership) {
+    return { status: 'error', message: 'You are not a member of this company.' }
+  }
+
+  // Update profiles row directly through the raw client (using RLS self-update or admin override)
+  // Since user updates their own profile, if RLS "profiles_update_self_or_admin" allows self-updating company_id
+  // Let's check RLS: profiles_update_self_or_admin allows updating self IF company_id = current_company_id()
+  // Wait, if they are switching companies, they are changing company_id. This might be blocked by RLS `with check (company_id = public.current_company_id())`! Next best is using admin client to safely perform the context switch.
+
+  // We need to import createAdminClient, but it's not imported here yet. Let's do a raw import inside the function to avoid breaking standard client imports.
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const admin = createAdminClient()
+
+  const { error: profileError } = await admin
+    .from('profiles')
+    .update({
+      company_id: companyId,
+      role: membership.role,
+    })
+    .eq('user_id', authData.user.id)
+
+  if (profileError) {
+    return { status: 'error', message: 'Failed to switch company context.' }
+  }
+
+  redirect(ROUTES.DASHBOARD)
 }

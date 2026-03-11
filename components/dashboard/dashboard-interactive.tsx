@@ -153,20 +153,6 @@ export function DashboardInteractive({
 
               <p className="text-xl font-bold tracking-tight">{formatKpiValue(kpi, kpi.current_value)}</p>
               <p className="mt-0.5 truncate text-xs text-muted-foreground">{kpi.name}</p>
-              <div className="mt-2 flex items-center justify-between gap-2">
-                <p
-                  className="truncate text-[11px] text-muted-foreground"
-                  title={`Average per submitted log. Avg = Actual ÷ ${submittedLogs} submitted log${submittedLogs === 1 ? '' : 's'}.`}
-                >
-                  Avg/log: {averageLabel}
-                </p>
-                <span
-                  className={`rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${changeChipTone(changeToneValue)}`}
-                  title={kpi.data_type === 'percent' ? 'Change in percentage points vs previous period.' : 'Change vs previous period.'}
-                >
-                  {changeLabel}
-                </span>
-              </div>
             </div>
           )
         })}

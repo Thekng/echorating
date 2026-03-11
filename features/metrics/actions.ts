@@ -214,7 +214,7 @@ function mapMetricDatabaseError(message: string): MetricActionState {
 }
 
 function revalidateMetricConsumerPaths() {
-  revalidateMetricConsumerPaths()
+  revalidatePath(ROUTES.SETTINGS_METRICS)
   revalidatePath(ROUTES.DAILY_LOG)
   revalidatePath(ROUTES.DASHBOARD)
   revalidatePath(ROUTES.LEADERBOARD)

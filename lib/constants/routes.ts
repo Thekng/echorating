@@ -8,6 +8,7 @@ export const ROUTES = {
   // Onboarding
   ONBOARDING: '/onboarding',
   ONBOARDING_COMPANY: '/onboarding/company',
+  SELECT_COMPANY: '/select-company',
 
   // App
   DASHBOARD: '/dashboard',
