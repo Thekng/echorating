@@ -357,7 +357,7 @@ export async function createMemberAction(
     })
   }
 
-  const inviteRedirectTo = `${appBaseUrl()}${ROUTES.LOGIN}`
+  const inviteRedirectTo = `${appBaseUrl()}${ROUTES.CREATE_PASSWORD}`
   const normalizedEmail = parsed.data.email.toLowerCase()
 
   const existingAuthUserResult = await findAuthUserByEmail(context.admin, normalizedEmail)
@@ -509,7 +509,7 @@ export async function createMemberAction(
   let inviteFailed = false
 
   if (isResendInviteEnabled() && hasConfiguredResendKey()) {
-    const inviteUrl = `${appBaseUrl()}${ROUTES.LOGIN}?email=${encodeURIComponent(normalizedEmail)}`
+    const inviteUrl = `${appBaseUrl()}${ROUTES.CREATE_PASSWORD}?email=${encodeURIComponent(normalizedEmail)}`
     const emailResult = await sendEmail({
       to: normalizedEmail,
       subject: `You're invited to ${context.companyName} on EchoRating`,

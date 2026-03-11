@@ -2,7 +2,7 @@
 
 import { redirect } from 'next/navigation'
 import { z } from 'zod'
-import { loginSchema, signupSchema, resetPasswordSchema } from './schemas'
+import { loginSchema, signupSchema, resetPasswordSchema, createPasswordSchema } from './schemas'
 import { createClient } from '@/lib/supabase/server'
 import { ROUTES } from '@/lib/constants/routes'
 
@@ -178,6 +178,37 @@ export async function selectCompanyAction(
 
   if (profileError) {
     return { status: 'error', message: 'Failed to switch company context.' }
+  }
+
+  redirect(ROUTES.DASHBOARD)
+}
+
+export async function createPasswordAction(
+  _prevState: AuthActionState,
+  formData: FormData,
+): Promise<AuthActionState> {
+  const parsed = createPasswordSchema.safeParse({
+    password: field(formData, 'password'),
+    confirmPassword: field(formData, 'confirmPassword'),
+  })
+
+  if (!parsed.success) {
+    return { status: 'error', message: zodMessage(parsed.error) }
+  }
+
+  const supabase = await createClient()
+  const { data: authData, error: authError } = await supabase.auth.getUser()
+
+  if (authError || !authData.user) {
+    return { status: 'error', message: 'Authentication required. Your invite link may have expired.' }
+  }
+
+  const { error: updateError } = await supabase.auth.updateUser({
+    password: parsed.data.password,
+  })
+
+  if (updateError) {
+    return { status: 'error', message: updateError.message }
   }
 
   redirect(ROUTES.DASHBOARD)

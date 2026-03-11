@@ -4,6 +4,7 @@ export const ROUTES = {
   SIGNUP: '/signup',
   RESET_PASSWORD: '/reset-password',
   VERIFY_EMAIL: '/verify-email',
+  CREATE_PASSWORD: '/create-password',
 
   // Onboarding
   ONBOARDING: '/onboarding',
