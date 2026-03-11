@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Search } from 'lucide-react'
 
-type Period = 'today' | 'current_week' | 'this_month' | 'custom'
+type Period = 'today' | 'current_week' | 'this_month' | 'last_week' | 'last_month' | 'custom'
 
 type AgentsFiltersProps = {
   basePath: string
@@ -143,7 +143,9 @@ export function AgentsFilters({
           >
             <option value="today">Today</option>
             <option value="current_week">Current week</option>
+            <option value="last_week">Last week</option>
             <option value="this_month">This month</option>
+            <option value="last_month">Last month</option>
             <option value="custom">Customize</option>
           </select>
         </div>

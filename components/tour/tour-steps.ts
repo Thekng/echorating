@@ -21,13 +21,8 @@ export function getTourStepsForRole(role: string): Step[] {
             disableBeacon: true,
         },
         {
-            target: '.tour-nav-leaderboard',
-            content: 'Check the Leaderboard to see how you rank against your peers, and celebrate top performers.',
-            disableBeacon: true,
-        },
-        {
-            target: '.tour-nav-accountability',
-            content: 'Here you can view deep-dives into individual team member stats, tracking consistency and goal completion over time.',
+            target: '.tour-nav-team',
+            content: 'View your team members, track submission consistency, and drill into individual agent performance.',
             disableBeacon: true,
         },
     ]

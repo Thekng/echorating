@@ -29,6 +29,7 @@ type MetricFieldKey =
   | 'inputMode'
   | 'expression'
   | 'selectionOptions'
+  | 'target'
 
 export type MetricActionState = {
   status: 'idle' | 'success' | 'error'
@@ -906,6 +907,50 @@ async function upsertCurrentFormula(
   return { ok: true as const }
 }
 
+async function upsertMetricTarget(
+  admin: ReturnType<typeof createAdminClient>,
+  companyId: string,
+  departmentId: string,
+  metricId: string,
+  value: number | undefined,
+) {
+  if (value === undefined || isNaN(value)) {
+    return { ok: true as const }
+  }
+
+  // Deactivate existing
+  await admin
+    .from('targets')
+    .update({ is_active: false, updated_at: new Date().toISOString() })
+    .eq('company_id', companyId)
+    .eq('department_id', departmentId)
+    .eq('metric_id', metricId)
+    .eq('scope', 'department')
+    .eq('period', 'daily')
+    .is('user_id', null)
+    .eq('is_active', true)
+
+  // Insert new
+  const { error } = await admin
+    .from('targets')
+    .insert({
+      company_id: companyId,
+      department_id: departmentId,
+      metric_id: metricId,
+      value: value,
+      scope: 'department',
+      period: 'daily',
+      is_active: true,
+      user_id: null,
+    })
+
+  if (error) {
+    return { ok: false as const, message: formatDatabaseError(error.message) }
+  }
+
+  return { ok: true as const }
+}
+
 export async function createMetricAction(
   _prevState: MetricActionState,
   formData: FormData,
@@ -921,6 +966,7 @@ export async function createMetricAction(
     inputMode: field(formData, 'inputMode'),
     expression: field(formData, 'expression'),
     dependsOnMetricIds: [],
+    target: field(formData, 'target') ? Number(field(formData, 'target')) : undefined,
   })
 
   if (!parsed.success) {
@@ -1046,6 +1092,17 @@ export async function createMetricAction(
     }
   }
 
+  const targetResult = await upsertMetricTarget(
+    context.admin,
+    context.companyId,
+    parsed.data.departmentId,
+    metric.metric_id,
+    parsed.data.target,
+  )
+  if (!targetResult.ok) {
+    return actionError(targetResult.message)
+  }
+
   revalidateMetricConsumerPaths()
   return actionSuccess(
     parsed.data.inputMode === 'manual'
@@ -1069,6 +1126,7 @@ export async function updateMetricAction(
     inputMode: field(formData, 'inputMode'),
     expression: field(formData, 'expression'),
     dependsOnMetricIds: [],
+    target: field(formData, 'target') ? Number(field(formData, 'target')) : undefined,
   })
 
   if (!parsed.success) {
@@ -1273,6 +1331,17 @@ export async function updateMetricAction(
     if (!dependencyResult.ok) {
       return actionError(dependencyResult.message)
     }
+  }
+
+  const targetResult = await upsertMetricTarget(
+    context.admin,
+    context.companyId,
+    parsed.data.departmentId,
+    parsed.data.metricId,
+    parsed.data.target,
+  )
+  if (!targetResult.ok) {
+    return actionError(targetResult.message)
   }
 
   revalidateMetricConsumerPaths()

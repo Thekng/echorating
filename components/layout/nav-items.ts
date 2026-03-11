@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import { LayoutDashboard, ListChecks, Medal, Users, Settings } from 'lucide-react'
+import { LayoutDashboard, ListChecks, Users, Settings } from 'lucide-react'
 import { ROUTES } from '@/lib/constants/routes'
 
 export type AppNavItem = {
@@ -26,18 +26,11 @@ export const APP_NAV_ITEMS: AppNavItem[] = [
     tourId: 'tour-nav-daily-log',
   },
   {
-    href: ROUTES.LEADERBOARD,
-    label: 'Leaderboard',
-    shortLabel: 'Top',
-    icon: Medal,
-    tourId: 'tour-nav-leaderboard',
-  },
-  {
     href: ROUTES.ACCOUNTABILITY,
-    label: 'Performance',
-    shortLabel: 'Performance',
+    label: 'Team',
+    shortLabel: 'Team',
     icon: Users,
-    tourId: 'tour-nav-accountability',
+    tourId: 'tour-nav-team',
   },
   {
     href: ROUTES.SETTINGS,

@@ -7,8 +7,8 @@ import { type Role } from '@/lib/rbac/roles'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
 import { type MetricDataType } from '@/lib/metrics/data-types'
 
-type LeaderboardPeriod = 'today' | 'current_week' | 'this_month' | 'custom'
-type IncomingLeaderboardPeriod = LeaderboardPeriod | 'this_week'
+type LeaderboardPeriod = 'today' | 'current_week' | 'this_month' | 'last_week' | 'last_month' | 'custom'
+type IncomingLeaderboardPeriod = LeaderboardPeriod | 'this_week' | 'month'
 
 type DateRangeResult =
   | {
@@ -61,6 +61,8 @@ const PERIOD_ALIASES: Record<IncomingLeaderboardPeriod, LeaderboardPeriod> = {
   current_week: 'current_week',
   this_week: 'current_week',
   this_month: 'this_month',
+  last_week: 'last_week',
+  last_month: 'last_month',
   custom: 'custom',
 }
 
@@ -132,6 +134,36 @@ function resolveDateRange(
       startDate: start,
       endDate: end,
       cutoffDate: today < start ? start : today > end ? end : today,
+    }
+  }
+
+  if (period === 'last_week') {
+    const day = now.getUTCDay()
+    const diffToLastMonday = (day === 0 ? 6 : day - 1) + 7
+    const lastMonday = addUtcDays(now, -diffToLastMonday)
+    const lastSunday = addUtcDays(lastMonday, 6)
+    const start = dateKeyUtc(lastMonday)
+    const end = dateKeyUtc(lastSunday)
+    return {
+      ok: true,
+      period,
+      startDate: start,
+      endDate: end,
+      cutoffDate: end,
+    }
+  }
+
+  if (period === 'last_month') {
+    const year = now.getUTCMonth() === 0 ? now.getUTCFullYear() - 1 : now.getUTCFullYear()
+    const month = now.getUTCMonth() === 0 ? 11 : now.getUTCMonth() - 1
+    const start = `${year}-${String(month + 1).padStart(2, '0')}-01`
+    const end = dateKeyUtc(new Date(Date.UTC(year, month + 1, 0)))
+    return {
+      ok: true,
+      period,
+      startDate: start,
+      endDate: end,
+      cutoffDate: end,
     }
   }
 

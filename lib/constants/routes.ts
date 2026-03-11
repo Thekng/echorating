@@ -16,7 +16,6 @@ export const ROUTES = {
   DAILY_LOG: '/daily-log',
   LEADERBOARD: '/leaderboard',
   ACCOUNTABILITY: '/accountability',
-  AGENTS: '/agents',
   SETTINGS: '/settings',
   SETTINGS_COMPANY: '/settings/company',
   SETTINGS_DEPARTMENTS: '/settings/departments',

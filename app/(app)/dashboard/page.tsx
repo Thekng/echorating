@@ -3,14 +3,16 @@ import { DashboardInteractive } from '@/components/dashboard/dashboard-interacti
 import { DashboardTrendChart } from '@/components/dashboard/dashboard-trend-chart'
 import { getDashboardData } from '@/features/dashboard/queries'
 import Link from 'next/link'
+import { Trophy } from 'lucide-react'
 
 type DashboardPageProps = {
   searchParams: Promise<{
     departmentId?: string
     userId?: string
-    period?: 'today' | 'current_week' | 'this_month' | 'custom' | 'last_7_days' | 'last_30_days' | 'last_90_days'
+    period?: 'today' | 'current_week' | 'this_month' | 'last_week' | 'last_month' | 'custom' | 'last_7_days' | 'last_30_days' | 'last_90_days' | 'this_week'
     startDate?: string
     endDate?: string
+    metricId?: string
   }>
 }
 
@@ -42,12 +44,14 @@ async function DashboardContent({
   period,
   startDate,
   endDate,
+  metricId,
 }: {
   departmentId?: string
   userId?: string
-  period?: 'today' | 'current_week' | 'this_month' | 'custom' | 'last_7_days' | 'last_30_days' | 'last_90_days'
+  period?: 'today' | 'current_week' | 'this_month' | 'last_week' | 'last_month' | 'custom' | 'last_7_days' | 'last_30_days' | 'last_90_days' | 'this_week'
   startDate?: string
   endDate?: string
+  metricId?: string
 }) {
   const result = await getDashboardData({
     departmentId,
@@ -55,6 +59,7 @@ async function DashboardContent({
     period,
     startDate,
     endDate,
+    metricId,
   })
 
   if (!result.success || !result.data) {
@@ -114,6 +119,7 @@ async function DashboardContent({
             paceTotalUnits={paceTotalUnits}
             paceElapsedUnits={paceElapsedUnits}
             paceUnitLabel={paceUnitLabel}
+            selectedMetricId={metricId}
           />
           <DashboardTrendChart points={trend} metricLabel={primaryMetricLabel ?? 'Metric'} />
         </>
@@ -132,12 +138,21 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Dashboard</h1>
           <p className="text-xs text-muted-foreground md:text-sm">Performance overview by team and period.</p>
         </div>
-        <Link
-          href="/daily-log"
-          className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-        >
-          Add Daily Log
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/leaderboard"
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-input bg-background px-4 text-sm font-medium transition-colors hover:bg-muted"
+          >
+            <Trophy className="size-4 text-amber-500" />
+            <span className="hidden sm:inline">Leaderboard</span>
+          </Link>
+          <Link
+            href="/daily-log"
+            className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            Add Daily Log
+          </Link>
+        </div>
       </div>
 
       <Suspense fallback={<DashboardSkeleton />}>
@@ -147,6 +162,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           period={params.period}
           startDate={params.startDate}
           endDate={params.endDate}
+          metricId={params.metricId}
         />
       </Suspense>
     </div>

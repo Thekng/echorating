@@ -7,8 +7,8 @@ import { type Role } from '@/lib/rbac/roles'
 import { type MetricDataType } from '@/lib/metrics/data-types'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
 
-type DashboardPeriod = 'today' | 'current_week' | 'this_month' | 'custom'
-type IncomingDashboardPeriod = DashboardPeriod | 'last_7_days' | 'last_30_days' | 'last_90_days'
+type DashboardPeriod = 'today' | 'current_week' | 'this_month' | 'last_week' | 'last_month' | 'custom'
+type IncomingDashboardPeriod = DashboardPeriod | 'last_7_days' | 'last_30_days' | 'last_90_days' | 'this_week'
 
 type DateRangeResult =
   | {
@@ -110,6 +110,8 @@ type DashboardResultData = {
   paceUnitLabel: 'workday'
   kpis: DashboardKpi[]
   stats: DashboardStats
+  trend: DashboardTrendPoint[]
+  primaryMetricLabel: string | null
 }
 
 const SUPPORTED_KPI_TYPES: MetricDataType[] = ['number', 'currency', 'percent', 'duration', 'boolean']
@@ -117,7 +119,10 @@ const SUPPORTED_KPI_TYPES: MetricDataType[] = ['number', 'currency', 'percent', 
 const PERIOD_ALIASES: Record<IncomingDashboardPeriod, DashboardPeriod> = {
   today: 'today',
   current_week: 'current_week',
+  this_week: 'current_week',
   this_month: 'this_month',
+  last_week: 'last_week',
+  last_month: 'last_month',
   custom: 'custom',
   last_7_days: 'current_week',
   last_30_days: 'this_month',
@@ -275,6 +280,66 @@ function resolveDateRange(
       windowDays,
       elapsedDays: Math.max(1, Math.min(windowDays, elapsedDays)),
       remainingDays: Math.max(0, windowDays - Math.max(1, Math.min(windowDays, elapsedDays))),
+      ...pace,
+    }
+  }
+
+  if (period === 'last_week') {
+    const day = now.getUTCDay()
+    const diffToLastMonday = (day === 0 ? 6 : day - 1) + 7
+    const lastMonday = addUtcDays(now, -diffToLastMonday)
+    const lastSunday = addUtcDays(lastMonday, 6)
+    const startDate = dateKeyUtc(lastMonday)
+    const endDate = dateKeyUtc(lastSunday)
+    const windowDays = 7
+    const pace = resolvePaceUnits(startDate, endDate, today)
+
+    const prevLastMonday = addUtcDays(lastMonday, -7)
+    const prevLastSunday = addUtcDays(lastSunday, -7)
+
+    return {
+      ok: true,
+      period,
+      startDate,
+      endDate,
+      cutoffDate: endDate,
+      previousStartDate: dateKeyUtc(prevLastMonday),
+      previousEndDate: dateKeyUtc(prevLastSunday),
+      previousCutoffDate: dateKeyUtc(prevLastSunday),
+      windowDays,
+      elapsedDays: windowDays,
+      remainingDays: 0,
+      ...pace,
+    }
+  }
+
+  if (period === 'last_month') {
+    const year = now.getUTCMonth() === 0 ? now.getUTCFullYear() - 1 : now.getUTCFullYear()
+    const month = now.getUTCMonth() === 0 ? 11 : now.getUTCMonth() - 1
+    const start = new Date(Date.UTC(year, month, 1))
+    const end = new Date(Date.UTC(year, month + 1, 0))
+    const startDate = dateKeyUtc(start)
+    const endDate = dateKeyUtc(end)
+    const windowDays = diffDaysInclusive(startDate, endDate)
+    const pace = resolvePaceUnits(startDate, endDate, today)
+
+    const prevYear = month === 0 ? year - 1 : year
+    const prevMonth = month === 0 ? 11 : month - 1
+    const prevStart = new Date(Date.UTC(prevYear, prevMonth, 1))
+    const prevEnd = new Date(Date.UTC(prevYear, prevMonth + 1, 0))
+
+    return {
+      ok: true,
+      period,
+      startDate,
+      endDate,
+      cutoffDate: endDate,
+      previousStartDate: dateKeyUtc(prevStart),
+      previousEndDate: dateKeyUtc(prevEnd),
+      previousCutoffDate: dateKeyUtc(prevEnd),
+      windowDays,
+      elapsedDays: windowDays,
+      remainingDays: 0,
       ...pace,
     }
   }
@@ -474,6 +539,7 @@ export async function getDashboardData(filters?: {
   period?: IncomingDashboardPeriod | null
   startDate?: string | null
   endDate?: string | null
+  metricId?: string | null
 }) {
   const context = await getViewerContext()
   if (!context.ok) {
@@ -526,6 +592,8 @@ export async function getDashboardData(filters?: {
         submission_rate: 0,
         consistency_rate: 0,
       },
+      trend: [],
+      primaryMetricLabel: null,
     }
     return { success: true as const, data: emptyData }
   }
@@ -698,7 +766,9 @@ export async function getDashboardData(filters?: {
       const currentTotals = new Map<string, number>()
       const previousTotals = new Map<string, number>()
       
-      const primaryMetric = prioritizedMetrics[0]
+      const primaryMetric = filters?.metricId 
+        ? (metricById.get(filters.metricId) || prioritizedMetrics[0])
+        : prioritizedMetrics[0]
       primaryMetricLabel = primaryMetric ? primaryMetric.name : null
       const trendLogsByDate = new Map<string, Set<string>>()
       const trendMetricByDate = new Map<string, number>()

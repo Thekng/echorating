@@ -32,7 +32,7 @@ type RankingRow = {
 type LeaderboardApiPayload = {
   departments: Department[]
   departmentId: string
-  period: 'today' | 'current_week' | 'this_month' | 'custom'
+  period: 'today' | 'current_week' | 'this_month' | 'last_week' | 'last_month' | 'custom'
   startDate: string
   endDate: string
   metrics: Metric[]
@@ -42,7 +42,7 @@ type LeaderboardApiPayload = {
   message?: string
 }
 
-type Period = 'today' | 'current_week' | 'this_month' | 'custom'
+type Period = 'today' | 'current_week' | 'this_month' | 'last_week' | 'last_month' | 'custom'
 const EMPTY_DEPARTMENTS: Department[] = []
 const EMPTY_METRICS: Metric[] = []
 const EMPTY_ROWS: RankingRow[] = []
@@ -51,6 +51,8 @@ function getPeriodLabel(period: Period, start?: string, end?: string): string {
   if (period === 'today') return 'Today'
   if (period === 'current_week') return 'This week'
   if (period === 'this_month') return 'This month'
+  if (period === 'last_week') return 'Last week'
+  if (period === 'last_month') return 'Last month'
   if (period === 'custom' && start && end) {
     return formatDateShort(start) === formatDateShort(end)
       ? formatDateShort(start)
@@ -176,6 +178,8 @@ export default function LeaderboardClient() {
               <option value="today">Today</option>
               <option value="current_week">Current week</option>
               <option value="this_month">This month</option>
+              <option value="last_week">Last week</option>
+              <option value="last_month">Last month</option>
               <option value="custom">Custom</option>
             </select>
           </div>
@@ -287,7 +291,7 @@ export default function LeaderboardClient() {
                     <td className="px-4 py-3 text-right">
                       <button
                         className="rounded-md border border-input px-2 py-1 text-xs hover:bg-muted/40"
-                        onClick={() => router.push(`${ROUTES.AGENTS}/${row.user_id}`)}
+                        onClick={() => router.push(`${ROUTES.ACCOUNTABILITY}/${row.user_id}`)}
                       >
                         Open
                       </button>

@@ -29,6 +29,7 @@ type MetricListItem = {
   sort_order: number | null
   is_active: boolean
   formula_expression: string | null
+  daily_target_value: number | null
   created_at: string
   updated_at: string
 }

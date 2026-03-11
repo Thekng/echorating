@@ -42,6 +42,7 @@ type MetricItem = {
   settings: MetricSettings | null
   input_mode: 'manual' | 'calculated'
   formula_expression: string | null
+  daily_target_value: number | null
 }
 
 type EditMetricModalProps = {
@@ -155,6 +156,7 @@ function getInitialFieldState(metric: MetricItem) {
       settings.selectionMode === 'multi' || settings.selectionMode === 'radio' ? settings.selectionMode : 'single',
     selectionOptions: selectionOptionsToText(settings.selectionOptions),
     fileKind: settings.fileKind === 'image' ? 'image' : 'file',
+    target: metric.daily_target_value?.toString() ?? '',
   } as const
 }
 
@@ -206,6 +208,7 @@ export function EditMetricModal({ metric, departments, dependencyMetrics, onSave
   const [selectionMode, setSelectionMode] = useState<'single' | 'multi' | 'radio'>(initialState.selectionMode)
   const [selectionOptions, setSelectionOptions] = useState(initialState.selectionOptions)
   const [fileKind, setFileKind] = useState<'file' | 'image'>(initialState.fileKind)
+  const [target, setTarget] = useState(initialState.target)
 
   const unitOptions = UNIT_OPTIONS[dataType]
   const availableFormulaMetrics = useMemo(
@@ -264,6 +267,7 @@ export function EditMetricModal({ metric, departments, dependencyMetrics, onSave
     setSelectionMode(nextState.selectionMode)
     setSelectionOptions(nextState.selectionOptions)
     setFileKind(nextState.fileKind)
+    setTarget(nextState.target)
   }
 
   function handleOpenModal() {
@@ -517,6 +521,25 @@ export function EditMetricModal({ metric, departments, dependencyMetrics, onSave
                   />
                 </div>
               ) : null}
+
+              <div className="space-y-2">
+                <label htmlFor={`edit-metric-target-${metric.metric_id}`} className="text-sm font-medium">
+                  Daily Target (optional)
+                </label>
+                <input
+                  id={`edit-metric-target-${metric.metric_id}`}
+                  name="target"
+                  type="number"
+                  step="any"
+                  value={target}
+                  onChange={(event) => setTarget(event.target.value)}
+                  placeholder="e.g. 100"
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                />
+                <p className="text-xs text-muted-foreground">
+                   Default daily target for this metric in the selected department.
+                </p>
+              </div>
 
               {dataType === 'number' ? (
                 <div className="space-y-2">

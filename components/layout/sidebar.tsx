@@ -2,9 +2,10 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { ChevronsLeft, ChevronsRight, Moon, Sun } from 'lucide-react'
+import { ChevronsLeft, ChevronsRight, Moon, Sun, Play } from 'lucide-react'
 import { APP_NAV_ITEMS, isActivePath } from './nav-items'
 import { cn } from '@/lib/utils'
+import { useTour } from '@/components/tour/tour-provider'
 
 type SidebarProps = {
   collapsed: boolean
@@ -16,6 +17,7 @@ type SidebarProps = {
 
 export function Sidebar({ collapsed, onToggleCollapse, theme, onToggleTheme, companyName }: SidebarProps) {
   const pathname = usePathname()
+  const { startTour } = useTour()
 
   return (
     <div className="flex h-full w-full flex-col bg-background text-foreground">
@@ -79,6 +81,17 @@ export function Sidebar({ collapsed, onToggleCollapse, theme, onToggleTheme, com
             {!collapsed ? <span>{theme === 'dark' ? 'Light' : 'Dark'}</span> : null}
           </button>
         </div>
+
+        <button
+          type="button"
+          onClick={startTour}
+          className="mt-2 inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-border bg-background px-2 text-xs hover:bg-muted"
+          title="Restart App Tour"
+          aria-label="Restart App Tour"
+        >
+          <Play className="size-4" />
+          {!collapsed ? <span>App Tour</span> : null}
+        </button>
       </div>
     </div>
   )

@@ -5,6 +5,7 @@ import { AgentsFilters } from '@/components/agents/agents-filters'
 import { listDepartments } from '@/features/departments/queries'
 import { getAgentsList } from '@/features/agents/queries'
 import Link from 'next/link'
+import { Trophy } from 'lucide-react'
 
 type AccountabilityPageProps = {
   searchParams: Promise<{
@@ -85,9 +86,18 @@ export default async function AccountabilityPage({ searchParams }: Accountabilit
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Performance</h1>
-        <p className="text-sm text-muted-foreground">Select a team to view live agent submission performance.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Team</h1>
+          <p className="text-sm text-muted-foreground">Select a team to view live agent submission performance.</p>
+        </div>
+        <Link
+          href="/leaderboard"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-input bg-background px-4 text-sm font-medium transition-colors hover:bg-muted"
+        >
+          <Trophy className="size-4 text-amber-500" />
+          <span>Leaderboard</span>
+        </Link>
       </div>
 
       <AgentsFilters

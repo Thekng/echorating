@@ -421,6 +421,23 @@ export function CreateMetricModal({
                   />
                 </div>
               ) : null}
+              
+              <div className="space-y-2">
+                <label htmlFor="create-metric-target" className="text-sm font-medium">
+                  Daily Target (optional)
+                </label>
+                <input
+                  id="create-metric-target"
+                  name="target"
+                  type="number"
+                  step="any"
+                  placeholder="e.g. 100"
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Default daily target for this metric in the selected department.
+                </p>
+              </div>
 
               {dataType === 'number' ? (
                 <div className="space-y-2">

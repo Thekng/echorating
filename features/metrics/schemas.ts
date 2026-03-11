@@ -38,6 +38,7 @@ export const metricFormSchema = z
     inputMode: metricInputModeSchema,
     expression: optionalStringSchema,
     dependsOnMetricIds: optionalMetricIdsSchema,
+    target: z.coerce.number().optional(),
   })
   .superRefine((value, ctx) => {
     if (value.inputMode === 'calculated' && !value.expression?.trim()) {

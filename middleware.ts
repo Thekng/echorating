@@ -8,7 +8,6 @@ import { createAdminClient } from '@/lib/supabase/admin'
 const protectedRoutes = [
   ROUTES.DASHBOARD,
   ROUTES.SETTINGS,
-  ROUTES.AGENTS,
   ROUTES.DAILY_LOG,
   ROUTES.LEADERBOARD,
   ROUTES.ONBOARDING,
@@ -19,7 +18,6 @@ const protectedRoutes = [
 const appRoutes = [
   ROUTES.DASHBOARD,
   ROUTES.SETTINGS,
-  ROUTES.AGENTS,
   ROUTES.DAILY_LOG,
   ROUTES.LEADERBOARD,
 ]
