@@ -60,6 +60,7 @@ const PERIOD_ALIASES: Record<IncomingLeaderboardPeriod, LeaderboardPeriod> = {
   today: 'today',
   current_week: 'current_week',
   this_week: 'current_week',
+  month: 'this_month',
   this_month: 'this_month',
   last_week: 'last_week',
   last_month: 'last_month',
