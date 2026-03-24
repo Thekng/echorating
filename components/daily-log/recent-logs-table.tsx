@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Trash2, Pencil } from 'lucide-react'
 import { deleteDailyLogAction } from '@/features/daily-log/actions'
 import type {
@@ -17,6 +18,73 @@ type RecentLogsTableProps = {
   logs: DailyLogRecentEntry[]
   keyMetrics: DailyLogKeyMetric[]
   canDelete: boolean
+  currentPage: number
+  pageSize: number
+  totalCount: number
+}
+
+const PAGE_SIZE_OPTIONS = [10, 30, 50] as const
+
+function isAverageMetric(metric: DailyLogKeyMetric) {
+  return (
+    metric.data_type === 'number' ||
+    metric.data_type === 'currency' ||
+    metric.data_type === 'percent' ||
+    metric.data_type === 'duration'
+  )
+}
+
+function formatAverageValue(metric: DailyLogKeyMetric, value: number | null) {
+  if (value === null || value === undefined) {
+    return '-'
+  }
+
+  const settings = normalizeMetricSettings(metric.data_type, metric.settings)
+
+  if (metric.data_type === 'duration') {
+    if (settings.durationFormat === 'minutes') {
+      return `${Number((value / 60).toFixed(2))}`
+    }
+    if (settings.durationFormat === 'hours') {
+      return `${Number((value / 3600).toFixed(2))}`
+    }
+    if (settings.durationFormat === 'days') {
+      return `${Number((value / 86400).toFixed(2))}`
+    }
+    return formatSecondsToDuration(value) || '-'
+  }
+
+  if (metric.data_type === 'currency') {
+    const currencyCode = settings.currencyCode || 'USD'
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: currencyCode,
+      maximumFractionDigits: 2,
+    }).format(value)
+  }
+
+  if (metric.data_type === 'percent') {
+    return `${Number(value.toFixed(2))}%`
+  }
+
+  return String(Number(value.toFixed(2)))
+}
+
+function getMetricAverage(logs: DailyLogRecentEntry[], metric: DailyLogKeyMetric) {
+  if (!isAverageMetric(metric)) {
+    return null
+  }
+
+  const values = logs
+    .map((log) => log.key_metric_values.find((item) => item.metric_id === metric.metric_id)?.value_numeric ?? null)
+    .filter((value): value is number => value !== null && value !== undefined && Number.isFinite(value))
+
+  if (values.length === 0) {
+    return null
+  }
+
+  const total = values.reduce((sum, value) => sum + value, 0)
+  return total / values.length
 }
 
 function metricValue(values: DailyLogRecentMetricValue[], metric: DailyLogKeyMetric) {
@@ -94,18 +162,140 @@ function metricValue(values: DailyLogRecentMetricValue[], metric: DailyLogKeyMet
   return String(value.value_numeric)
 }
 
-export function RecentLogsTable({ departmentId, logs, keyMetrics, canDelete }: RecentLogsTableProps) {
+export function RecentLogsTable({
+  departmentId,
+  logs,
+  keyMetrics,
+  canDelete,
+  currentPage,
+  pageSize,
+  totalCount,
+}: RecentLogsTableProps) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
+  const startItem = totalCount === 0 ? 0 : (currentPage - 1) * pageSize + 1
+  const endItem = totalCount === 0 ? 0 : Math.min(currentPage * pageSize, totalCount)
+
+  function updateTableParams(updates: Record<string, string | null>) {
+    const params = new URLSearchParams(searchParams.toString())
+
+    for (const [key, value] of Object.entries(updates)) {
+      if (!value) {
+        params.delete(key)
+      } else {
+        params.set(key, value)
+      }
+    }
+
+    router.push(`/daily-log?${params.toString()}`)
+  }
+
   if (logs.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-        No recent logs for this filter.
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">
+            {totalCount > 0 ? 'No logs found for this page.' : 'No recent logs for this filter.'}
+          </p>
+
+          <div className="flex items-center gap-2">
+            <label htmlFor="recent-logs-page-size" className="text-sm text-muted-foreground">
+              Logs
+            </label>
+            <select
+              id="recent-logs-page-size"
+              value={String(pageSize)}
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+              onChange={(event) =>
+                updateTableParams({
+                  logsPerPage: event.currentTarget.value,
+                  logsPage: '1',
+                })
+              }
+            >
+              {PAGE_SIZE_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+          {totalCount > 0 ? 'Try going back to the previous page.' : 'No recent logs for this filter.'}
+        </div>
+
+        {totalCount > 0 ? (
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              className="inline-flex h-9 items-center justify-center rounded-md border border-input px-3 text-sm hover:bg-muted/40 disabled:pointer-events-none disabled:opacity-50"
+              onClick={() =>
+                updateTableParams({
+                  logsPage: String(currentPage - 1),
+                })
+              }
+              disabled={currentPage <= 1}
+            >
+              Previous
+            </button>
+            <span className="text-sm text-muted-foreground">
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              type="button"
+              className="inline-flex h-9 items-center justify-center rounded-md border border-input px-3 text-sm hover:bg-muted/40 disabled:pointer-events-none disabled:opacity-50"
+              onClick={() =>
+                updateTableParams({
+                  logsPage: String(currentPage + 1),
+                })
+              }
+              disabled={currentPage >= totalPages}
+            >
+              Next
+            </button>
+          </div>
+        ) : null}
       </div>
     )
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border bg-card">
-      <table className="min-w-[940px] w-full text-sm">
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          Showing {startItem}-{endItem} of {totalCount} logs
+        </p>
+
+        <div className="flex items-center gap-2">
+          <label htmlFor="recent-logs-page-size" className="text-sm text-muted-foreground">
+            Logs
+          </label>
+          <select
+            id="recent-logs-page-size"
+            value={String(pageSize)}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+            onChange={(event) =>
+              updateTableParams({
+                logsPerPage: event.currentTarget.value,
+                logsPage: '1',
+              })
+            }
+          >
+            {PAGE_SIZE_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto rounded-lg border bg-card">
+        <table className="min-w-[940px] w-full text-sm">
         <thead className="border-b bg-muted/30">
           <tr>
             <th className="px-3 py-2 text-left font-medium">Date</th>
@@ -180,7 +370,52 @@ export function RecentLogsTable({ departmentId, logs, keyMetrics, canDelete }: R
             </tr>
           ))}
         </tbody>
-      </table>
+        <tfoot className="border-t bg-muted/20">
+          <tr>
+            <td className="px-3 py-2 font-semibold">Avg</td>
+            <td className="px-3 py-2 text-muted-foreground">Visible logs</td>
+            {keyMetrics.map((metric) => (
+              <td key={metric.metric_id} className="px-3 py-2 font-medium">
+                {formatAverageValue(metric, getMetricAverage(logs, metric))}
+              </td>
+            ))}
+            <td className="px-3 py-2">-</td>
+            <td className="px-3 py-2">-</td>
+            <td className="px-3 py-2 text-right">-</td>
+          </tr>
+        </tfoot>
+        </table>
+      </div>
+
+      <div className="flex items-center justify-end gap-2">
+        <button
+          type="button"
+          className="inline-flex h-9 items-center justify-center rounded-md border border-input px-3 text-sm hover:bg-muted/40 disabled:pointer-events-none disabled:opacity-50"
+          onClick={() =>
+            updateTableParams({
+              logsPage: String(currentPage - 1),
+            })
+          }
+          disabled={currentPage <= 1}
+        >
+          Previous
+        </button>
+        <span className="text-sm text-muted-foreground">
+          Page {currentPage} of {totalPages}
+        </span>
+        <button
+          type="button"
+          className="inline-flex h-9 items-center justify-center rounded-md border border-input px-3 text-sm hover:bg-muted/40 disabled:pointer-events-none disabled:opacity-50"
+          onClick={() =>
+            updateTableParams({
+              logsPage: String(currentPage + 1),
+            })
+          }
+          disabled={currentPage >= totalPages}
+        >
+          Next
+        </button>
+      </div>
     </div>
   )
 }

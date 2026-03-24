@@ -1,16 +1,29 @@
 /**
  * Consistent date formatting across the system
- * All dates use mm/dd/yyyy format for clarity
+ * Short dates use MM/DD/YYYY format for clarity
  */
 
 export const APP_DATE_LOCALE = 'en-US'
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 
 function coerceDate(date: Date | string | null | undefined): Date | null {
   if (!date) {
     return null
   }
 
-  const value = typeof date === 'string' ? new Date(`${date}T00:00:00Z`) : date
+  let value: Date
+
+  if (typeof date === 'string') {
+    if (DATE_ONLY_PATTERN.test(date)) {
+      const [year, month, day] = date.split('-').map(Number)
+      value = new Date(year, month - 1, day, 12, 0, 0)
+    } else {
+      value = new Date(date)
+    }
+  } else {
+    value = date
+  }
+
   return Number.isNaN(value.getTime()) ? null : value
 }
 
@@ -25,11 +38,14 @@ function formatDateValue(
 }
 
 export function formatDateShort(date: Date | string | null | undefined): string {
-  return formatDateValue(date, {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  })
+  const value = coerceDate(date)
+  if (!value) return '-'
+
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const day = String(value.getDate()).padStart(2, '0')
+  const year = String(value.getFullYear())
+
+  return `${month}/${day}/${year}`
 }
 
 export function formatDateRange(start: Date | string | null, end: Date | string | null): string {

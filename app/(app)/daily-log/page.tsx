@@ -9,6 +9,8 @@ type DailyLogPageProps = {
     date?: string
     departmentId?: string
     userId?: string
+    logsPage?: string
+    logsPerPage?: string
   }>
 }
 
@@ -18,6 +20,8 @@ export default async function DailyLogPage({ searchParams }: DailyLogPageProps) 
     date: params.date,
     departmentId: params.departmentId,
     userId: params.userId,
+    logsPage: params.logsPage,
+    logsPerPage: params.logsPerPage,
   })
 
   if (!result.success || !result.data) {
@@ -42,6 +46,9 @@ export default async function DailyLogPage({ searchParams }: DailyLogPageProps) 
     keyMetricsConfig,
     keyMetricCandidates,
     recentLogs,
+    recentLogsPage,
+    recentLogsPerPage,
+    recentLogsTotalCount,
     viewerRole,
   } = result.data
 
@@ -99,6 +106,9 @@ export default async function DailyLogPage({ searchParams }: DailyLogPageProps) 
           logs={recentLogs}
           keyMetrics={keyMetrics}
           canDelete={true}
+          currentPage={recentLogsPage}
+          pageSize={recentLogsPerPage}
+          totalCount={recentLogsTotalCount}
         />
       </section>
 

@@ -33,6 +33,8 @@ export function DailyLogFilters({
   const updateFilters = (updates: Record<string, string | null>) => {
     const params = new URLSearchParams(searchParams.toString())
 
+    params.delete('logsPage')
+
     for (const [key, value] of Object.entries(updates)) {
       if (!value) {
         params.delete(key)

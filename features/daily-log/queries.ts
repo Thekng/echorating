@@ -154,7 +154,11 @@ async function getManualMetricsForDailyLog(
 }
 
 function todayKey() {
-  return new Date().toISOString().slice(0, 10)
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 async function getViewerContext() {
@@ -453,15 +457,22 @@ async function getRecentLogs(
   viewerUserId: string,
   selectedUserId: string,
   keyMetrics: DailyLogKeyMetric[],
+  page: number,
+  pageSize: number,
 ) {
+  const from = (page - 1) * pageSize
+  const to = from + pageSize - 1
+
   let recentQuery = admin
     .from('daily_entries')
-    .select('entry_id, user_id, department_id, entry_date, status, notes, updated_at')
+    .select('entry_id, user_id, department_id, entry_date, status, notes, updated_at', {
+      count: 'exact',
+    })
     .eq('company_id', companyId)
     .eq('department_id', departmentId)
     .order('entry_date', { ascending: false })
     .order('updated_at', { ascending: false })
-    .limit(20)
+    .range(from, to)
 
   if (viewerRole === 'member') {
     recentQuery = recentQuery.eq('user_id', viewerUserId)
@@ -469,12 +480,13 @@ async function getRecentLogs(
     recentQuery = recentQuery.eq('user_id', selectedUserId)
   }
 
-  const { data: entriesData, error: entriesError } = await recentQuery
+  const { data: entriesData, error: entriesError, count } = await recentQuery
   if (entriesError) {
     return {
       ok: false as const,
       message: formatDatabaseError(entriesError.message),
       recentLogs: [] as DailyLogRecentEntry[],
+      totalCount: 0,
     }
   }
 
@@ -490,7 +502,7 @@ async function getRecentLogs(
     }>) ?? []
 
   if (entries.length === 0) {
-    return { ok: true as const, recentLogs: [] as DailyLogRecentEntry[] }
+    return { ok: true as const, recentLogs: [] as DailyLogRecentEntry[], totalCount: count ?? 0 }
   }
 
   const entryIds = entries.map((entry) => entry.entry_id)
@@ -503,12 +515,13 @@ async function getRecentLogs(
     .in('user_id', userIds)
 
   if (profilesError) {
-    return {
-      ok: false as const,
-      message: formatDatabaseError(profilesError.message),
-      recentLogs: [] as DailyLogRecentEntry[],
+      return {
+        ok: false as const,
+        message: formatDatabaseError(profilesError.message),
+        recentLogs: [] as DailyLogRecentEntry[],
+        totalCount: 0,
+      }
     }
-  }
 
   const nameByUserId = new Map(
     ((profilesData ?? []) as Array<{ user_id: string; name: string }>).map((profile) => [profile.user_id, profile.name]),
@@ -527,6 +540,7 @@ async function getRecentLogs(
         ok: false as const,
         message: formatDatabaseError(valuesError.message),
         recentLogs: [] as DailyLogRecentEntry[],
+        totalCount: 0,
       }
     }
 
@@ -556,6 +570,7 @@ async function getRecentLogs(
       updated_at: entry.updated_at,
       key_metric_values: valuesByEntry.get(entry.entry_id) ?? [],
     })),
+    totalCount: count ?? entries.length,
   }
 }
 
@@ -563,6 +578,8 @@ export async function getDailyLogFormData(rawFilters?: {
   date?: string
   departmentId?: string
   userId?: string
+  logsPage?: string
+  logsPerPage?: string
 }) {
   const context = await getViewerContext()
   if (!context.ok) {
@@ -584,6 +601,10 @@ export async function getDailyLogFormData(rawFilters?: {
   const selectedDate = parsedFilters.success && parsedFilters.data.date ? parsedFilters.data.date : todayKey()
   const requestedDepartmentId = parsedFilters.success ? parsedFilters.data.departmentId : undefined
   const requestedUserId = parsedFilters.success ? parsedFilters.data.userId : undefined
+  const requestedLogsPage = Number.parseInt(rawFilters?.logsPage ?? '1', 10)
+  const requestedLogsPerPage = Number.parseInt(rawFilters?.logsPerPage ?? '10', 10)
+  const recentLogsPage = Number.isFinite(requestedLogsPage) && requestedLogsPage > 0 ? requestedLogsPage : 1
+  const recentLogsPerPage = [10, 30, 50].includes(requestedLogsPerPage) ? requestedLogsPerPage : 10
 
   const departmentsResult = await getAccessibleDepartments(
     context.admin,
@@ -619,6 +640,9 @@ export async function getDailyLogFormData(rawFilters?: {
         keyMetricsConfig: [] as DailyLogKeyMetricSlot[],
         keyMetricCandidates: [] as DailyLogMetric[],
         recentLogs: [] as DailyLogRecentEntry[],
+        recentLogsPage,
+        recentLogsPerPage,
+        recentLogsTotalCount: 0,
         viewerRole: context.role,
       },
     }
@@ -728,6 +752,8 @@ export async function getDailyLogFormData(rawFilters?: {
     context.userId,
     selectedUserId,
     keyMetricsResult.keyMetrics,
+    recentLogsPage,
+    recentLogsPerPage,
   )
 
   if (!recentLogsResult.ok) {
@@ -750,6 +776,9 @@ export async function getDailyLogFormData(rawFilters?: {
       keyMetricsConfig: keyMetricsResult.keyMetricsConfig,
       keyMetricCandidates: keyMetricsResult.keyMetricCandidates,
       recentLogs: recentLogsResult.recentLogs,
+      recentLogsPage,
+      recentLogsPerPage,
+      recentLogsTotalCount: recentLogsResult.totalCount,
       viewerRole: context.role,
     },
   }
