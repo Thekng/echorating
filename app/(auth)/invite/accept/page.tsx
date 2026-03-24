@@ -5,6 +5,15 @@ import { InviteAcceptForm } from '@/components/auth/invite-accept-form'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
 
 const INVALID_INVITE_MESSAGE = 'This invite link is invalid or has expired. Please ask to be invited again.'
+type CompanyRelation = { name: string | null } | Array<{ name: string | null }> | null
+
+function getCompanyName(companies: CompanyRelation) {
+  if (Array.isArray(companies)) {
+    return companies[0]?.name ?? 'your company'
+  }
+
+  return companies?.name ?? 'your company'
+}
 
 function InvalidInviteState() {
   return (
@@ -52,10 +61,7 @@ export default async function InviteAcceptPage() {
     return <InvalidInviteState />
   }
 
-  const companyRelation = invitation.companies
-  const companyName = Array.isArray(companyRelation)
-    ? (companyRelation[0]?.name ?? 'your company')
-    : (companyRelation?.name ?? 'your company')
+  const companyName = getCompanyName(invitation.companies as CompanyRelation)
 
   return <InviteAcceptForm invitationId={invitation.invitation_id} companyName={companyName} role={invitation.role} />
 }
