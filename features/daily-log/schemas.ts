@@ -6,6 +6,7 @@ export const dailyLogFormSchema = z.object({
   date: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date'),
+  entryId: z.string().uuid('Invalid log entry').optional(),
   departmentId: z.string().uuid('Department is required'),
   userId: z.string().uuid('Invalid agent').optional(),
   notes: z.string().max(5000, 'Notes too long').optional(),

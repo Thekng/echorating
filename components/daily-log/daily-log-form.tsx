@@ -1,5 +1,6 @@
 'use client'
 
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { saveDailyLogAction } from '@/features/daily-log/actions'
@@ -32,12 +33,13 @@ function serializeState(
   values: Record<string, string>,
   notes: string,
   userId: string,
+  date: string,
 ) {
   const metricsPart = metrics
     .map((metric) => `${metric.metric_id}:${values[metric.metric_id] ?? ''}`)
     .join('|')
 
-  return `${userId}::${notes}::${metricsPart}`
+  return `${userId}::${date}::${notes}::${metricsPart}`
 }
 
 function formatTime(value: string | null) {
@@ -302,10 +304,13 @@ export function DailyLogForm({
   initialNotes,
   existingEntry,
 }: DailyLogFormProps) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [state, formAction, pending] = useActionState(saveDailyLogAction, INITIAL_DAILY_LOG_ACTION_STATE)
   const [values, setValues] = useState<Record<string, string>>(initialValues)
 
   const [notes, setNotes] = useState(initialNotes)
+  const [logDate, setLogDate] = useState(date)
   const [entryStatus, setEntryStatus] = useState<'draft' | 'submitted' | null>(existingEntry?.status ?? null)
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(existingEntry?.updated_at ?? null)
   const [lastSubmitKind, setLastSubmitKind] = useState<'manual-draft' | 'submit' | null>(null)
@@ -317,24 +322,27 @@ export function DailyLogForm({
   const lastHandledStateRef = useRef('')
 
   const savedSnapshot = useMemo(
-    () => serializeState(metrics, initialValues, initialNotes, userId),
-    [metrics, initialNotes, initialValues, userId],
+    () => serializeState(metrics, initialValues, initialNotes, userId, date),
+    [date, metrics, initialNotes, initialValues, userId],
   )
   const [lastSavedSnapshot, setLastSavedSnapshot] = useState(savedSnapshot)
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     setValues(initialValues)
     setNotes(initialNotes)
+    setLogDate(date)
     setEntryStatus(existingEntry?.status ?? null)
     setLastSavedAt(existingEntry?.updated_at ?? null)
     setLastSavedSnapshot(savedSnapshot)
     setPendingIntent(null)
     setLastSubmitKind(null)
-  }, [existingEntry?.entry_id, existingEntry?.status, existingEntry?.updated_at, initialValues, initialNotes, savedSnapshot])
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [date, existingEntry?.entry_id, existingEntry?.status, existingEntry?.updated_at, initialValues, initialNotes, savedSnapshot])
 
   const currentSnapshot = useMemo(
-    () => serializeState(metrics, values, notes, userId),
-    [metrics, notes, userId, values],
+    () => serializeState(metrics, values, notes, userId, logDate),
+    [logDate, metrics, notes, userId, values],
   )
   const dirty = currentSnapshot !== lastSavedSnapshot
 
@@ -359,11 +367,22 @@ export function DailyLogForm({
     lastHandledStateRef.current = key
 
     if (state.status === 'success') {
+      /* eslint-disable react-hooks/set-state-in-effect */
       setLastSavedSnapshot(currentSnapshot)
       setLastSavedAt(state.savedAt)
       setEntryStatus(state.entryStatus)
       setPendingIntent(null)
+      /* eslint-enable react-hooks/set-state-in-effect */
       pushToast('success', state.message)
+
+      if (logDate !== date) {
+        const params = new URLSearchParams(searchParams.toString())
+        params.set('date', logDate)
+        params.set('departmentId', departmentId)
+        params.set('userId', userId)
+        router.push(`/daily-log?${params.toString()}`)
+      }
+
       return
     }
 
@@ -371,13 +390,19 @@ export function DailyLogForm({
     pushToast('error', state.message)
   }, [
     currentSnapshot,
+    date,
+    departmentId,
+    logDate,
     lastSubmitKind,
     pushToast,
+    router,
+    searchParams,
     state.entryId,
     state.entryStatus,
     state.message,
     state.savedAt,
     state.status,
+    userId,
   ])
 
   const statusText = (() => {
@@ -424,7 +449,8 @@ export function DailyLogForm({
           setPendingIntent(intent)
         }}
       >
-        <input type="hidden" name="date" value={date} />
+        <input type="hidden" name="date" value={logDate} />
+        <input type="hidden" name="entryId" value={existingEntry?.entry_id ?? ''} />
         <input type="hidden" name="departmentId" value={departmentId} />
         <input type="hidden" name="userId" value={userId} />
 
@@ -434,6 +460,20 @@ export function DailyLogForm({
           </p>
         ) : (
           <>
+            <div className="max-w-xs space-y-2">
+              <label htmlFor="daily-log-entry-date" className="text-sm font-medium">
+                Log date
+              </label>
+              <input
+                id="daily-log-entry-date"
+                type="date"
+                value={logDate}
+                onChange={(event) => setLogDate(event.currentTarget.value)}
+                disabled={disabledForm}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              />
+            </div>
+
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               {metrics.map((metric) => (
                 <div key={metric.metric_id} className="space-y-2">

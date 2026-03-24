@@ -926,6 +926,7 @@ export async function saveDailyLogAction(
 ): Promise<DailyLogActionState> {
   const parsed = dailyLogFormSchema.safeParse({
     date: field(formData, 'date'),
+    entryId: optionalUuidField(formData, 'entryId'),
     departmentId: field(formData, 'departmentId'),
     userId: optionalUuidField(formData, 'userId'),
     notes: field(formData, 'notes'),
@@ -1060,7 +1061,7 @@ export async function saveDailyLogAction(
   const now = new Date().toISOString()
   const submitting = parsed.data.intent === 'submit'
 
-  const { data: existingEntry, error: existingEntryError } = await context.admin
+  const { data: existingEntryForDate, error: existingEntryError } = await context.admin
     .from('daily_entries')
     .select('entry_id, status, submitted_at')
     .eq('company_id', context.companyId)
@@ -1077,27 +1078,86 @@ export async function saveDailyLogAction(
     }
   }
 
-  const nextEntryStatus = submitting || existingEntry?.status === 'submitted' ? 'submitted' : 'draft'
-  const nextSubmittedAt =
-    submitting ? now : nextEntryStatus === 'submitted' ? (existingEntry?.submitted_at ?? now) : null
+  let sourceEntry = existingEntryForDate
 
-  const { data: entry, error: entryError } = await context.admin
-    .from('daily_entries')
-    .upsert(
-      {
-        company_id: context.companyId,
-        department_id: parsed.data.departmentId,
-        user_id: targetUserId,
-        entry_date: parsed.data.date,
-        status: nextEntryStatus,
-        submitted_at: nextSubmittedAt,
-        notes,
-        updated_at: now,
-      },
-      { onConflict: 'company_id,department_id,user_id,entry_date' },
-    )
-    .select('entry_id')
-    .maybeSingle()
+  if (parsed.data.entryId) {
+    const { data: existingEntryById, error: existingEntryByIdError } = await context.admin
+      .from('daily_entries')
+      .select('entry_id, status, submitted_at, company_id, department_id, user_id')
+      .eq('entry_id', parsed.data.entryId)
+      .maybeSingle()
+
+    if (existingEntryByIdError) {
+      return {
+        ...INITIAL_ERROR_STATE,
+        message: formatDatabaseError(existingEntryByIdError.message),
+        intent: parsed.data.intent,
+      }
+    }
+
+    if (
+      !existingEntryById ||
+      existingEntryById.company_id !== context.companyId ||
+      existingEntryById.department_id !== parsed.data.departmentId ||
+      existingEntryById.user_id !== targetUserId
+    ) {
+      return {
+        ...INITIAL_ERROR_STATE,
+        message: 'The log you are trying to edit no longer exists.',
+        intent: parsed.data.intent,
+      }
+    }
+
+    if (existingEntryForDate && existingEntryForDate.entry_id !== existingEntryById.entry_id) {
+      return {
+        ...INITIAL_ERROR_STATE,
+        message: 'A log already exists for that date.',
+        intent: parsed.data.intent,
+        entryId: existingEntryById.entry_id,
+      }
+    }
+
+    sourceEntry = {
+      entry_id: existingEntryById.entry_id as string,
+      status: existingEntryById.status as 'draft' | 'submitted',
+      submitted_at: existingEntryById.submitted_at as string | null,
+    }
+  }
+
+  const nextEntryStatus = submitting || sourceEntry?.status === 'submitted' ? 'submitted' : 'draft'
+  const nextSubmittedAt =
+    submitting ? now : nextEntryStatus === 'submitted' ? (sourceEntry?.submitted_at ?? now) : null
+
+  const entryMutation = sourceEntry?.entry_id
+    ? await context.admin
+        .from('daily_entries')
+        .update({
+          entry_date: parsed.data.date,
+          status: nextEntryStatus,
+          submitted_at: nextSubmittedAt,
+          notes,
+          updated_at: now,
+        })
+        .eq('entry_id', sourceEntry.entry_id)
+        .eq('company_id', context.companyId)
+        .select('entry_id')
+        .maybeSingle()
+    : await context.admin
+        .from('daily_entries')
+        .insert({
+          company_id: context.companyId,
+          department_id: parsed.data.departmentId,
+          user_id: targetUserId,
+          entry_date: parsed.data.date,
+          status: nextEntryStatus,
+          submitted_at: nextSubmittedAt,
+          notes,
+          updated_at: now,
+        })
+        .select('entry_id')
+        .maybeSingle()
+
+  const { data: entry, error: entryError } = entryMutation
 
   if (entryError || !entry?.entry_id) {
     return {
