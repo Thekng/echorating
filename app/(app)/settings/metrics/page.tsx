@@ -472,7 +472,7 @@ export default function MetricsSettingsPage() {
                             type="button"
                             size="icon"
                             variant="outline"
-                            className="border-red-300 text-red-700 hover:bg-red-50 hover:text-red-800"
+                            className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
                             title={`Delete ${metric.name}`}
                             aria-label={`Delete ${metric.name}`}
                             onClick={() => handleDeleteMetric(metric)}

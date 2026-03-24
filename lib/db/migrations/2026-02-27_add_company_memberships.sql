@@ -1,5 +1,6 @@
 begin;
 
+-- legacy, safe to drop after confirming no active rows.
 create table if not exists public.company_memberships (
   company_id uuid not null references public.companies(company_id) on delete cascade,
   user_id uuid not null references public.profiles(user_id) on delete cascade,

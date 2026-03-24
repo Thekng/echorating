@@ -2,6 +2,7 @@
 
 import { CalendarDays } from 'lucide-react'
 import { useId, useState, type MouseEvent } from 'react'
+import { formatDateMonthDay } from '@/lib/utils'
 
 type DataPoint = {
   date: string
@@ -43,17 +44,6 @@ function buildSmoothPath(points: Array<{ x: number; y: number }>) {
   }
 
   return path
-}
-
-function formatDateLabel(dateStr: string) {
-  const date = new Date(`${dateStr}T00:00:00`)
-  if (Number.isNaN(date.getTime())) {
-    return dateStr
-  }
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-  }).format(date)
 }
 
 export function MinimalistTrendChart({
@@ -219,7 +209,7 @@ export function MinimalistTrendChart({
           }}
         >
           <p className="text-sm font-semibold" style={{ color: colorCardForeground }}>
-            {formatDateLabel(activePoint.date)}
+            {formatDateMonthDay(activePoint.date)}
           </p>
           <p className="text-sm text-muted-foreground">{formatValue(activePoint.value)}</p>
         </div>
@@ -227,7 +217,7 @@ export function MinimalistTrendChart({
 
       <div className="mt-2 flex items-center justify-between text-sm text-muted-foreground">
         {xLabelIndexes.map((index) => (
-          <span key={data[index]!.date}>{formatDateLabel(data[index]!.date)}</span>
+          <span key={data[index]!.date}>{formatDateMonthDay(data[index]!.date)}</span>
         ))}
       </div>
 

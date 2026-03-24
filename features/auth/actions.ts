@@ -213,3 +213,9 @@ export async function createPasswordAction(
 
   redirect(ROUTES.DASHBOARD)
 }
+
+export async function signOutAction() {
+  const supabase = await createClient()
+  await supabase.auth.signOut()
+  redirect(ROUTES.LOGIN)
+}

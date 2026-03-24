@@ -2,7 +2,12 @@
 
 import { useEffect, useState, useTransition } from 'react'
 import { listMembers } from '@/features/members/queries'
-import { toggleMemberStatusAction } from '@/features/members/actions'
+import {
+  createMemberAction,
+  revokeInviteAction,
+  toggleMemberStatusAction,
+  type MemberActionState,
+} from '@/features/members/actions'
 import { CreateMemberModal } from '@/components/members/create-member-modal'
 import { EditMemberRoleModal } from '@/components/members/edit-member-role-modal'
 import { AssignMemberDepartmentModal } from '@/components/members/assign-member-department-modal'
@@ -20,6 +25,8 @@ type MemberDepartment = {
 }
 
 type MemberRow = {
+  type: 'member'
+  rowId: string
   userId: string
   name: string
   email: string
@@ -29,6 +36,20 @@ type MemberRow = {
   updatedAt: string
   departments: MemberDepartment[]
 }
+
+type PendingInviteRow = {
+  type: 'invite'
+  rowId: string
+  invitationId: string
+  name: string
+  email: string
+  role: 'manager' | 'member'
+  createdAt: string
+  updatedAt: string
+  departments: MemberDepartment[]
+}
+
+type MemberListRow = MemberRow | PendingInviteRow
 
 type DepartmentOption = {
   department_id: string
@@ -52,6 +73,12 @@ const INITIAL_FILTERS: MemberFilters = {
   status: 'active',
 }
 
+const MEMBER_ACTION_INITIAL_STATE: MemberActionState = {
+  status: 'idle',
+  message: '',
+  fieldErrors: {},
+}
+
 const ROLE_LABELS: Record<MemberRow['role'], string> = {
   owner: 'Owner',
   manager: 'Manager',
@@ -59,7 +86,7 @@ const ROLE_LABELS: Record<MemberRow['role'], string> = {
 }
 
 export default function MembersSettingsPage() {
-  const [members, setMembers] = useState<MemberRow[]>([])
+  const [rows, setRows] = useState<MemberListRow[]>([])
   const [departments, setDepartments] = useState<DepartmentOption[]>([])
   const [viewerRole, setViewerRole] = useState<'owner' | 'manager' | 'member'>('member')
 
@@ -70,7 +97,7 @@ export default function MembersSettingsPage() {
   const [error, setError] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<Feedback | null>(null)
 
-  const [pendingMemberId, setPendingMemberId] = useState<string | null>(null)
+  const [pendingRowId, setPendingRowId] = useState<string | null>(null)
   const [isMutating, startMutationTransition] = useTransition()
 
   async function fetchMembers(filters: MemberFilters) {
@@ -95,7 +122,7 @@ export default function MembersSettingsPage() {
         status: result.data.filters.status,
       }
 
-      setMembers((result.data.members ?? []) as MemberRow[])
+      setRows((result.data.rows ?? []) as MemberListRow[])
       setDepartments((result.data.departments ?? []) as DepartmentOption[])
       setViewerRole(result.data.viewerRole as 'owner' | 'manager' | 'member')
 
@@ -125,7 +152,7 @@ export default function MembersSettingsPage() {
   }
 
   function handleToggleMember(member: MemberRow) {
-    setPendingMemberId(member.userId)
+    setPendingRowId(member.rowId)
 
     startMutationTransition(async () => {
       const formData = new FormData()
@@ -142,7 +169,49 @@ export default function MembersSettingsPage() {
         await fetchMembers(queryFilters)
       }
 
-      setPendingMemberId(null)
+      setPendingRowId(null)
+    })
+  }
+
+  function handleResendInvite(invite: PendingInviteRow) {
+    setPendingRowId(invite.rowId)
+
+    startMutationTransition(async () => {
+      const formData = new FormData()
+      formData.set('name', invite.name || invite.email)
+      formData.set('email', invite.email)
+      formData.set('role', invite.role)
+      formData.set('departmentId', invite.departments[0]?.departmentId ?? '')
+
+      const result = await createMemberAction(MEMBER_ACTION_INITIAL_STATE, formData)
+      setFeedback({
+        tone: result.status === 'success' ? 'success' : 'error',
+        message: result.message,
+      })
+
+      if (result.status === 'success') {
+        await fetchMembers(queryFilters)
+      }
+
+      setPendingRowId(null)
+    })
+  }
+
+  function handleRevokeInvite(invite: PendingInviteRow) {
+    setPendingRowId(invite.rowId)
+
+    startMutationTransition(async () => {
+      const result = await revokeInviteAction(invite.invitationId)
+      setFeedback({
+        tone: result.status === 'success' ? 'success' : 'error',
+        message: result.message,
+      })
+
+      if (result.status === 'success') {
+        await fetchMembers(queryFilters)
+      }
+
+      setPendingRowId(null)
     })
   }
 
@@ -272,7 +341,7 @@ export default function MembersSettingsPage() {
         </form>
       </SettingsSurface>
 
-      {members.length === 0 ? (
+      {rows.length === 0 ? (
         <SettingsSurface>
           <SettingsEmptyState
             message="No members found for the selected filters."
@@ -293,56 +362,104 @@ export default function MembersSettingsPage() {
                 </tr>
               </thead>
               <tbody>
-                {members.map((member) => {
-                  const primaryDepartmentId = member.departments[0]?.departmentId
-                  const departmentsText = formatMemberDepartments(member.departments)
+                {rows.map((row) => {
+                  const departmentsText = formatMemberDepartments(row.departments)
+                  const rowPending = isMutating && pendingRowId === row.rowId
 
-                  const rowPending = isMutating && pendingMemberId === member.userId
+                  if (row.type === 'invite') {
+                    return (
+                      <tr key={row.rowId} className="border-b align-top">
+                        <td className="px-3 py-3">
+                          <p className="font-medium">{row.name}</p>
+                          <p className="text-xs text-muted-foreground">{row.email}</p>
+                        </td>
+                        <td className="px-3 py-3">
+                          <span
+                            className={
+                              row.role === 'manager'
+                                ? 'inline-block rounded-md bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700'
+                                : 'inline-block rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700'
+                            }
+                          >
+                            {ROLE_LABELS[row.role]}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3">{departmentsText}</td>
+                        <td className="px-3 py-3">
+                          <span className="inline-block rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700">
+                            Pending
+                          </span>
+                        </td>
+                        <td className="px-3 py-3">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => handleResendInvite(row)}
+                              disabled={rowPending}
+                            >
+                              Resend
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => handleRevokeInvite(row)}
+                              disabled={rowPending}
+                            >
+                              Revoke
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  }
+
+                  const primaryDepartmentId = row.departments[0]?.departmentId
 
                   return (
-                    <tr key={member.userId} className="border-b align-top">
+                    <tr key={row.rowId} className="border-b align-top">
                       <td className="px-3 py-3">
-                        <p className="font-medium">{member.name}</p>
-                        <p className="text-xs text-muted-foreground">{member.email || '-'}</p>
+                        <p className="font-medium">{row.name}</p>
+                        <p className="text-xs text-muted-foreground">{row.email || '-'}</p>
                       </td>
                       <td className="px-3 py-3">
                         <span
                           className={
-                            member.role === 'owner'
+                            row.role === 'owner'
                               ? 'inline-block rounded-md bg-green-100 px-2 py-1 text-xs font-medium text-green-700'
-                              : member.role === 'manager'
+                              : row.role === 'manager'
                                 ? 'inline-block rounded-md bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700'
                                 : 'inline-block rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700'
                           }
                         >
-                          {ROLE_LABELS[member.role]}
+                          {ROLE_LABELS[row.role]}
                         </span>
                       </td>
                       <td className="px-3 py-3">{departmentsText}</td>
                       <td className="px-3 py-3">
                         <span
                           className={
-                            member.isActive
+                            row.isActive
                               ? 'inline-block rounded-md bg-green-100 px-2 py-1 text-xs font-medium text-green-700'
                               : 'inline-block rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700'
                           }
                         >
-                          {member.isActive ? 'Active' : 'Inactive'}
+                          {row.isActive ? 'Active' : 'Inactive'}
                         </span>
                       </td>
                       <td className="px-3 py-3">
                         <div className="flex justify-end gap-2">
                           <EditMemberRoleModal
-                            userId={member.userId}
-                            memberName={member.name}
-                            currentRole={member.role}
+                            userId={row.userId}
+                            memberName={row.name}
+                            currentRole={row.role}
                             canManageOwnerRole={canManageOwnerRole}
                             onSaved={handleMemberSaved}
                           />
 
                           <AssignMemberDepartmentModal
-                            userId={member.userId}
-                            memberName={member.name}
+                            userId={row.userId}
+                            memberName={row.name}
                             currentDepartmentId={primaryDepartmentId}
                             departments={departments}
                             onSaved={handleMemberSaved}
@@ -352,9 +469,9 @@ export default function MembersSettingsPage() {
                             type="button"
                             size="icon"
                             variant="outline"
-                            title={member.isActive ? `Deactivate ${member.name}` : `Activate ${member.name}`}
-                            aria-label={member.isActive ? `Deactivate ${member.name}` : `Activate ${member.name}`}
-                            onClick={() => handleToggleMember(member)}
+                            title={row.isActive ? `Deactivate ${row.name}` : `Activate ${row.name}`}
+                            aria-label={row.isActive ? `Deactivate ${row.name}` : `Activate ${row.name}`}
+                            onClick={() => handleToggleMember(row)}
                             disabled={rowPending}
                           >
                             <Power className="size-4" />

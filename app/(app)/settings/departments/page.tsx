@@ -13,6 +13,7 @@ import { SettingsSurface } from '@/components/settings/settings-surface'
 import { SettingsEmptyState } from '@/components/settings/settings-empty-state'
 import { SettingsError } from '@/components/settings/settings-error'
 import { Button } from '@/components/ui/button'
+import { formatDateShort } from '@/lib/utils'
 import { FolderKanban, Pencil, Plus, Trash2 } from 'lucide-react'
 
 type Department = {
@@ -248,7 +249,7 @@ export default function DepartmentsSettingsPage() {
                       <p className="text-sm font-medium">{department.name}</p>
                       <p className="text-xs text-muted-foreground">
                         {TYPE_LABELS[department.type]} · Updated{' '}
-                        {new Date(department.updated_at).toLocaleDateString()}
+                        {formatDateShort(department.updated_at)}
                       </p>
                     </div>
 
@@ -273,7 +274,7 @@ export default function DepartmentsSettingsPage() {
                         variant="outline"
                         title={`Delete ${department.name}`}
                         aria-label={`Delete ${department.name}`}
-                        className="border-red-300 text-red-700 hover:bg-red-50 hover:text-red-800"
+                        className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
                         onClick={() => handleDeleteDepartment(department)}
                         disabled={
                           isDeleting && pendingDeleteDepartmentId === department.department_id
@@ -306,7 +307,7 @@ export default function DepartmentsSettingsPage() {
                     <p className="text-sm font-medium">{department.name}</p>
                     <p className="text-xs text-muted-foreground">
                       {TYPE_LABELS[department.type]} · Updated{' '}
-                      {new Date(department.updated_at).toLocaleDateString()}
+                      {formatDateShort(department.updated_at)}
                     </p>
                   </div>
                 ))}

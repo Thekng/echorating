@@ -12,7 +12,6 @@ const protectedRoutes = [
   ROUTES.LEADERBOARD,
   ROUTES.ONBOARDING,
   ROUTES.SELECT_COMPANY,
-  ROUTES.CREATE_PASSWORD,
 ]
 
 const appRoutes = [

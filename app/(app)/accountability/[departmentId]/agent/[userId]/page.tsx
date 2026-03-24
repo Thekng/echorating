@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { ROUTES } from '@/lib/constants/routes'
 import { AgentsFilters } from '@/components/agents/agents-filters'
 import { getAgentProfile } from '@/features/agents/queries'
+import { formatDateMedium } from '@/lib/utils'
 import { booleanLabels, normalizeMetricSettings } from '@/lib/metrics/data-types'
 import { formatMetricNumber, formatPercent } from '@/lib/metrics/format'
 
@@ -20,17 +21,7 @@ function formatDate(value: string | null) {
   if (!value) {
     return '-'
   }
-
-  const date = new Date(`${value}T00:00:00`)
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: '2-digit',
-  }).format(date)
+  return formatDateMedium(value)
 }
 
 function formatMetricValue(
@@ -120,12 +111,12 @@ function formatLogMetricValue(
 
 function kpiRingTone(index: number) {
   const tones = [
-    'border-slate-300 text-slate-900',
-    'border-emerald-400 text-emerald-700',
-    'border-amber-400 text-amber-700',
-    'border-rose-400 text-rose-700',
-    'border-violet-400 text-violet-700',
-    'border-cyan-400 text-cyan-700',
+    'border-border text-foreground',
+    'border-emerald-500/50 text-emerald-700 dark:text-emerald-300',
+    'border-amber-500/50 text-amber-700 dark:text-amber-300',
+    'border-rose-500/50 text-rose-700 dark:text-rose-300',
+    'border-violet-500/50 text-violet-700 dark:text-violet-300',
+    'border-cyan-500/50 text-cyan-700 dark:text-cyan-300',
   ]
 
   return tones[index % tones.length]

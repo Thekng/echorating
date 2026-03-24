@@ -6,6 +6,7 @@ import { SettingsSurface } from '@/components/settings/settings-surface'
 import { SettingsError } from '@/components/settings/settings-error'
 import { getCompanyDetails } from '@/features/company/queries'
 import { updateCompanyAction } from '@/features/company/actions'
+import { formatDateShort } from '@/lib/utils'
 import { useActionState } from 'react'
 
 type CompanyActionState = {
@@ -13,8 +14,16 @@ type CompanyActionState = {
   message: string
 }
 
+type CompanyDetails = {
+  name: string
+  timezone: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
 export default function CompanySettingsPage() {
-  const [company, setCompany] = useState<any>(null)
+  const [company, setCompany] = useState<CompanyDetails | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [state, formAction] = useActionState(
@@ -31,7 +40,7 @@ export default function CompanySettingsPage() {
         } else {
           setError(result.error || 'Failed to load company details')
         }
-      } catch (err) {
+      } catch {
         setError('An unexpected error occurred')
       } finally {
         setLoading(false)
@@ -170,15 +179,11 @@ export default function CompanySettingsPage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Created</span>
-                <span className="font-medium">
-                  {new Date(company.created_at).toLocaleDateString()}
-                </span>
+                <span className="font-medium">{formatDateShort(company.created_at)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Updated</span>
-                <span className="font-medium">
-                  {new Date(company.updated_at).toLocaleDateString()}
-                </span>
+                <span className="font-medium">{formatDateShort(company.updated_at)}</span>
               </div>
             </div>
           </SettingsSurface>

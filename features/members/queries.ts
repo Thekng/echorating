@@ -7,15 +7,28 @@ import { formatDatabaseError } from '@/lib/supabase/error-messages'
 import { memberFilterSchema } from './schemas'
 import { type Role, isRole } from '@/lib/rbac/roles'
 
-type ProfileNameRow = {
-  user_id: string
+type CompanyMemberProfileRelation = {
   name: string
-}
+  is_active: boolean
+} | Array<{
+  name: string
+  is_active: boolean
+}> | null
 
-type CompanyMembershipRow = {
+type CompanyMemberRow = {
   user_id: string
   role: Role
-  is_active: boolean
+  created_at: string
+  updated_at: string
+  profiles: CompanyMemberProfileRelation
+}
+
+type PendingInvitationRow = {
+  invitation_id: string
+  name: string | null
+  email: string
+  role: 'manager' | 'member'
+  department_id: string | null
   created_at: string
   updated_at: string
 }
@@ -30,26 +43,37 @@ type MemberDepartment = {
   name: string
 }
 
-type MemberRow = {
-  userId: string
-  name: string
-  email: string
-  role: Role
-  isActive: boolean
-  createdAt: string
-  updatedAt: string
-  departments: MemberDepartment[]
-}
+type MemberListRow =
+  | {
+      type: 'member'
+      rowId: string
+      userId: string
+      name: string
+      email: string
+      role: Role
+      isActive: boolean
+      createdAt: string
+      updatedAt: string
+      departments: MemberDepartment[]
+    }
+  | {
+      type: 'invite'
+      rowId: string
+      invitationId: string
+      name: string
+      email: string
+      role: 'manager' | 'member'
+      createdAt: string
+      updatedAt: string
+      departments: MemberDepartment[]
+    }
 
-function isMissingCompanyMembershipsTable(message: string) {
-  return message.toLowerCase().includes('relation "company_memberships" does not exist')
-}
-
-function membershipErrorMessage(message: string) {
-  if (isMissingCompanyMembershipsTable(message)) {
-    return 'Database migration missing: run 2026-02-27_add_company_memberships.sql in Supabase.'
+function normalizeProfileRelation(profile: CompanyMemberProfileRelation) {
+  if (Array.isArray(profile)) {
+    return profile[0] ?? null
   }
-  return formatDatabaseError(message)
+
+  return profile
 }
 
 async function getViewerContext() {
@@ -70,7 +94,7 @@ async function getViewerContext() {
 
   const { data: profile, error: profileError } = await admin
     .from('profiles')
-    .select('company_id, role, is_active, deleted_at')
+    .select('company_id, is_active, deleted_at')
     .eq('user_id', user.id)
     .maybeSingle()
 
@@ -83,19 +107,17 @@ async function getViewerContext() {
   }
 
   const { data: viewerMembership, error: viewerMembershipError } = await admin
-    .from('company_memberships')
-    .select('role, is_active')
+    .from('company_members')
+    .select('role')
     .eq('company_id', profile.company_id)
     .eq('user_id', user.id)
-    .is('deleted_at', null)
     .maybeSingle()
 
   if (viewerMembershipError) {
-    return { ok: false as const, message: membershipErrorMessage(viewerMembershipError.message) }
+    return { ok: false as const, message: formatDatabaseError(viewerMembershipError.message) }
   }
 
-  const viewerRole = viewerMembership?.role ?? profile.role
-  if (!isRole(viewerRole) || viewerMembership?.is_active === false) {
+  if (!viewerMembership || !isRole(viewerMembership.role)) {
     return { ok: false as const, message: 'Active company membership not found.' }
   }
 
@@ -103,7 +125,7 @@ async function getViewerContext() {
     ok: true as const,
     admin,
     companyId: profile.company_id as string,
-    role: viewerRole,
+    role: viewerMembership.role,
   }
 }
 
@@ -152,44 +174,23 @@ export async function listMembers(rawFilters?: {
   const filters = parsedFilters.data
 
   let membershipsQuery = context.admin
-    .from('company_memberships')
-    .select('user_id, role, is_active, created_at, updated_at')
+    .from('company_members')
+    .select('user_id, role, created_at, updated_at, profiles!inner(name, is_active)')
     .eq('company_id', context.companyId)
-    .is('deleted_at', null)
     .order('created_at', { ascending: false })
 
   if (filters.role !== 'all') {
     membershipsQuery = membershipsQuery.eq('role', filters.role)
   }
 
-  if (filters.status !== 'all') {
-    membershipsQuery = membershipsQuery.eq('is_active', filters.status === 'active')
-  }
-
   const { data: membershipsData, error: membershipsError } = await membershipsQuery
 
   if (membershipsError) {
-    return { success: false, error: membershipErrorMessage(membershipsError.message), data: null }
+    return { success: false, error: formatDatabaseError(membershipsError.message), data: null }
   }
 
-  const memberships = (membershipsData ?? []) as CompanyMembershipRow[]
+  const memberships = (membershipsData ?? []) as CompanyMemberRow[]
   const userIds = memberships.map((membership) => membership.user_id)
-  const profileNameMap = new Map<string, string>()
-  if (userIds.length > 0) {
-    const { data: profilesData, error: profilesError } = await context.admin
-      .from('profiles')
-      .select('user_id, name')
-      .in('user_id', userIds)
-
-    if (profilesError) {
-      return { success: false, error: formatDatabaseError(profilesError.message), data: null }
-    }
-
-    for (const profile of (profilesData ?? []) as ProfileNameRow[]) {
-      profileNameMap.set(profile.user_id, profile.name)
-    }
-  }
-
   const emailMap = userIds.length > 0 ? await getUserEmailMap(context.admin, userIds) : new Map<string, string>()
 
   const { data: companyDepartmentsData, error: companyDepartmentsError } = await context.admin
@@ -238,35 +239,86 @@ export async function listMembers(rawFilters?: {
     }, new Map<string, MemberDepartment[]>())
   }
 
-  let members: MemberRow[] = memberships.map((membership) => ({
-    userId: membership.user_id,
-    name: profileNameMap.get(membership.user_id) ?? 'Unknown user',
-    email: emailMap.get(membership.user_id) ?? '',
-    role: membership.role,
-    isActive: membership.is_active,
-    createdAt: membership.created_at,
-    updatedAt: membership.updated_at,
-    departments: membershipsByUser.get(membership.user_id) ?? [],
-  }))
+  let rows: MemberListRow[] = memberships.map((membership) => {
+    const relatedProfile = normalizeProfileRelation(membership.profiles)
+
+    return {
+      type: 'member',
+      rowId: `member:${membership.user_id}`,
+      userId: membership.user_id,
+      name: relatedProfile?.name ?? 'Unknown user',
+      email: emailMap.get(membership.user_id) ?? '',
+      role: membership.role,
+      isActive: relatedProfile?.is_active !== false,
+      createdAt: membership.created_at,
+      updatedAt: membership.updated_at,
+      departments: membershipsByUser.get(membership.user_id) ?? [],
+    }
+  })
+
+  if (filters.status !== 'all') {
+    rows = rows.filter((row) => row.type !== 'member' || row.isActive === (filters.status === 'active'))
+  }
+
+  const { data: invitationsData, error: invitationsError } = await context.admin
+    .from('invitations')
+    .select('invitation_id, name, email, role, department_id, created_at, updated_at')
+    .eq('company_id', context.companyId)
+    .eq('status', 'pending')
+    .gt('expires_at', new Date().toISOString())
+    .order('created_at', { ascending: false })
+
+  if (invitationsError) {
+    return { success: false, error: formatDatabaseError(invitationsError.message), data: null }
+  }
+
+  let pendingInvites = (invitationsData ?? []) as PendingInvitationRow[]
+
+  if (filters.role !== 'all') {
+    pendingInvites = pendingInvites.filter((invite) => invite.role === filters.role)
+  }
+
+  if (filters.status !== 'inactive') {
+    const inviteRows: MemberListRow[] = pendingInvites.map((invite) => ({
+      type: 'invite',
+      rowId: `invite:${invite.invitation_id}`,
+      invitationId: invite.invitation_id,
+      name: invite.name?.trim() || invite.email,
+      email: invite.email,
+      role: invite.role,
+      createdAt: invite.created_at,
+      updatedAt: invite.updated_at,
+      departments: invite.department_id
+        ? [{
+            departmentId: invite.department_id,
+            name: departmentMap.get(invite.department_id) ?? 'Unknown department',
+          }]
+        : [],
+    }))
+
+    rows = [...rows, ...inviteRows]
+  }
 
   if (filters.q?.trim()) {
     const term = filters.q.trim().toLowerCase()
 
-    members = members.filter((member) => {
-      const departmentText = member.departments.map((department) => department.name).join(' ')
+    rows = rows.filter((row) => {
+      const departmentText = row.departments.map((department) => department.name).join(' ')
 
       return (
-        member.name.toLowerCase().includes(term) ||
-        member.email.toLowerCase().includes(term) ||
+        row.name.toLowerCase().includes(term) ||
+        row.email.toLowerCase().includes(term) ||
         departmentText.toLowerCase().includes(term)
       )
     })
   }
 
+  rows.sort((a, b) => (b.createdAt > a.createdAt ? 1 : -1))
+
   return {
     success: true,
     data: {
-      members,
+      rows,
       departments: companyDepartments,
       viewerRole: context.role,
       filters,

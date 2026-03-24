@@ -1,5 +1,7 @@
+import { APP_DATE_LOCALE } from '@/lib/utils'
+
 export function formatDate(date: Date): string {
-  return date.toLocaleDateString('en-US', {
+  return date.toLocaleDateString(APP_DATE_LOCALE, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -7,7 +9,7 @@ export function formatDate(date: Date): string {
 }
 
 export function formatTime(date: Date): string {
-  return date.toLocaleTimeString('en-US', {
+  return date.toLocaleTimeString(APP_DATE_LOCALE, {
     hour: '2-digit',
     minute: '2-digit',
   })
@@ -18,5 +20,5 @@ export function formatDateTime(date: Date): string {
 }
 
 export function getDayOfWeek(date: Date): string {
-  return date.toLocaleDateString('en-US', { weekday: 'long' })
+  return date.toLocaleDateString(APP_DATE_LOCALE, { weekday: 'long' })
 }

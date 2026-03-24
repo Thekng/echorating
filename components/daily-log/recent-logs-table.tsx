@@ -9,6 +9,7 @@ import type {
   DailyLogRecentMetricValue,
 } from '@/features/daily-log/types'
 import { formatSecondsToDuration } from '@/lib/daily-log/value-parser'
+import { formatDateShort } from '@/lib/utils'
 import { booleanLabels, normalizeMetricSettings } from '@/lib/metrics/data-types'
 
 type RecentLogsTableProps = {
@@ -16,19 +17,6 @@ type RecentLogsTableProps = {
   logs: DailyLogRecentEntry[]
   keyMetrics: DailyLogKeyMetric[]
   canDelete: boolean
-}
-
-function formatDate(value: string) {
-  const date = new Date(`${value}T00:00:00`)
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(date)
 }
 
 function metricValue(values: DailyLogRecentMetricValue[], metric: DailyLogKeyMetric) {
@@ -135,7 +123,7 @@ export function RecentLogsTable({ departmentId, logs, keyMetrics, canDelete }: R
         <tbody>
           {logs.map((log) => (
             <tr key={log.entry_id} className="border-b last:border-b-0">
-              <td className="px-3 py-2">{formatDate(log.entry_date)}</td>
+              <td className="px-3 py-2">{formatDateShort(log.entry_date)}</td>
               <td className="px-3 py-2">{log.user_name}</td>
               {keyMetrics.map((metric) => (
                 <td key={metric.metric_id} className="px-3 py-2">

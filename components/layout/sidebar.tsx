@@ -2,10 +2,11 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { ChevronsLeft, ChevronsRight, Moon, Sun, Play } from 'lucide-react'
+import { ChevronsLeft, ChevronsRight, LogOut, Moon, Play, Sun } from 'lucide-react'
 import { APP_NAV_ITEMS, isActivePath } from './nav-items'
 import { cn } from '@/lib/utils'
 import { useTour } from '@/components/tour/tour-provider'
+import { signOutAction } from '@/features/auth/actions'
 
 type SidebarProps = {
   collapsed: boolean
@@ -92,6 +93,18 @@ export function Sidebar({ collapsed, onToggleCollapse, theme, onToggleTheme, com
           <Play className="size-4" />
           {!collapsed ? <span>App Tour</span> : null}
         </button>
+
+        <form action={signOutAction}>
+          <button
+            type="submit"
+            className="mt-2 inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-border bg-background px-2 text-xs hover:bg-muted"
+            title="Log out"
+            aria-label="Log out"
+          >
+            <LogOut className="size-4" />
+            {!collapsed ? <span>Log out</span> : null}
+          </button>
+        </form>
       </div>
     </div>
   )
