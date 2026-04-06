@@ -145,6 +145,14 @@ async function getUserEmailMap(admin: ReturnType<typeof createAdminClient>, user
   return new Map(entries)
 }
 
+function isMissingInvitationNameColumn(message: string) {
+  const normalized = message.toLowerCase()
+  return (
+    normalized.includes('invitations.name') &&
+    normalized.includes('does not exist')
+  )
+}
+
 export async function listMembers(rawFilters?: {
   q?: string
   role?: string
@@ -260,7 +268,7 @@ export async function listMembers(rawFilters?: {
     rows = rows.filter((row) => row.type !== 'member' || row.isActive === (filters.status === 'active'))
   }
 
-  const { data: invitationsData, error: invitationsError } = await context.admin
+  const invitationsWithName = await context.admin
     .from('invitations')
     .select('invitation_id, name, email, role, department_id, created_at, updated_at')
     .eq('company_id', context.companyId)
@@ -268,11 +276,30 @@ export async function listMembers(rawFilters?: {
     .gt('expires_at', new Date().toISOString())
     .order('created_at', { ascending: false })
 
-  if (invitationsError) {
-    return { success: false, error: formatDatabaseError(invitationsError.message), data: null }
-  }
+  let pendingInvites: PendingInvitationRow[] = []
 
-  let pendingInvites = (invitationsData ?? []) as PendingInvitationRow[]
+  if (!invitationsWithName.error) {
+    pendingInvites = (invitationsWithName.data ?? []) as PendingInvitationRow[]
+  } else if (isMissingInvitationNameColumn(invitationsWithName.error.message)) {
+    const invitationsWithoutName = await context.admin
+      .from('invitations')
+      .select('invitation_id, email, role, department_id, created_at, updated_at')
+      .eq('company_id', context.companyId)
+      .eq('status', 'pending')
+      .gt('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false })
+
+    if (invitationsWithoutName.error) {
+      return { success: false, error: formatDatabaseError(invitationsWithoutName.error.message), data: null }
+    }
+
+    pendingInvites = (invitationsWithoutName.data ?? []).map((invite) => ({
+      ...invite,
+      name: null,
+    })) as PendingInvitationRow[]
+  } else {
+    return { success: false, error: formatDatabaseError(invitationsWithName.error.message), data: null }
+  }
 
   if (filters.role !== 'all') {
     pendingInvites = pendingInvites.filter((invite) => invite.role === filters.role)
