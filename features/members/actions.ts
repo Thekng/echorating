@@ -85,14 +85,6 @@ function hasConfiguredResendKey() {
   return Boolean(key && !key.startsWith('your_'))
 }
 
-function isMissingInvitationNameColumn(message: string) {
-  const normalized = message.toLowerCase()
-  return (
-    normalized.includes('invitations.name') &&
-    normalized.includes('does not exist')
-  )
-}
-
 async function syncProfileForActiveCompany(
   admin: ReturnType<typeof createAdminClient>,
   companyId: string,
@@ -113,7 +105,9 @@ async function syncProfileForActiveCompany(
   }
 
   if (!profile || profile.company_id !== companyId) {
-    return { ok: true as const }
+    if (typeof updates.isActive !== 'boolean') {
+      return { ok: true as const }
+    }
   }
 
   const payload: {
@@ -125,7 +119,7 @@ async function syncProfileForActiveCompany(
     updated_at: new Date().toISOString(),
   }
 
-  if (updates.role) {
+  if (updates.role && profile?.company_id === companyId) {
     payload.role = updates.role
   }
 
@@ -462,9 +456,17 @@ export async function acceptInviteAction(invitationId: string) {
   }
 
   if (existingProfile) {
+    const fallbackProfileName =
+      typeof user.user_metadata?.name === 'string' && user.user_metadata.name.trim()
+        ? user.user_metadata.name.trim()
+        : (user.email ?? invitation.email)
+
     const { error: updateProfileError } = await admin
       .from('profiles')
       .update({
+        company_id: invitation.company_id,
+        role: invitation.role,
+        name: existingProfile.name?.trim() ? existingProfile.name : fallbackProfileName,
         is_active: true,
         deleted_at: null,
         updated_at: nowIso,
@@ -702,28 +704,13 @@ export async function createMemberAction(
   }
 
   if (pendingInvite) {
-    let updateInviteError = (
-      await context.admin
-        .from('invitations')
-        .update({
-          ...invitationWritePayload,
-          name: inviteeName,
-          resent_count: pendingInvite.resent_count + 1,
-        })
-        .eq('invitation_id', pendingInvite.invitation_id)
-    ).error
-
-    if (updateInviteError && isMissingInvitationNameColumn(updateInviteError.message)) {
-      updateInviteError = (
-        await context.admin
-          .from('invitations')
-          .update({
-            ...invitationWritePayload,
-            resent_count: pendingInvite.resent_count + 1,
-          })
-          .eq('invitation_id', pendingInvite.invitation_id)
-      ).error
-    }
+    const { error: updateInviteError } = await context.admin
+      .from('invitations')
+      .update({
+        ...invitationWritePayload,
+        resent_count: pendingInvite.resent_count + 1,
+      })
+      .eq('invitation_id', pendingInvite.invitation_id)
 
     if (updateInviteError) {
       return actionError(formatDatabaseError(updateInviteError.message))
@@ -731,37 +718,15 @@ export async function createMemberAction(
 
     invitationId = pendingInvite.invitation_id
   } else {
-    let createdInvite: { invitation_id: string } | null = null
-    let createInviteError = null as { message: string } | null
-
-    const createWithName = await context.admin
+    const { data: createdInvite, error: createInviteError } = await context.admin
       .from('invitations')
       .insert({
         company_id: context.companyId,
         email: normalizedEmail,
         ...invitationWritePayload,
-        name: inviteeName,
       })
       .select('invitation_id')
       .single()
-
-    createdInvite = createWithName.data
-    createInviteError = createWithName.error
-
-    if (createInviteError && isMissingInvitationNameColumn(createInviteError.message)) {
-      const createWithoutName = await context.admin
-        .from('invitations')
-        .insert({
-          company_id: context.companyId,
-          email: normalizedEmail,
-          ...invitationWritePayload,
-        })
-        .select('invitation_id')
-        .single()
-
-      createdInvite = createWithoutName.data
-      createInviteError = createWithoutName.error
-    }
 
     if (createInviteError || !createdInvite?.invitation_id) {
       return actionError(formatDatabaseError(createInviteError?.message ?? 'Unable to create invitation.'))
@@ -1032,18 +997,6 @@ export async function toggleMemberStatusAction(formData: FormData): Promise<Memb
   const nextActive = parsed.data.nextStatus === 'active'
   if (targetMembership.is_active === nextActive) {
     return actionSuccess(nextActive ? 'Member is already active.' : 'Member is already inactive.')
-  }
-
-  const { error: updateMembershipError } = await context.admin
-    .from('company_members')
-    .update({
-      updated_at: new Date().toISOString(),
-    })
-    .eq('user_id', targetMembership.user_id)
-    .eq('company_id', context.companyId)
-
-  if (updateMembershipError) {
-    return actionError(formatDatabaseError(updateMembershipError.message))
   }
 
   const syncProfileResult = await syncProfileForActiveCompany(context.admin, context.companyId, targetMembership.user_id, {
