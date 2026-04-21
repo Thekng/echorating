@@ -1,23 +1,23 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { getActorContext } from '@/lib/supabase/actor-context'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireRole } from '@/lib/rbac/guards'
+import { getAccessibleDepartmentIds } from '@/lib/rbac/department-access'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
 import { memberFilterSchema } from './schemas'
-import { type Role, isRole } from '@/lib/rbac/roles'
+import { type Role } from '@/lib/rbac/roles'
 
 type CompanyMemberProfileRelation = {
   name: string
-  is_active: boolean
 } | Array<{
   name: string
-  is_active: boolean
 }> | null
 
 type CompanyMemberRow = {
   user_id: string
   role: Role
+  is_active: boolean
   created_at: string
   updated_at: string
   profiles: CompanyMemberProfileRelation
@@ -75,58 +75,6 @@ function normalizeProfileRelation(profile: CompanyMemberProfileRelation) {
   return profile
 }
 
-async function getViewerContext() {
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return { ok: false as const, message: 'SUPABASE_SERVICE_ROLE_KEY is missing in environment variables.' }
-  }
-
-  const supabase = await createClient()
-  const admin = createAdminClient()
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser()
-
-  if (userError || !user) {
-    return { ok: false as const, message: 'Authentication required.' }
-  }
-
-  const { data: profile, error: profileError } = await admin
-    .from('profiles')
-    .select('company_id, is_active, deleted_at')
-    .eq('user_id', user.id)
-    .maybeSingle()
-
-  if (profileError) {
-    return { ok: false as const, message: formatDatabaseError(profileError.message) }
-  }
-
-  if (!profile?.company_id || profile.is_active === false || profile.deleted_at) {
-    return { ok: false as const, message: 'Company profile not found.' }
-  }
-
-  const { data: viewerMembership, error: viewerMembershipError } = await admin
-    .from('company_members')
-    .select('role')
-    .eq('company_id', profile.company_id)
-    .eq('user_id', user.id)
-    .maybeSingle()
-
-  if (viewerMembershipError) {
-    return { ok: false as const, message: formatDatabaseError(viewerMembershipError.message) }
-  }
-
-  if (!viewerMembership || !isRole(viewerMembership.role)) {
-    return { ok: false as const, message: 'Active company membership not found.' }
-  }
-
-  return {
-    ok: true as const,
-    admin,
-    companyId: profile.company_id as string,
-    role: viewerMembership.role,
-  }
-}
 
 async function getUserEmailMap(admin: ReturnType<typeof createAdminClient>, userIds: string[]) {
   const entries = await Promise.all(
@@ -149,7 +97,7 @@ export async function listMembers(rawFilters?: {
   role?: string
   status?: string
 }) {
-  const context = await getViewerContext()
+  const context = await getActorContext()
   if (!context.ok) {
     return { success: false, error: context.message, data: null }
   }
@@ -174,7 +122,7 @@ export async function listMembers(rawFilters?: {
 
   let membershipsQuery = context.admin
     .from('company_members')
-    .select('user_id, role, created_at, updated_at, profiles!inner(name, is_active)')
+    .select('user_id, role, is_active, created_at, updated_at, profiles!inner(name)')
     .eq('company_id', context.companyId)
     .order('created_at', { ascending: false })
 
@@ -248,7 +196,7 @@ export async function listMembers(rawFilters?: {
       name: relatedProfile?.name ?? 'Unknown user',
       email: emailMap.get(membership.user_id) ?? '',
       role: membership.role,
-      isActive: relatedProfile?.is_active !== false,
+      isActive: membership.is_active !== false,
       createdAt: membership.created_at,
       updatedAt: membership.updated_at,
       departments: membershipsByUser.get(membership.user_id) ?? [],

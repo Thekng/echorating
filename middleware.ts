@@ -3,7 +3,6 @@ import type { NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { ROUTES } from '@/lib/constants/routes'
 import { type Role, hasPermission, isRole } from '@/lib/rbac/roles'
-import { createAdminClient } from '@/lib/supabase/admin'
 
 const protectedRoutes = [
   ROUTES.DASHBOARD,
@@ -34,6 +33,10 @@ function isRoute(pathname: string, route: string) {
 
 function withResponseCookies(target: NextResponse, source: NextResponse) {
   source.cookies.getAll().forEach((cookie) => target.cookies.set(cookie))
+  const requestId = source.headers.get('x-request-id')
+  if (requestId) {
+    target.headers.set('x-request-id', requestId)
+  }
   return target
 }
 
@@ -48,9 +51,18 @@ function redirectToLogin(request: NextRequest, response: NextResponse, reason?: 
 }
 
 export async function middleware(request: NextRequest) {
+  const incomingRequestId = request.headers.get('x-request-id')
+  const requestId = incomingRequestId && incomingRequestId.trim() !== ''
+    ? incomingRequestId
+    : crypto.randomUUID()
+
+  // Propagate so server actions / route handlers can read it via headers().
+  request.headers.set('x-request-id', requestId)
+
   let response = NextResponse.next({
     request,
   })
+  response.headers.set('x-request-id', requestId)
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -98,43 +110,13 @@ export async function middleware(request: NextRequest) {
   }
 
   if (user && (isAppRoute || isOnboardingRoute || Boolean(roleRule))) {
-    let profile: {
-      company_id: string | null
-      role: string | null
-      is_active: boolean | null
-      deleted_at: string | null
-    } | null = null
-
-    if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      const admin = createAdminClient()
-      const { data: adminProfile, error: adminProfileError } = await admin
-        .from('profiles')
-        .select('company_id, role, is_active, deleted_at')
-        .eq('user_id', user.id)
-        .maybeSingle()
-
-      if (adminProfileError) {
-        return redirectToLogin(request, response, 'profile_lookup')
-      }
-
-      profile = adminProfile
-    } else {
-      const { data: userScopedProfile, error: userScopedProfileError } = await supabase
-        .from('profiles')
-        .select('company_id, role, is_active, deleted_at')
-        .eq('user_id', user.id)
-        .maybeSingle()
-
-      if (userScopedProfileError) {
-        return redirectToLogin(request, response, 'profile_lookup')
-      }
-
-      profile = userScopedProfile
-    }
-
-    const hasCompany =
-      Boolean(profile?.company_id) && profile?.is_active !== false && profile?.deleted_at === null
-    const role = isRole(profile?.role) ? profile.role : null
+    const companyId = typeof user.app_metadata?.active_company_id === 'string'
+      ? user.app_metadata.active_company_id
+      : null
+    const role = isRole(user.app_metadata?.active_role)
+      ? user.app_metadata.active_role
+      : null
+    const hasCompany = Boolean(companyId)
 
     if (isAppRoute && !hasCompany) {
       const onboardingUrl = request.nextUrl.clone()

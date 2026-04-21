@@ -3,8 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { companySchema, companyStatusSchema } from './schemas'
-import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { getActorContext } from '@/lib/supabase/actor-context'
 import { requireRole } from '@/lib/rbac/guards'
 import { ROUTES } from '@/lib/constants/routes'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
@@ -23,46 +22,6 @@ function zodMessage(error: z.ZodError) {
   return error.issues[0]?.message ?? 'Invalid data'
 }
 
-async function getUserCompanyAndRole() {
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return {
-      ok: false as const,
-      message: 'SUPABASE_SERVICE_ROLE_KEY is missing in environment variables.',
-    }
-  }
-
-  const supabase = await createClient()
-  const admin = createAdminClient()
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser()
-
-  if (userError || !user) {
-    return { ok: false as const, message: 'Authentication required.' }
-  }
-
-  const { data: profile, error: profileError } = await admin
-    .from('profiles')
-    .select('company_id, role')
-    .eq('user_id', user.id)
-    .maybeSingle()
-
-  if (profileError) {
-    return { ok: false as const, message: formatDatabaseError(profileError.message) }
-  }
-
-  if (!profile?.company_id || !profile?.role) {
-    return { ok: false as const, message: 'Company profile not found.' }
-  }
-
-  return {
-    ok: true as const,
-    admin,
-    companyId: profile.company_id as string,
-    role: profile.role as string,
-  }
-}
 
 export async function updateCompanyAction(
   _prevState: CompanyActionState,
@@ -77,7 +36,7 @@ export async function updateCompanyAction(
     return { status: 'error', message: zodMessage(parsed.error) }
   }
 
-  const context = await getUserCompanyAndRole()
+  const context = await getActorContext()
   if (!context.ok) {
     return { status: 'error', message: context.message }
   }
@@ -114,7 +73,7 @@ export async function toggleCompanyStatusAction(formData: FormData) {
     return
   }
 
-  const context = await getUserCompanyAndRole()
+  const context = await getActorContext()
   if (!context.ok) {
     return
   }

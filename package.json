@@ -9,6 +9,10 @@
     "lint": "eslint . --max-warnings=0",
     "migrate:formulas:notion-v1": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/migrate-formulas-to-notion-v1.ts",
     "backfill:calculated-metrics": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/backfill-calculated-metrics.ts",
+    "db:migrate": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/db-migrate.ts apply",
+    "db:check": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/db-migrate.ts check",
+    "check:schema-drift": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/check-schema-drift.ts",
+    "typecheck": "tsc --noEmit",
     "test:unit": "node --experimental-strip-types --experimental-specifier-resolution=node --test tests/unit/*.test.ts",
     "test:e2e": "node --experimental-strip-types --experimental-specifier-resolution=node --test tests/e2e/*.test.ts"
   },
@@ -25,6 +29,7 @@
     "react-dom": "latest",
     "react-joyride": "^2.9.3",
     "resend": "^6.9.2",
+    "svix": "^1.90.0",
     "swr": "^2.4.0",
     "tailwind-merge": "latest",
     "tw-animate-css": "latest"

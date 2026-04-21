@@ -9,9 +9,3 @@ export function requireRole(userRole: Role | string, requiredRole: Role): assert
     throw new Error('Insufficient permissions')
   }
 }
-
-export function requireCompanyAccess(userCompanyId: string, resourceCompanyId: string) {
-  if (userCompanyId !== resourceCompanyId) {
-    throw new Error('Access denied')
-  }
-}

@@ -33,8 +33,8 @@ export async function GET(req: Request) {
       data: result.data,
     })
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Unknown error'
-    return NextResponse.json({ success: false, error: message }, { status: 500 })
+    console.error('[API_ERROR] /api/leaderboard:', error instanceof Error ? error.message : error)
+    return NextResponse.json({ success: false, error: 'Something went wrong. Please try again.' }, { status: 500 })
   }
 }
 

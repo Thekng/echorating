@@ -3,11 +3,10 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { metricDeleteSchema, metricFormSchema, metricReorderSchema, metricStatusSchema } from './schemas'
-import { createClient } from '@/lib/supabase/server'
+import { getActorContext } from '@/lib/supabase/actor-context'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireRole } from '@/lib/rbac/guards'
 import { ROUTES } from '@/lib/constants/routes'
-import { type Role } from '@/lib/rbac/roles'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
 import { validateFormulaExpression, type FormulaValueType } from '@/lib/metrics/formula'
 import {
@@ -232,15 +231,6 @@ function requiresLegacyMetricColumns(message: string) {
 
 function isMissingMetricsSortOrderColumn(message: string) {
   return message.toLowerCase().includes('column metrics.sort_order does not exist')
-}
-
-function isMissingTypedFormulaColumns(message: string) {
-  const lowered = message.toLowerCase()
-  return (
-    lowered.includes('column metric_formulas.ast_json does not exist') ||
-    lowered.includes('column metric_formulas.return_type does not exist') ||
-    lowered.includes('column metric_formulas.engine_version does not exist')
-  )
 }
 
 function legacyPrecisionScaleForDataType(dataType: MetricDataType) {
@@ -472,46 +462,6 @@ function toMetricCode(name: string) {
   return `metric_${Date.now()}`
 }
 
-async function getActorContext() {
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return {
-      ok: false as const,
-      message: 'SUPABASE_SERVICE_ROLE_KEY is missing in environment variables.',
-    }
-  }
-
-  const supabase = await createClient()
-  const admin = createAdminClient()
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser()
-
-  if (userError || !user) {
-    return { ok: false as const, message: 'Authentication required.' }
-  }
-
-  const { data: profile, error: profileError } = await admin
-    .from('profiles')
-    .select('company_id, role')
-    .eq('user_id', user.id)
-    .maybeSingle()
-
-  if (profileError) {
-    return { ok: false as const, message: formatDatabaseError(profileError.message) }
-  }
-
-  if (!profile?.company_id || !profile?.role) {
-    return { ok: false as const, message: 'Company profile not found.' }
-  }
-
-  return {
-    ok: true as const,
-    admin,
-    companyId: profile.company_id as string,
-    role: profile.role as Role,
-  }
-}
 
 async function validateDepartment(
   admin: ReturnType<typeof createAdminClient>,
@@ -721,189 +671,51 @@ async function resolveFormulaDependencies(
   }
 }
 
-async function replaceDependencies(
+async function saveMetricFormula(
   admin: ReturnType<typeof createAdminClient>,
   metricId: string,
+  expression: string,
+  astJson: Record<string, unknown>,
+  returnType: FormulaValueType,
   dependencyIds: string[],
 ) {
-  const { error: deleteError } = await admin
-    .from('metric_formula_dependencies')
-    .delete()
-    .eq('metric_id', metricId)
+  const { error } = await admin.rpc('save_metric_formula', {
+    p_metric_id: metricId,
+    p_expression: expression.trim(),
+    p_ast_json: astJson,
+    p_return_type: returnType,
+    p_dependency_ids: dependencyIds,
+  })
 
-  if (deleteError) {
-    return { ok: false as const, message: formatDatabaseError(deleteError.message) }
-  }
-
-  if (dependencyIds.length === 0) {
-    return { ok: true as const }
-  }
-
-  const { error: insertError } = await admin
-    .from('metric_formula_dependencies')
-    .insert(
-      dependencyIds.map((dependencyId) => ({
-        metric_id: metricId,
-        depends_on_metric_id: dependencyId,
-      })),
-    )
-
-  if (insertError) {
-    if (/circular dependency/i.test(insertError.message)) {
+  if (error) {
+    if (/circular dependency/i.test(error.message)) {
       return {
         ok: false as const,
         message: 'Circular dependency detected between calculated metrics.',
       }
     }
 
-    return { ok: false as const, message: formatDatabaseError(insertError.message) }
+    if (error.message.includes('save_metric_formula') && error.message.toLowerCase().includes('does not exist')) {
+      return {
+        ok: false as const,
+        message: 'Database migration missing: run 2026-04-17_save_metric_formula_rpc.sql in Supabase.',
+      }
+    }
+
+    return { ok: false as const, message: formatDatabaseError(error.message) }
   }
 
   return { ok: true as const }
 }
 
-async function upsertCurrentFormula(
+async function clearMetricFormula(
   admin: ReturnType<typeof createAdminClient>,
   metricId: string,
-  expression: string,
-  astJson: Record<string, unknown>,
-  returnType: FormulaValueType,
 ) {
-  const trimmedExpression = expression.trim()
-  type CurrentFormulaRow = {
-    formula_id: string
-    expression: string
-    version: number
-    ast_json?: unknown
-    return_type?: string | null
-    engine_version?: string | null
+  const { error } = await admin.rpc('clear_metric_formula', { p_metric_id: metricId })
+  if (error) {
+    return { ok: false as const, message: formatDatabaseError(error.message) }
   }
-
-  const typedCurrentFormula = await admin
-    .from('metric_formulas')
-    .select('formula_id, expression, version, ast_json, return_type, engine_version')
-    .eq('metric_id', metricId)
-    .eq('is_current', true)
-    .maybeSingle()
-
-  let supportsTypedFormulaColumns = true
-  let currentFormula: CurrentFormulaRow | null = null
-
-  if (!typedCurrentFormula.error) {
-    currentFormula = (typedCurrentFormula.data ?? null) as CurrentFormulaRow | null
-  } else if (isMissingTypedFormulaColumns(typedCurrentFormula.error.message)) {
-    supportsTypedFormulaColumns = false
-    const legacyCurrentFormula = await admin
-      .from('metric_formulas')
-      .select('formula_id, expression, version')
-      .eq('metric_id', metricId)
-      .eq('is_current', true)
-      .maybeSingle()
-
-    if (legacyCurrentFormula.error) {
-      return { ok: false as const, message: formatDatabaseError(legacyCurrentFormula.error.message) }
-    }
-
-    currentFormula = (legacyCurrentFormula.data ?? null) as CurrentFormulaRow | null
-  } else {
-    return { ok: false as const, message: formatDatabaseError(typedCurrentFormula.error.message) }
-  }
-
-  if (!currentFormula) {
-    const createFormulaPayload = supportsTypedFormulaColumns
-      ? {
-        metric_id: metricId,
-        expression: trimmedExpression,
-        ast_json: astJson,
-        return_type: returnType,
-        engine_version: 'notion_v1',
-        version: 1,
-        is_current: true,
-      }
-      : {
-        metric_id: metricId,
-        expression: trimmedExpression,
-        version: 1,
-        is_current: true,
-      }
-
-    const { error: insertError } = await admin
-      .from('metric_formulas')
-      .insert(createFormulaPayload)
-
-    if (insertError) {
-      return { ok: false as const, message: formatDatabaseError(insertError.message) }
-    }
-
-    return { ok: true as const }
-  }
-
-  const hasSameExpression = currentFormula.expression.trim() === trimmedExpression
-  const hasSameTypedMetadata = supportsTypedFormulaColumns
-    ? (
-      String(currentFormula.return_type ?? 'number') === returnType &&
-      JSON.stringify(currentFormula.ast_json ?? {}) === JSON.stringify(astJson) &&
-      String(currentFormula.engine_version ?? 'notion_v1') === 'notion_v1'
-    )
-    : true
-
-  if (hasSameExpression && hasSameTypedMetadata) {
-    return { ok: true as const }
-  }
-
-  const nextFormulaVersion = Number(currentFormula.version ?? 0) + 1
-  const nextFormulaPayload = supportsTypedFormulaColumns
-    ? {
-      metric_id: metricId,
-      expression: trimmedExpression,
-      ast_json: astJson,
-      return_type: returnType,
-      engine_version: 'notion_v1',
-      version: nextFormulaVersion,
-      is_current: false,
-    }
-    : {
-      metric_id: metricId,
-      expression: trimmedExpression,
-      version: nextFormulaVersion,
-      is_current: false,
-    }
-
-  const { data: nextFormula, error: insertNextError } = await admin
-    .from('metric_formulas')
-    .insert(nextFormulaPayload)
-    .select('formula_id')
-    .maybeSingle()
-
-  if (insertNextError || !nextFormula?.formula_id) {
-    return { ok: false as const, message: formatDatabaseError(insertNextError?.message ?? 'Unable to save formula.') }
-  }
-
-  const { error: closeCurrentError } = await admin
-    .from('metric_formulas')
-    .update({
-      is_current: false,
-      superseded_by: nextFormula.formula_id,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('formula_id', currentFormula.formula_id)
-
-  if (closeCurrentError) {
-    return { ok: false as const, message: formatDatabaseError(closeCurrentError.message) }
-  }
-
-  const { error: activateNextError } = await admin
-    .from('metric_formulas')
-    .update({
-      is_current: true,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('formula_id', nextFormula.formula_id)
-
-  if (activateNextError) {
-    return { ok: false as const, message: formatDatabaseError(activateNextError.message) }
-  }
-
   return { ok: true as const }
 }
 
@@ -1065,29 +877,18 @@ export async function createMetricAction(
   }
 
   if (parsed.data.inputMode === 'calculated') {
-    const formulaResult = await upsertCurrentFormula(
+    const formulaResult = await saveMetricFormula(
       context.admin,
       metric.metric_id,
       normalizedExpression,
       formulaAstJson,
       formulaReturnType ?? 'number',
+      formulaDependencies,
     )
 
     if (!formulaResult.ok) {
       return actionError(formulaResult.message, {
         expression: formulaResult.message,
-      })
-    }
-
-    const dependencyResult = await replaceDependencies(
-      context.admin,
-      metric.metric_id,
-      formulaDependencies,
-    )
-
-    if (!dependencyResult.ok) {
-      return actionError(dependencyResult.message, {
-        expression: dependencyResult.message,
       })
     }
   }
@@ -1283,12 +1084,13 @@ export async function updateMetricAction(
   }
 
   if (parsed.data.inputMode === 'calculated') {
-    const formulaResult = await upsertCurrentFormula(
+    const formulaResult = await saveMetricFormula(
       context.admin,
       parsed.data.metricId,
       normalizedExpression,
       formulaAstJson,
       formulaReturnType ?? 'number',
+      formulaDependencies,
     )
 
     if (!formulaResult.ok) {
@@ -1296,40 +1098,10 @@ export async function updateMetricAction(
         expression: formulaResult.message,
       })
     }
-
-    const dependencyResult = await replaceDependencies(
-      context.admin,
-      parsed.data.metricId,
-      formulaDependencies,
-    )
-
-    if (!dependencyResult.ok) {
-      return actionError(dependencyResult.message, {
-        expression: dependencyResult.message,
-      })
-    }
   } else {
-    const { error: closeFormulaError } = await context.admin
-      .from('metric_formulas')
-      .update({
-        is_current: false,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('metric_id', parsed.data.metricId)
-      .eq('is_current', true)
-
-    if (closeFormulaError) {
-      return actionError(formatDatabaseError(closeFormulaError.message))
-    }
-
-    const dependencyResult = await replaceDependencies(
-      context.admin,
-      parsed.data.metricId,
-      [],
-    )
-
-    if (!dependencyResult.ok) {
-      return actionError(dependencyResult.message)
+    const clearResult = await clearMetricFormula(context.admin, parsed.data.metricId)
+    if (!clearResult.ok) {
+      return actionError(clearResult.message)
     }
   }
 

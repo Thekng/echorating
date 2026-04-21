@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ROUTES } from '@/lib/constants/routes'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
+import { syncSessionClaims } from '@/lib/supabase/session-claims'
 
 type OnboardingActionState = {
   status: 'idle' | 'success' | 'error'
@@ -56,27 +57,13 @@ export async function completeOnboardingAction(
 
   const admin = createAdminClient()
 
-  const { data: existingProfile, error: existingProfileError } = await admin
-    .from('profiles')
-    .select('company_id')
-    .eq('user_id', user.id)
-    .maybeSingle()
-
-  if (existingProfileError) {
-    return { status: 'error', message: formatDatabaseError(existingProfileError.message) }
-  }
-
-  if (existingProfile?.company_id) {
-    redirect(ROUTES.DASHBOARD)
-  }
-
   const profileName =
     typeof user.user_metadata?.name === 'string' && user.user_metadata.name.trim()
       ? user.user_metadata.name
       : user.email ?? 'User'
 
-  const { data: companyId, error: createCompanyError } = await admin.rpc(
-    'create_company_with_owner_profile',
+  const { data: companyId, error: provisionError } = await admin.rpc(
+    'provision_workspace',
     {
       p_user_id: user.id,
       p_user_name: profileName,
@@ -87,25 +74,25 @@ export async function completeOnboardingAction(
     },
   )
 
-  if (createCompanyError) {
-    const missingRpc = createCompanyError.message.includes(
-      'create_company_with_owner_profile',
-    )
+  if (provisionError) {
+    const missingRpc = provisionError.message.includes('provision_workspace')
 
     if (missingRpc) {
       return {
         status: 'error',
         message:
-          'Database migration missing: run 2026-02-13_onboarding_atomic_company.sql in Supabase.',
+          'Database migration missing: run 2026-04-17_provision_workspace.sql in Supabase.',
       }
     }
 
-    return { status: 'error', message: formatDatabaseError(createCompanyError.message) }
+    return { status: 'error', message: formatDatabaseError(provisionError.message) }
   }
 
   if (!companyId) {
     return { status: 'error', message: 'Company creation failed.' }
   }
+
+  await syncSessionClaims(user.id, companyId, 'owner')
 
   redirect(ROUTES.DASHBOARD)
 }

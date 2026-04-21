@@ -1,9 +1,10 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { getActorContext, type ActorContext } from '@/lib/supabase/actor-context'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireRole } from '@/lib/rbac/guards'
 import { type Role } from '@/lib/rbac/roles'
+import { getAccessibleDepartments } from '@/lib/rbac/department-access'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
 import { type MetricDataType, type MetricSettings } from '@/lib/metrics/data-types'
 
@@ -96,15 +97,7 @@ type AgentStats = {
   lastEntryDate: string | null
 }
 
-type ViewerContext =
-  | { ok: false; message: string }
-  | {
-      ok: true
-      admin: ReturnType<typeof createAdminClient>
-      userId: string
-      companyId: string
-      role: Role
-    }
+type ViewerContext = ActorContext
 
 const RANKING_METRIC_TYPES: MetricDataType[] = ['number', 'currency', 'percent', 'duration', 'boolean']
 const PERIOD_ALIASES: Record<IncomingAgentsPeriod, AgentsPeriod> = {
@@ -233,100 +226,6 @@ function toStatsMap(entries: EntryRow[]) {
   return map
 }
 
-async function getViewerContext(): Promise<ViewerContext> {
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return { ok: false, message: 'SUPABASE_SERVICE_ROLE_KEY is missing in environment variables.' }
-  }
-
-  const supabase = await createClient()
-  const admin = createAdminClient()
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser()
-
-  if (userError || !user) {
-    return { ok: false, message: 'Authentication required.' }
-  }
-
-  const { data: profile, error: profileError } = await admin
-    .from('profiles')
-    .select('company_id, role')
-    .eq('user_id', user.id)
-    .eq('is_active', true)
-    .is('deleted_at', null)
-    .maybeSingle()
-
-  if (profileError) {
-    return { ok: false, message: formatDatabaseError(profileError.message) }
-  }
-
-  if (!profile?.company_id || !profile.role) {
-    return { ok: false, message: 'Active company profile not found.' }
-  }
-
-  return {
-    ok: true,
-    admin,
-    userId: user.id,
-    companyId: profile.company_id as string,
-    role: profile.role as Role,
-  }
-}
-
-async function getAccessibleDepartments(
-  admin: ReturnType<typeof createAdminClient>,
-  companyId: string,
-  userId: string,
-  role: Role,
-) {
-  if (role === 'owner' || role === 'manager') {
-    const { data, error } = await admin
-      .from('departments')
-      .select('department_id, name')
-      .eq('company_id', companyId)
-      .eq('is_active', true)
-      .is('deleted_at', null)
-      .order('name', { ascending: true })
-
-    if (error) {
-      return { ok: false as const, message: formatDatabaseError(error.message), departments: [] as DepartmentOption[] }
-    }
-
-    return { ok: true as const, departments: (data ?? []) as DepartmentOption[] }
-  }
-
-  const { data: memberships, error: membershipsError } = await admin
-    .from('department_members')
-    .select('department_id')
-    .eq('user_id', userId)
-    .eq('is_active', true)
-    .is('deleted_at', null)
-
-  if (membershipsError) {
-    return { ok: false as const, message: formatDatabaseError(membershipsError.message), departments: [] as DepartmentOption[] }
-  }
-
-  const departmentIds = (memberships ?? []).map((item) => item.department_id as string)
-  if (departmentIds.length === 0) {
-    return { ok: true as const, departments: [] as DepartmentOption[] }
-  }
-
-  const { data, error } = await admin
-    .from('departments')
-    .select('department_id, name')
-    .eq('company_id', companyId)
-    .in('department_id', departmentIds)
-    .eq('is_active', true)
-    .is('deleted_at', null)
-    .order('name', { ascending: true })
-
-  if (error) {
-    return { ok: false as const, message: formatDatabaseError(error.message), departments: [] as DepartmentOption[] }
-  }
-
-  return { ok: true as const, departments: (data ?? []) as DepartmentOption[] }
-}
 
 async function resolveScoreMetrics(
   admin: ReturnType<typeof createAdminClient>,
@@ -733,7 +632,7 @@ export async function getAgentsList(filters?: {
   q?: string | null
   status?: string | null
 }) {
-  const context = await getViewerContext()
+  const context = await getActorContext()
   if (!context.ok) {
     return { success: false as const, error: context.message, data: null }
   }
@@ -985,7 +884,7 @@ export async function getAgentProfile(
     endDate?: string | null
   },
 ) {
-  const context = await getViewerContext()
+  const context = await getActorContext()
   if (!context.ok) {
     return { success: false as const, error: context.message, data: null }
   }

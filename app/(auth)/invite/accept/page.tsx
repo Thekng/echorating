@@ -2,7 +2,6 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { InviteSessionResolver } from '@/components/auth/invite-session-resolver'
 import { InviteAcceptForm } from '@/components/auth/invite-accept-form'
-import { formatDatabaseError } from '@/lib/supabase/error-messages'
 
 const INVALID_INVITE_MESSAGE = 'This invite link is invalid or has expired. Please ask to be invited again.'
 type CompanyRelation = { name: string | null } | Array<{ name: string | null }> | null
@@ -44,16 +43,19 @@ export default async function InviteAcceptPage() {
   }
 
   const admin = createAdminClient()
+  const userEmail = user.email?.toLowerCase() ?? ''
+
   const { data: invitation, error: invitationError } = await admin
     .from('invitations')
-    .select('invitation_id, company_id, role, auth_user_id, status, expires_at, companies ( name )')
-    .eq('auth_user_id', user.id)
+    .select('invitation_id, company_id, role, auth_user_id, status, expires_at, email, companies ( name )')
     .eq('status', 'pending')
     .gt('expires_at', new Date().toISOString())
+    .or(`auth_user_id.eq.${user.id}${userEmail ? `,email.eq.${userEmail}` : ''}`)
+    .limit(1)
     .maybeSingle()
 
   if (invitationError) {
-    console.error('Invite lookup error:', formatDatabaseError(invitationError.message))
+    console.error('[DB_ERROR] Invite lookup:', invitationError.message)
     return <InvalidInviteState />
   }
 
@@ -61,7 +63,21 @@ export default async function InviteAcceptPage() {
     return <InvalidInviteState />
   }
 
+  const { data: existingProfile } = await admin
+    .from('profiles')
+    .select('user_id')
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  const isExistingUser = Boolean(existingProfile)
   const companyName = getCompanyName(invitation.companies as CompanyRelation)
 
-  return <InviteAcceptForm invitationId={invitation.invitation_id} companyName={companyName} role={invitation.role} />
+  return (
+    <InviteAcceptForm
+      invitationId={invitation.invitation_id}
+      companyName={companyName}
+      role={invitation.role}
+      isExistingUser={isExistingUser}
+    />
+  )
 }

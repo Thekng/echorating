@@ -1,13 +1,19 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { z } from 'zod'
 import { departmentIdSchema, departmentSchema } from './schemas'
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { requireRole } from '@/lib/rbac/guards'
 import { ROUTES } from '@/lib/constants/routes'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
+import {
+  databaseFail,
+  fail,
+  formField,
+  ok,
+  parseWithZod,
+  wrapAction,
+  type ActionResult,
+} from '@/lib/actions/wrap-action'
 
 type DepartmentFieldKey = 'departmentId' | 'name' | 'type'
 
@@ -17,58 +23,39 @@ export type DepartmentActionState = {
   fieldErrors: Partial<Record<DepartmentFieldKey, string>>
 }
 
-function field(formData: FormData, key: string) {
-  const value = formData.get(key)
-  return typeof value === 'string' ? value : ''
-}
-
-function actionSuccess(message: string): DepartmentActionState {
-  return {
-    status: 'success',
-    message,
-    fieldErrors: {},
+function narrowFieldErrors(
+  fieldErrors: Record<string, string> | undefined,
+): Partial<Record<DepartmentFieldKey, string>> {
+  if (!fieldErrors) return {}
+  const out: Partial<Record<DepartmentFieldKey, string>> = {}
+  for (const key of ['departmentId', 'name', 'type'] as const) {
+    if (fieldErrors[key]) out[key] = fieldErrors[key]
   }
+  return out
 }
 
-function actionError(
-  message: string,
-  fieldErrors: Partial<Record<DepartmentFieldKey, string>> = {},
+function toDepartmentState(
+  result: ActionResult<unknown>,
+  successMessage: string,
 ): DepartmentActionState {
+  if (result.ok) {
+    return { status: 'success', message: successMessage, fieldErrors: {} }
+  }
   return {
     status: 'error',
-    message,
-    fieldErrors,
+    message: result.message,
+    fieldErrors: narrowFieldErrors(result.fieldErrors),
   }
 }
 
-function zodMessage(error: z.ZodError) {
-  return error.issues[0]?.message ?? 'Invalid data'
-}
-
-function zodFieldErrors(error: z.ZodError): Partial<Record<DepartmentFieldKey, string>> {
-  const errors: Partial<Record<DepartmentFieldKey, string>> = {}
-
-  for (const issue of error.issues) {
-    const key = issue.path[0]
-    if (key === 'departmentId' || key === 'name' || key === 'type') {
-      if (!errors[key]) {
-        errors[key] = issue.message
-      }
-    }
-  }
-
-  return errors
-}
-
-function mapDepartmentDatabaseError(message: string): DepartmentActionState {
+function mapDuplicateNameError(message: string) {
   const lowered = message.toLowerCase()
   if (lowered.includes('duplicate key value') || lowered.includes('idx_departments_company_name_active')) {
-    return actionError('A department with this name already exists.', {
+    return fail('database', 'A department with this name already exists.', {
       name: 'This department name is already in use.',
     })
   }
-
-  return actionError(formatDatabaseError(message))
+  return databaseFail(message)
 }
 
 function requiresLegacyMetricColumns(message: string) {
@@ -81,47 +68,6 @@ function requiresLegacyMetricColumns(message: string) {
 
 function isMissingMetricsSortOrderColumn(message: string) {
   return message.toLowerCase().includes('column metrics.sort_order does not exist')
-}
-
-async function getUserCompanyAndRole() {
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return {
-      ok: false as const,
-      message: 'SUPABASE_SERVICE_ROLE_KEY is missing in environment variables.',
-    }
-  }
-
-  const supabase = await createClient()
-  const admin = createAdminClient()
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser()
-
-  if (userError || !user) {
-    return { ok: false as const, message: 'Authentication required.' }
-  }
-
-  const { data: profile, error: profileError } = await admin
-    .from('profiles')
-    .select('company_id, role')
-    .eq('user_id', user.id)
-    .maybeSingle()
-
-  if (profileError) {
-    return { ok: false as const, message: formatDatabaseError(profileError.message) }
-  }
-
-  if (!profile?.company_id || !profile?.role) {
-    return { ok: false as const, message: 'Company profile not found.' }
-  }
-
-  return {
-    ok: true as const,
-    admin,
-    companyId: profile.company_id as string,
-    role: profile.role as string,
-  }
 }
 
 async function createDefaultDepartmentMetrics(
@@ -190,268 +136,217 @@ async function createDefaultDepartmentMetrics(
   return { ok: true as const }
 }
 
+const runCreateDepartment = wrapAction({
+  name: 'createDepartment',
+  role: 'manager',
+  parse: (formData) =>
+    parseWithZod(departmentSchema, {
+      name: formField(formData, 'name'),
+      type: formField(formData, 'type'),
+    }),
+  handler: async ({ input, context }) => {
+    const { data: department, error } = await context.admin
+      .from('departments')
+      .insert({
+        company_id: context.companyId,
+        name: input.name.trim(),
+        type: input.type,
+        is_active: true,
+      })
+      .select('department_id')
+      .maybeSingle()
+
+    if (error) {
+      return mapDuplicateNameError(error.message)
+    }
+    if (!department?.department_id) {
+      return databaseFail('Failed to create department.')
+    }
+
+    const bootstrap = await createDefaultDepartmentMetrics(
+      context.admin,
+      context.companyId,
+      department.department_id as string,
+    )
+    if (!bootstrap.ok) {
+      return databaseFail(bootstrap.message)
+    }
+
+    revalidatePath(ROUTES.SETTINGS_DEPARTMENTS)
+    return ok(undefined)
+  },
+})
+
 export async function createDepartmentAction(
   _prevState: DepartmentActionState,
   formData: FormData,
 ): Promise<DepartmentActionState> {
-  const parsed = departmentSchema.safeParse({
-    name: field(formData, 'name'),
-    type: field(formData, 'type'),
-  })
+  const result = await runCreateDepartment(formData)
+  return toDepartmentState(result, 'Department created.')
+}
 
-  if (!parsed.success) {
-    return actionError(zodMessage(parsed.error), zodFieldErrors(parsed.error))
-  }
-
-  const context = await getUserCompanyAndRole()
-  if (!context.ok) {
-    return actionError(context.message)
-  }
-
-  try {
-    requireRole(context.role, 'manager')
-  } catch {
-    return actionError('Insufficient permissions.')
-  }
-
-  const { data: department, error } = await context.admin
-    .from('departments')
-    .insert({
-      company_id: context.companyId,
-      name: parsed.data.name.trim(),
-      type: parsed.data.type,
-      is_active: true,
+const runUpdateDepartment = wrapAction({
+  name: 'updateDepartment',
+  role: 'manager',
+  parse: (formData) => {
+    const id = parseWithZod(departmentIdSchema, {
+      departmentId: formField(formData, 'departmentId'),
     })
-    .select('department_id')
-    .maybeSingle()
+    if (!id.ok) return id
+    const body = parseWithZod(departmentSchema, {
+      name: formField(formData, 'name'),
+      type: formField(formData, 'type'),
+    })
+    if (!body.ok) return body
+    return { ok: true, data: { ...id.data, ...body.data } }
+  },
+  handler: async ({ input, context }) => {
+    const { data: current, error: lookupError } = await context.admin
+      .from('departments')
+      .select('department_id')
+      .eq('department_id', input.departmentId)
+      .eq('company_id', context.companyId)
+      .is('deleted_at', null)
+      .maybeSingle()
 
-  if (error || !department?.department_id) {
-    if (error) {
-      return mapDepartmentDatabaseError(error.message)
+    if (lookupError) return databaseFail(lookupError.message)
+    if (!current) {
+      return fail('database', 'Department not found.', {
+        departmentId: 'Department no longer exists.',
+      })
     }
 
-    return actionError('Failed to create department.')
-  }
+    const { error } = await context.admin
+      .from('departments')
+      .update({
+        name: input.name.trim(),
+        type: input.type,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('department_id', input.departmentId)
+      .eq('company_id', context.companyId)
+      .is('deleted_at', null)
 
-  const bootstrapMetrics = await createDefaultDepartmentMetrics(
-    context.admin,
-    context.companyId,
-    department.department_id as string,
-  )
-  if (!bootstrapMetrics.ok) {
-    return actionError(bootstrapMetrics.message)
-  }
+    if (error) return mapDuplicateNameError(error.message)
 
-  revalidatePath(ROUTES.SETTINGS_DEPARTMENTS)
-  return actionSuccess('Department created.')
-}
+    revalidatePath(ROUTES.SETTINGS_DEPARTMENTS)
+    return ok(undefined)
+  },
+})
 
 export async function updateDepartmentAction(
   _prevState: DepartmentActionState,
   formData: FormData,
 ): Promise<DepartmentActionState> {
-  const idParsed = departmentIdSchema.safeParse({
-    departmentId: field(formData, 'departmentId'),
-  })
-  const parsed = departmentSchema.safeParse({
-    name: field(formData, 'name'),
-    type: field(formData, 'type'),
-  })
-
-  if (!idParsed.success) {
-    return actionError(zodMessage(idParsed.error), zodFieldErrors(idParsed.error))
-  }
-
-  if (!parsed.success) {
-    return actionError(zodMessage(parsed.error), zodFieldErrors(parsed.error))
-  }
-
-  const context = await getUserCompanyAndRole()
-  if (!context.ok) {
-    return actionError(context.message)
-  }
-
-  try {
-    requireRole(context.role, 'manager')
-  } catch {
-    return actionError('Insufficient permissions.')
-  }
-
-  const { data: currentDepartment, error: departmentLookupError } = await context.admin
-    .from('departments')
-    .select('department_id')
-    .eq('department_id', idParsed.data.departmentId)
-    .eq('company_id', context.companyId)
-    .is('deleted_at', null)
-    .maybeSingle()
-
-  if (departmentLookupError) {
-    return actionError(formatDatabaseError(departmentLookupError.message))
-  }
-
-  if (!currentDepartment) {
-    return actionError('Department not found.', {
-      departmentId: 'Department no longer exists.',
-    })
-  }
-
-  const { error } = await context.admin
-    .from('departments')
-    .update({
-      name: parsed.data.name.trim(),
-      type: parsed.data.type,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('department_id', idParsed.data.departmentId)
-    .eq('company_id', context.companyId)
-    .is('deleted_at', null)
-
-  if (error) {
-    return mapDepartmentDatabaseError(error.message)
-  }
-
-  revalidatePath(ROUTES.SETTINGS_DEPARTMENTS)
-  return actionSuccess('Department updated.')
+  const result = await runUpdateDepartment(formData)
+  return toDepartmentState(result, 'Department updated.')
 }
+
+const runDeleteDepartment = wrapAction({
+  name: 'deleteDepartment',
+  role: 'manager',
+  parse: (formData) =>
+    parseWithZod(departmentIdSchema, {
+      departmentId: formField(formData, 'departmentId'),
+    }),
+  handler: async ({ input, context }) => {
+    const { data: existing, error: existingError } = await context.admin
+      .from('departments')
+      .select('department_id, name')
+      .eq('department_id', input.departmentId)
+      .eq('company_id', context.companyId)
+      .is('deleted_at', null)
+      .maybeSingle()
+
+    if (existingError) return databaseFail(existingError.message)
+    if (!existing) {
+      return fail('database', 'Department not found.', {
+        departmentId: 'Department no longer exists.',
+      })
+    }
+
+    const nowIso = new Date().toISOString()
+    const today = nowIso.slice(0, 10)
+
+    const membersUpdate = await context.admin
+      .from('department_members')
+      .update({ is_active: false, end_date: today, updated_at: nowIso })
+      .eq('department_id', input.departmentId)
+      .is('deleted_at', null)
+    if (membersUpdate.error) return databaseFail(membersUpdate.error.message)
+
+    const targetsUpdate = await context.admin
+      .from('targets')
+      .update({ is_active: false, deleted_at: nowIso, updated_at: nowIso })
+      .eq('company_id', context.companyId)
+      .eq('department_id', input.departmentId)
+      .is('deleted_at', null)
+    if (targetsUpdate.error) return databaseFail(targetsUpdate.error.message)
+
+    const metricsUpdate = await context.admin
+      .from('metrics')
+      .update({ is_active: false, deleted_at: nowIso, updated_at: nowIso })
+      .eq('company_id', context.companyId)
+      .eq('department_id', input.departmentId)
+      .is('deleted_at', null)
+    if (metricsUpdate.error) return databaseFail(metricsUpdate.error.message)
+
+    const departmentUpdate = await context.admin
+      .from('departments')
+      .update({ is_active: false, deleted_at: nowIso, updated_at: nowIso })
+      .eq('department_id', input.departmentId)
+      .eq('company_id', context.companyId)
+      .is('deleted_at', null)
+    if (departmentUpdate.error) return databaseFail(departmentUpdate.error.message)
+
+    revalidatePath(ROUTES.SETTINGS_DEPARTMENTS)
+    return ok({ name: existing.name as string })
+  },
+})
 
 export async function deleteDepartmentAction(
   _prevState: DepartmentActionState,
   formData: FormData,
 ): Promise<DepartmentActionState> {
-  const idParsed = departmentIdSchema.safeParse({
-    departmentId: field(formData, 'departmentId'),
-  })
-
-  if (!idParsed.success) {
-    return actionError(zodMessage(idParsed.error), zodFieldErrors(idParsed.error))
+  const result = await runDeleteDepartment(formData)
+  if (result.ok) {
+    return {
+      status: 'success',
+      message: `Department "${result.data.name}" deleted.`,
+      fieldErrors: {},
+    }
   }
-
-  const context = await getUserCompanyAndRole()
-  if (!context.ok) {
-    return actionError(context.message)
-  }
-
-  try {
-    requireRole(context.role, 'manager')
-  } catch {
-    return actionError('Insufficient permissions.')
-  }
-
-  const { data: existingDepartment, error: existingDepartmentError } = await context.admin
-    .from('departments')
-    .select('department_id, name')
-    .eq('department_id', idParsed.data.departmentId)
-    .eq('company_id', context.companyId)
-    .is('deleted_at', null)
-    .maybeSingle()
-
-  if (existingDepartmentError) {
-    return actionError(formatDatabaseError(existingDepartmentError.message))
-  }
-
-  if (!existingDepartment) {
-    return actionError('Department not found.', {
-      departmentId: 'Department no longer exists.',
-    })
-  }
-
-  const now = new Date()
-  const nowIso = now.toISOString()
-  const today = nowIso.slice(0, 10)
-
-  const { error: membersUpdateError } = await context.admin
-    .from('department_members')
-    .update({
-      is_active: false,
-      end_date: today,
-      updated_at: nowIso,
-    })
-    .eq('department_id', idParsed.data.departmentId)
-    .is('deleted_at', null)
-
-  if (membersUpdateError) {
-    return actionError(formatDatabaseError(membersUpdateError.message))
-  }
-
-  const { error: targetsUpdateError } = await context.admin
-    .from('targets')
-    .update({
-      is_active: false,
-      deleted_at: nowIso,
-      updated_at: nowIso,
-    })
-    .eq('company_id', context.companyId)
-    .eq('department_id', idParsed.data.departmentId)
-    .is('deleted_at', null)
-
-  if (targetsUpdateError) {
-    return actionError(formatDatabaseError(targetsUpdateError.message))
-  }
-
-  const { error: metricsUpdateError } = await context.admin
-    .from('metrics')
-    .update({
-      is_active: false,
-      deleted_at: nowIso,
-      updated_at: nowIso,
-    })
-    .eq('company_id', context.companyId)
-    .eq('department_id', idParsed.data.departmentId)
-    .is('deleted_at', null)
-
-  if (metricsUpdateError) {
-    return actionError(formatDatabaseError(metricsUpdateError.message))
-  }
-
-  const { error: departmentDeleteError } = await context.admin
-    .from('departments')
-    .update({
-      is_active: false,
-      deleted_at: nowIso,
-      updated_at: nowIso,
-    })
-    .eq('department_id', idParsed.data.departmentId)
-    .eq('company_id', context.companyId)
-    .is('deleted_at', null)
-
-  if (departmentDeleteError) {
-    return actionError(formatDatabaseError(departmentDeleteError.message))
-  }
-
-  revalidatePath(ROUTES.SETTINGS_DEPARTMENTS)
-  return actionSuccess(`Department "${existingDepartment.name}" deleted.`)
+  return toDepartmentState(result, '')
 }
 
+const runToggleDepartmentStatus = wrapAction({
+  name: 'toggleDepartmentStatus',
+  role: 'manager',
+  parse: (formData) => {
+    const departmentId = formField(formData, 'departmentId')
+    const nextStatus = formField(formData, 'nextStatus')
+    if (!departmentId || (nextStatus !== 'active' && nextStatus !== 'inactive')) {
+      return { ok: false, message: 'Invalid toggle request.' }
+    }
+    return { ok: true, data: { departmentId, nextActive: nextStatus === 'active' } }
+  },
+  handler: async ({ input, context }) => {
+    await context.admin
+      .from('departments')
+      .update({
+        is_active: input.nextActive,
+        updated_at: new Date().toISOString(),
+        deleted_at: null,
+      })
+      .eq('department_id', input.departmentId)
+      .eq('company_id', context.companyId)
+      .is('deleted_at', null)
+
+    revalidatePath(ROUTES.SETTINGS_DEPARTMENTS)
+    return ok(undefined)
+  },
+})
+
 export async function toggleDepartmentStatusAction(formData: FormData) {
-  const departmentId = field(formData, 'departmentId')
-  const nextStatus = field(formData, 'nextStatus')
-  const nextActive = nextStatus === 'active'
-
-  if (!departmentId || !['active', 'inactive'].includes(nextStatus)) {
-    return
-  }
-
-  const context = await getUserCompanyAndRole()
-  if (!context.ok) {
-    return
-  }
-
-  try {
-    requireRole(context.role, 'manager')
-  } catch {
-    return
-  }
-
-  await context.admin
-    .from('departments')
-    .update({
-      is_active: nextActive,
-      updated_at: new Date().toISOString(),
-      deleted_at: null,
-    })
-    .eq('department_id', departmentId)
-    .eq('company_id', context.companyId)
-    .is('deleted_at', null)
-
-  revalidatePath(ROUTES.SETTINGS_DEPARTMENTS)
+  await runToggleDepartmentStatus(formData)
 }

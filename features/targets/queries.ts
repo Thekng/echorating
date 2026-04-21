@@ -1,9 +1,7 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { getActorContext } from '@/lib/supabase/actor-context'
 import { requireRole } from '@/lib/rbac/guards'
-import { type Role } from '@/lib/rbac/roles'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
 import { targetFilterSchema } from './schemas'
 
@@ -32,50 +30,13 @@ type TargetRow = {
   updated_at: string
 }
 
-async function getViewerContext() {
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return { ok: false as const, message: 'SUPABASE_SERVICE_ROLE_KEY is missing in environment variables.' }
-  }
-
-  const supabase = await createClient()
-  const admin = createAdminClient()
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser()
-
-  if (userError || !user) {
-    return { ok: false as const, message: 'Authentication required.' }
-  }
-
-  const { data: profile, error: profileError } = await admin
-    .from('profiles')
-    .select('company_id, role')
-    .eq('user_id', user.id)
-    .maybeSingle()
-
-  if (profileError) {
-    return { ok: false as const, message: formatDatabaseError(profileError.message) }
-  }
-
-  if (!profile?.company_id || !profile?.role) {
-    return { ok: false as const, message: 'Company profile not found.' }
-  }
-
-  return {
-    ok: true as const,
-    admin,
-    companyId: profile.company_id as string,
-    role: profile.role as Role,
-  }
-}
 
 export async function listTargets(rawFilters?: {
   q?: string
   departmentId?: string
   status?: string
 }) {
-  const context = await getViewerContext()
+  const context = await getActorContext()
   if (!context.ok) {
     return { success: false, error: context.message, data: null }
   }
@@ -196,7 +157,7 @@ export async function listTargets(rawFilters?: {
 }
 
 export async function getTargetById(id: string) {
-  const context = await getViewerContext()
+  const context = await getActorContext()
   if (!context.ok) {
     return { success: false, error: context.message, data: null }
   }

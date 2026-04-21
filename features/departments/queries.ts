@@ -1,6 +1,6 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { getActorContext } from '@/lib/supabase/actor-context'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { departmentFilterSchema } from './schemas'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
@@ -124,50 +124,13 @@ function isMissingMetricsSortOrderColumn(message: string) {
   return message.toLowerCase().includes('column metrics.sort_order does not exist')
 }
 
-async function getViewerContext() {
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return { ok: false as const, message: 'SUPABASE_SERVICE_ROLE_KEY is missing in environment variables.' }
-  }
-
-  const supabase = await createClient()
-  const admin = createAdminClient()
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser()
-
-  if (userError || !user) {
-    return { ok: false as const, message: 'Authentication required.' }
-  }
-
-  const { data: profile, error: profileError } = await admin
-    .from('profiles')
-    .select('company_id, role')
-    .eq('user_id', user.id)
-    .maybeSingle()
-
-  if (profileError) {
-    return { ok: false as const, message: formatDatabaseError(profileError.message) }
-  }
-
-  if (!profile?.company_id) {
-    return { ok: false as const, message: 'Company profile not found.' }
-  }
-
-  return {
-    ok: true as const,
-    admin,
-    companyId: profile.company_id as string,
-    role: profile?.role ?? null,
-  }
-}
 
 export async function listDepartments(rawFilters?: {
   q?: string
   status?: string
   type?: string
 }) {
-  const context = await getViewerContext()
+  const context = await getActorContext()
   if (!context.ok) {
     return { success: false, error: context.message, data: [], count: 0 }
   }
@@ -213,7 +176,7 @@ export async function listDepartments(rawFilters?: {
 }
 
 export async function getDepartmentById(id: string) {
-  const context = await getViewerContext()
+  const context = await getActorContext()
   if (!context.ok) {
     return { success: false, error: context.message, data: null }
   }
@@ -247,7 +210,7 @@ export async function getDepartmentAggregateStats(
   error?: string
   data?: DepartmentAggregateStats & { period: DepartmentPeriod; startDate: string; endDate: string }
 }> {
-  const context = await getViewerContext()
+  const context = await getActorContext()
   if (!context.ok) {
     return { success: false, error: context.message }
   }
@@ -488,7 +451,7 @@ export async function getDepartmentProfile(
   customStartDate?: string | null,
   customEndDate?: string | null,
 ) {
-  const context = await getViewerContext()
+  const context = await getActorContext()
   if (!context.ok) {
     return { success: false as const, error: context.message, data: null }
   }
@@ -658,7 +621,7 @@ export async function getDepartmentAgentMetrics(
   startDate: string,
   endDate: string,
 ) {
-  const context = await getViewerContext()
+  const context = await getActorContext()
   if (!context.ok) {
     return { success: false, error: context.message, data: null }
   }

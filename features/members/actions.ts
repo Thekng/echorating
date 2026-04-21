@@ -8,6 +8,7 @@ import {
   toggleMemberStatusSchema,
   updateMemberRoleSchema,
 } from './schemas'
+import { getActorContext } from '@/lib/supabase/actor-context'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireRole } from '@/lib/rbac/guards'
@@ -16,6 +17,7 @@ import { formatDatabaseError } from '@/lib/supabase/error-messages'
 import { sendEmail } from '@/emails/resend'
 import { InviteMemberTemplate } from '@/emails/templates/invite-member'
 import { type Role, isRole } from '@/lib/rbac/roles'
+import { syncSessionClaims } from '@/lib/supabase/session-claims'
 
 type MemberFieldKey = 'name' | 'email' | 'role' | 'departmentId' | 'userId' | 'nextStatus'
 
@@ -85,7 +87,7 @@ function hasConfiguredResendKey() {
   return Boolean(key && !key.startsWith('your_'))
 }
 
-async function syncProfileForActiveCompany(
+async function syncMembershipAndProfile(
   admin: ReturnType<typeof createAdminClient>,
   companyId: string,
   userId: string,
@@ -94,184 +96,57 @@ async function syncProfileForActiveCompany(
     isActive?: boolean
   },
 ) {
-  const { data: profile, error: profileError } = await admin
+  const memberPayload: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  }
+  if (updates.role) memberPayload.role = updates.role
+  if (typeof updates.isActive === 'boolean') memberPayload.is_active = updates.isActive
+
+  const { error: memberError } = await admin
+    .from('company_members')
+    .update(memberPayload)
+    .eq('user_id', userId)
+    .eq('company_id', companyId)
+
+  if (memberError) {
+    return { ok: false as const, message: formatDatabaseError(memberError.message) }
+  }
+
+  const { data: profile } = await admin
     .from('profiles')
     .select('company_id')
     .eq('user_id', userId)
     .maybeSingle()
 
-  if (profileError) {
-    return { ok: false as const, message: formatDatabaseError(profileError.message) }
-  }
-
-  if (!profile || profile.company_id !== companyId) {
-    if (typeof updates.isActive !== 'boolean') {
-      return { ok: true as const }
+  if (profile?.company_id === companyId) {
+    const profilePayload: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
     }
-  }
+    if (updates.role) profilePayload.role = updates.role
+    if (typeof updates.isActive === 'boolean') {
+      profilePayload.is_active = updates.isActive
+      profilePayload.deleted_at = null
+    }
 
-  const payload: {
-    updated_at: string
-    role?: Role
-    is_active?: boolean
-    deleted_at?: null
-  } = {
-    updated_at: new Date().toISOString(),
-  }
-
-  if (updates.role && profile?.company_id === companyId) {
-    payload.role = updates.role
-  }
-
-  if (typeof updates.isActive === 'boolean') {
-    payload.is_active = updates.isActive
-    payload.deleted_at = null
-  }
-
-  const { error: updateError } = await admin.from('profiles').update(payload).eq('user_id', userId)
-
-  if (updateError) {
-    return { ok: false as const, message: formatDatabaseError(updateError.message) }
+    await admin.from('profiles').update(profilePayload).eq('user_id', userId)
   }
 
   return { ok: true as const }
 }
 
 async function getInviteActorContext() {
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return {
-      ok: false as const,
-      message: 'SUPABASE_SERVICE_ROLE_KEY is missing in environment variables.',
-    }
-  }
+  const base = await getActorContext()
+  if (!base.ok) return base
 
-  const supabase = await createClient()
-  const admin = createAdminClient()
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser()
-
-  if (userError || !user) {
-    return { ok: false as const, message: 'Authentication required.' }
-  }
-
-  const { data: profile, error: profileError } = await admin
-    .from('profiles')
-    .select('company_id, name, is_active, deleted_at')
-    .eq('user_id', user.id)
-    .maybeSingle()
-
-  if (profileError) {
-    return { ok: false as const, message: formatDatabaseError(profileError.message) }
-  }
-
-  if (!profile?.company_id || profile.is_active === false || profile.deleted_at) {
-    return { ok: false as const, message: 'Company profile not found.' }
-  }
-
-  const { data: membership, error: membershipError } = await admin
-    .from('company_members')
-    .select('role')
-    .eq('company_id', profile.company_id)
-    .eq('user_id', user.id)
-    .maybeSingle()
-
-  if (membershipError) {
-    return { ok: false as const, message: formatDatabaseError(membershipError.message) }
-  }
-
-  if (!membership || !isRole(membership.role)) {
-    return { ok: false as const, message: 'Active company membership not found.' }
-  }
-
-  const { data: company, error: companyError } = await admin
-    .from('companies')
-    .select('name')
-    .eq('company_id', profile.company_id)
-    .maybeSingle()
-
-  if (companyError) {
-    return { ok: false as const, message: formatDatabaseError(companyError.message) }
-  }
+  const [profileResult, companyResult] = await Promise.all([
+    base.admin.from('profiles').select('name').eq('user_id', base.userId).maybeSingle(),
+    base.admin.from('companies').select('name').eq('company_id', base.companyId).maybeSingle(),
+  ])
 
   return {
-    ok: true as const,
-    admin,
-    userId: user.id,
-    inviterName: profile.name,
-    companyId: profile.company_id as string,
-    role: membership.role,
-    companyName: company?.name ?? 'your company',
-  }
-}
-
-async function getActorContext() {
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return {
-      ok: false as const,
-      message: 'SUPABASE_SERVICE_ROLE_KEY is missing in environment variables.',
-    }
-  }
-
-  const supabase = await createClient()
-  const admin = createAdminClient()
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser()
-
-  if (userError || !user) {
-    return { ok: false as const, message: 'Authentication required.' }
-  }
-
-  const { data: profile, error: profileError } = await admin
-    .from('profiles')
-    .select('company_id, role, is_active, deleted_at')
-    .eq('user_id', user.id)
-    .maybeSingle()
-
-  if (profileError) {
-    return { ok: false as const, message: formatDatabaseError(profileError.message) }
-  }
-
-  if (!profile?.company_id || profile.is_active === false || profile.deleted_at) {
-    return { ok: false as const, message: 'Company profile not found.' }
-  }
-
-  const { data: actorMembership, error: actorMembershipError } = await admin
-    .from('company_members')
-    .select('role')
-    .eq('company_id', profile.company_id)
-    .eq('user_id', user.id)
-    .maybeSingle()
-
-  if (actorMembershipError) {
-    return { ok: false as const, message: formatDatabaseError(actorMembershipError.message) }
-  }
-
-  const actorRole = actorMembership?.role ?? profile.role
-  if (!isRole(actorRole) || profile.is_active === false) {
-    return { ok: false as const, message: 'Active company membership not found.' }
-  }
-
-  const { data: company, error: companyError } = await admin
-    .from('companies')
-    .select('name')
-    .eq('company_id', profile.company_id)
-    .maybeSingle()
-
-  if (companyError) {
-    return { ok: false as const, message: formatDatabaseError(companyError.message) }
-  }
-
-  return {
-    ok: true as const,
-    admin,
-    userId: user.id,
-    companyId: profile.company_id as string,
-    role: actorRole,
-    companyName: company?.name ?? 'your company',
+    ...base,
+    inviterName: profileResult.data?.name ?? null,
+    companyName: companyResult.data?.name ?? 'your company',
   }
 }
 
@@ -282,7 +157,7 @@ async function getTargetCompanyMember(
 ) {
   const { data: membership, error: membershipError } = await admin
     .from('company_members')
-    .select('user_id, role')
+    .select('user_id, role, is_active')
     .eq('user_id', userId)
     .eq('company_id', companyId)
     .maybeSingle()
@@ -295,22 +170,12 @@ async function getTargetCompanyMember(
     return { ok: false as const, message: 'Member not found.' }
   }
 
-  const { data: profile, error: profileError } = await admin
-    .from('profiles')
-    .select('is_active')
-    .eq('user_id', userId)
-    .maybeSingle()
-
-  if (profileError) {
-    return { ok: false as const, message: formatDatabaseError(profileError.message) }
-  }
-
   return {
     ok: true as const,
     membership: {
       user_id: membership.user_id as string,
       role: membership.role,
-      is_active: profile?.is_active !== false,
+      is_active: membership.is_active !== false,
     },
   }
 }
@@ -443,108 +308,43 @@ export async function acceptInviteAction(invitationId: string) {
     return { success: false as const, message: 'This invite link has expired. Please ask to be invited again.' }
   }
 
-  const nowIso = new Date().toISOString()
+  const fallbackName =
+    typeof user.user_metadata?.name === 'string' && user.user_metadata.name.trim()
+      ? user.user_metadata.name.trim()
+      : (user.email ?? invitation.email)
 
-  const { data: existingProfile, error: existingProfileError } = await admin
-    .from('profiles')
-    .select('user_id, company_id, name')
-    .eq('user_id', user.id)
-    .maybeSingle()
+  const { data: accepted, error: acceptRpcError } = await admin.rpc('accept_invitation', {
+    p_user_id: user.id,
+    p_invitation_id: invitation.invitation_id,
+    p_fallback_name: fallbackName,
+  })
 
-  if (existingProfileError) {
-    return { success: false as const, message: formatDatabaseError(existingProfileError.message) }
-  }
-
-  if (existingProfile) {
-    const fallbackProfileName =
-      typeof user.user_metadata?.name === 'string' && user.user_metadata.name.trim()
-        ? user.user_metadata.name.trim()
-        : (user.email ?? invitation.email)
-
-    const { error: updateProfileError } = await admin
-      .from('profiles')
-      .update({
-        company_id: invitation.company_id,
-        role: invitation.role,
-        name: existingProfile.name?.trim() ? existingProfile.name : fallbackProfileName,
-        is_active: true,
-        deleted_at: null,
-        updated_at: nowIso,
-      })
-      .eq('user_id', user.id)
-
-    if (updateProfileError) {
-      return { success: false as const, message: formatDatabaseError(updateProfileError.message) }
+  if (acceptRpcError) {
+    if (acceptRpcError.message.includes('accept_invitation') && acceptRpcError.message.toLowerCase().includes('does not exist')) {
+      return {
+        success: false as const,
+        message: 'Database migration missing: run 2026-04-17_accept_invitation_rpc.sql in Supabase.',
+      }
     }
-  } else {
-    const profileName =
-      typeof user.user_metadata?.name === 'string' && user.user_metadata.name.trim()
-        ? user.user_metadata.name.trim()
-        : (user.email ?? invitation.email)
-
-    const { error: insertProfileError } = await admin.from('profiles').insert({
-      user_id: user.id,
-      company_id: invitation.company_id,
-      name: profileName,
-      role: invitation.role,
-      is_active: true,
-      deleted_at: null,
-      updated_at: nowIso,
-    })
-
-    if (insertProfileError) {
-      return { success: false as const, message: formatDatabaseError(insertProfileError.message) }
-    }
+    return { success: false as const, message: formatDatabaseError(acceptRpcError.message) }
   }
 
-  const { error: membershipError } = await admin.from('company_members').upsert(
-    {
-      user_id: user.id,
-      company_id: invitation.company_id,
-      role: invitation.role,
-      updated_at: nowIso,
-    },
-    { onConflict: 'user_id,company_id' },
-  )
+  const acceptedRow = Array.isArray(accepted) ? accepted[0] : accepted
+  const acceptedCompanyId =
+    (acceptedRow && typeof acceptedRow === 'object' && 'company_id' in acceptedRow
+      ? (acceptedRow as { company_id?: string }).company_id
+      : null) ?? invitation.company_id
 
-  if (membershipError) {
-    return { success: false as const, message: formatDatabaseError(membershipError.message) }
-  }
+  const acceptedRoleRaw =
+    acceptedRow && typeof acceptedRow === 'object' && 'role' in acceptedRow
+      ? (acceptedRow as { role?: string }).role
+      : invitation.role
 
-  if (invitation.department_id) {
-    const { error: departmentMemberError } = await admin.from('department_members').upsert(
-      {
-        department_id: invitation.department_id,
-        user_id: user.id,
-        member_role: 'member',
-        is_active: true,
-        deleted_at: null,
-        end_date: null,
-        updated_at: nowIso,
-      },
-      { onConflict: 'department_id,user_id' },
-    )
-
-    if (departmentMemberError) {
-      return { success: false as const, message: formatDatabaseError(departmentMemberError.message) }
-    }
-  }
-
-  const { error: acceptError } = await admin
-    .from('invitations')
-    .update({
-      status: 'accepted',
-      accepted_at: nowIso,
-      updated_at: nowIso,
-    })
-    .eq('invitation_id', invitation.invitation_id)
-
-  if (acceptError) {
-    return { success: false as const, message: formatDatabaseError(acceptError.message) }
-  }
+  const inviteRole = isRole(acceptedRoleRaw ?? '') ? (acceptedRoleRaw as Role) : 'member' as Role
+  await syncSessionClaims(user.id, acceptedCompanyId, inviteRole)
 
   revalidatePath(ROUTES.SETTINGS_MEMBERS)
-  return { success: true as const, companyId: invitation.company_id }
+  return { success: true as const, companyId: acceptedCompanyId }
 }
 
 export async function revokeInviteAction(invitationId: string): Promise<MemberActionState> {
@@ -846,25 +646,15 @@ export async function updateMemberRoleAction(
     })
   }
 
-  const { error: updateError } = await context.admin
-    .from('company_members')
-    .update({
-      role: parsed.data.role,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('user_id', targetMembership.user_id)
-    .eq('company_id', context.companyId)
-
-  if (updateError) {
-    return actionError(formatDatabaseError(updateError.message))
-  }
-
-  const syncProfileResult = await syncProfileForActiveCompany(context.admin, context.companyId, targetMembership.user_id, {
+  const syncResult = await syncMembershipAndProfile(context.admin, context.companyId, targetMembership.user_id, {
     role: parsed.data.role,
   })
-  if (!syncProfileResult.ok) {
-    return actionError(syncProfileResult.message)
+  if (!syncResult.ok) {
+    return actionError(syncResult.message)
   }
+
+  const newRole = isRole(parsed.data.role) ? parsed.data.role : null
+  await syncSessionClaims(targetMembership.user_id, context.companyId, newRole)
 
   revalidatePath(ROUTES.SETTINGS_MEMBERS)
   return actionSuccess('Member role updated.')
@@ -999,7 +789,7 @@ export async function toggleMemberStatusAction(formData: FormData): Promise<Memb
     return actionSuccess(nextActive ? 'Member is already active.' : 'Member is already inactive.')
   }
 
-  const syncProfileResult = await syncProfileForActiveCompany(context.admin, context.companyId, targetMembership.user_id, {
+  const syncProfileResult = await syncMembershipAndProfile(context.admin, context.companyId, targetMembership.user_id, {
     isActive: nextActive,
   })
   if (!syncProfileResult.ok) {
@@ -1011,6 +801,9 @@ export async function toggleMemberStatusAction(formData: FormData): Promise<Memb
     if (!clearDepartmentsResult.ok) {
       return actionError(clearDepartmentsResult.message)
     }
+    await syncSessionClaims(targetMembership.user_id, null, null)
+  } else {
+    await syncSessionClaims(targetMembership.user_id, context.companyId, targetMembership.role as Role)
   }
 
   revalidatePath(ROUTES.SETTINGS_MEMBERS)
