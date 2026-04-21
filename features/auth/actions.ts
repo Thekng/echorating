@@ -81,14 +81,10 @@ export async function loginAction(
     .from('company_members')
     .select('company_id, role')
     .eq('user_id', authData.user.id)
+    .eq('is_active', true)
 
   const membershipCount = memberships?.length || 0
-
-  if (membershipCount === 1 && memberships) {
-    const m = memberships[0]
-    const role = isRole(m.role) ? m.role : null
-    await syncSessionClaims(authData.user.id, m.company_id, role)
-  }
+  await syncSessionClaims(authData.user.id)
 
   if (membershipCount > 1) {
     redirect(ROUTES.SELECT_COMPANY)
@@ -178,7 +174,7 @@ export async function selectCompanyAction(
 
   const { data: membership, error: membershipError } = await supabase
     .from('company_members')
-    .select('role')
+    .select('role, is_active')
     .eq('user_id', authData.user.id)
     .eq('company_id', companyId)
     .single()
@@ -187,21 +183,11 @@ export async function selectCompanyAction(
     return { status: 'error', message: 'You are not a member of this company.' }
   }
 
-  const admin = createAdminClient()
-  const memberRole = isRole(membership.role) ? membership.role : 'member' as Role
-
-  const { error: profileError } = await admin
-    .from('profiles')
-    .update({
-      company_id: companyId,
-      role: memberRole,
-    })
-    .eq('user_id', authData.user.id)
-
-  if (profileError) {
-    return { status: 'error', message: 'Failed to switch company context.' }
+  if (membership.is_active === false) {
+    return { status: 'error', message: 'This membership is inactive.' }
   }
 
+  const memberRole = isRole(membership.role) ? membership.role : 'member' as Role
   await syncSessionClaims(authData.user.id, companyId, memberRole)
 
   redirect(ROUTES.DASHBOARD)

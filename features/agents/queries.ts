@@ -27,6 +27,12 @@ type ProfileRow = {
   is_active: boolean
 }
 
+type CompanyMemberProfileRelation = {
+  name?: string
+} | Array<{
+  name?: string
+}> | null
+
 type MembershipRow = {
   user_id: string
   department_id: string
@@ -665,11 +671,9 @@ export async function getAgentsList(filters?: {
   const query = filters?.q?.trim() ?? ''
 
   let profilesQuery = context.admin
-    .from('profiles')
-    .select('user_id, name, role, is_active')
+    .from('company_members')
+    .select('user_id, role, is_active, profiles!inner(name)')
     .eq('company_id', context.companyId)
-    .is('deleted_at', null)
-    .order('name', { ascending: true })
 
   if (context.role === 'member') {
     profilesQuery = profilesQuery.eq('user_id', context.userId)
@@ -679,16 +683,32 @@ export async function getAgentsList(filters?: {
     profilesQuery = profilesQuery.eq('is_active', status === 'active')
   }
 
-  if (query) {
-    profilesQuery = profilesQuery.ilike('name', `%${query}%`)
-  }
-
   const { data: profilesData, error: profilesError } = await profilesQuery
   if (profilesError) {
     return { success: false as const, error: formatDatabaseError(profilesError.message), data: null }
   }
 
-  let profiles = (profilesData ?? []) as ProfileRow[]
+  let profiles = ((profilesData ?? []) as Array<{
+    user_id: string
+    role: Role
+    is_active: boolean
+    profiles: CompanyMemberProfileRelation
+  }>).map((row) => {
+    const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles
+    return {
+      user_id: row.user_id,
+      name: profile?.name ?? 'Unknown user',
+      role: row.role,
+      is_active: row.is_active !== false,
+    }
+  }) as ProfileRow[]
+
+  if (query) {
+    const loweredQuery = query.toLowerCase()
+    profiles = profiles.filter((profile) => profile.name.toLowerCase().includes(loweredQuery))
+  }
+
+  profiles = profiles.sort((left, right) => left.name.localeCompare(right.name))
 
   if (profiles.length === 0) {
     return {
@@ -905,11 +925,10 @@ export async function getAgentProfile(
   }
 
   const { data: profileData, error: profileError } = await context.admin
-    .from('profiles')
-    .select('user_id, name, role, is_active')
+    .from('company_members')
+    .select('user_id, role, is_active, profiles!inner(name)')
     .eq('company_id', context.companyId)
     .eq('user_id', userId)
-    .is('deleted_at', null)
     .maybeSingle()
 
   if (profileError) {
@@ -918,6 +937,14 @@ export async function getAgentProfile(
 
   if (!profileData) {
     return { success: false as const, error: 'Agent not found.', data: null }
+  }
+
+  const relatedProfile = Array.isArray(profileData.profiles) ? profileData.profiles[0] : profileData.profiles
+  const normalizedProfileData: ProfileRow = {
+    user_id: profileData.user_id as string,
+    name: relatedProfile?.name ?? 'Unknown user',
+    role: profileData.role as Role,
+    is_active: profileData.is_active !== false,
   }
 
   const departmentsResult = await getAccessibleDepartments(
@@ -1280,7 +1307,7 @@ export async function getAgentProfile(
     success: true as const,
     data: {
       viewerRole: context.role,
-      profile: profileData as ProfileRow,
+      profile: normalizedProfileData,
       departments: departmentsForFilter,
       selectedDepartmentId,
       period: range.period,

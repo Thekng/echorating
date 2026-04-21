@@ -183,23 +183,37 @@ async function getDepartmentAgents(
     return { ok: true as const, agents: [] as DailyLogAgentOption[] }
   }
 
-  const { data: profiles, error: profilesError } = await admin
-    .from('profiles')
-    .select('user_id, name, role')
+  const { data: membershipsData, error: companyMembershipsError } = await admin
+    .from('company_members')
+    .select('user_id, role, profiles!inner(name)')
     .eq('company_id', companyId)
     .in('user_id', userIds)
     .eq('is_active', true)
-    .is('deleted_at', null)
 
-  if (profilesError) {
+  if (companyMembershipsError) {
     return {
       ok: false as const,
-      message: formatDatabaseError(profilesError.message),
+      message: formatDatabaseError(companyMembershipsError.message),
       agents: [] as DailyLogAgentOption[],
     }
   }
 
-  const agents = ((profiles ?? []) as DailyLogAgentOption[]).sort((a, b) => a.name.localeCompare(b.name))
+  const agents = ((membershipsData ?? []) as Array<{
+    user_id: string
+    role: string
+    profiles: { name?: string } | Array<{ name?: string }> | null
+  }>)
+    .map((membership) => {
+      const profile = Array.isArray(membership.profiles) ? membership.profiles[0] : membership.profiles
+      return {
+        user_id: membership.user_id,
+        role: (membership.role === 'owner' || membership.role === 'manager' || membership.role === 'member'
+          ? membership.role
+          : 'member') as DailyLogAgentOption['role'],
+        name: profile?.name ?? 'Unknown agent',
+      }
+    })
+    .sort((a, b) => a.name.localeCompare(b.name))
 
   return { ok: true as const, agents }
 }
@@ -342,7 +356,7 @@ async function getRecentLogs(
   admin: ReturnType<typeof createAdminClient>,
   companyId: string,
   departmentId: string,
-  viewerRole: Role,
+  canManageDepartment: boolean,
   viewerUserId: string,
   selectedUserId: string,
   keyMetrics: DailyLogKeyMetric[],
@@ -363,7 +377,7 @@ async function getRecentLogs(
     .order('updated_at', { ascending: false })
     .range(from, to)
 
-  if (viewerRole === 'member') {
+  if (!canManageDepartment) {
     recentQuery = recentQuery.eq('user_id', viewerUserId)
   } else if (selectedUserId) {
     recentQuery = recentQuery.eq('user_id', selectedUserId)
@@ -399,9 +413,11 @@ async function getRecentLogs(
   const keyMetricIds = keyMetrics.map((metric) => metric.metric_id)
 
   const { data: profilesData, error: profilesError } = await admin
-    .from('profiles')
-    .select('user_id, name')
+    .from('company_members')
+    .select('user_id, profiles!inner(name)')
+    .eq('company_id', companyId)
     .in('user_id', userIds)
+    .eq('is_active', true)
 
   if (profilesError) {
       return {
@@ -410,10 +426,16 @@ async function getRecentLogs(
         recentLogs: [] as DailyLogRecentEntry[],
         totalCount: 0,
       }
-    }
+  }
 
   const nameByUserId = new Map(
-    ((profilesData ?? []) as Array<{ user_id: string; name: string }>).map((profile) => [profile.user_id, profile.name]),
+    ((profilesData ?? []) as Array<{
+      user_id: string
+      profiles: { name?: string } | Array<{ name?: string }> | null
+    }>).map((profile) => {
+      const related = Array.isArray(profile.profiles) ? profile.profiles[0] : profile.profiles
+      return [profile.user_id, related?.name ?? 'Unknown agent'] as const
+    }),
   )
 
   let valuesByEntry = new Map<string, DailyLogRecentMetricValue[]>()
@@ -555,8 +577,22 @@ export async function getDailyLogFormData(rawFilters?: {
 
   let agentOptions: DailyLogAgentOption[] = []
   let selectedUserId = context.userId
+  let canManageSelectedDepartment = context.role === 'owner' || context.role === 'manager'
 
-  if (context.role === 'owner' || context.role === 'manager') {
+  if (!canManageSelectedDepartment) {
+    const { data: viewerDepartmentMembership } = await context.admin
+      .from('department_members')
+      .select('member_role')
+      .eq('department_id', selectedDepartmentId)
+      .eq('user_id', context.userId)
+      .eq('is_active', true)
+      .is('deleted_at', null)
+      .maybeSingle()
+
+    canManageSelectedDepartment = viewerDepartmentMembership?.member_role === 'lead'
+  }
+
+  if (canManageSelectedDepartment) {
     const agentsResult = await getDepartmentAgents(context.admin, context.companyId, selectedDepartmentId)
     if (!agentsResult.ok) {
       return { success: false as const, error: agentsResult.message, data: null }
@@ -637,7 +673,7 @@ export async function getDailyLogFormData(rawFilters?: {
     context.admin,
     context.companyId,
     selectedDepartmentId,
-    context.role,
+    canManageSelectedDepartment,
     context.userId,
     selectedUserId,
     keyMetricsResult.keyMetrics,
@@ -669,6 +705,7 @@ export async function getDailyLogFormData(rawFilters?: {
       recentLogsPerPage,
       recentLogsTotalCount: recentLogsResult.totalCount,
       viewerRole: context.role,
+      canManageSelectedDepartment,
     },
   }
 }

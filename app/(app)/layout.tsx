@@ -3,6 +3,7 @@ import { AppShell } from '@/components/layout/app-shell'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { TourProvider } from '@/components/tour/tour-provider'
+import { getSessionClaims } from '@/lib/supabase/session-claims'
 
 async function getSidebarData() {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -20,25 +21,33 @@ async function getSidebarData() {
     return { name: null, role: 'member' }
   }
 
-  const { data: profile } = await admin
-    .from('profiles')
-    .select('company_id, role')
+  const claims = getSessionClaims(user)
+
+  if (!claims.active_company_id) {
+    return { name: null, role: 'member' }
+  }
+
+  const { data: membership } = await admin
+    .from('company_members')
+    .select('role')
     .eq('user_id', user.id)
+    .eq('company_id', claims.active_company_id)
+    .eq('is_active', true)
     .maybeSingle()
 
-  if (!profile?.company_id) {
-    return { name: null, role: profile?.role || 'member' }
+  if (!membership?.role) {
+    return { name: null, role: 'member' }
   }
 
   const { data: company } = await admin
     .from('companies')
     .select('name')
-    .eq('company_id', profile.company_id)
+    .eq('company_id', claims.active_company_id)
     .maybeSingle()
 
   return {
     name: typeof company?.name === 'string' ? company.name : null,
-    role: profile.role || 'member'
+    role: membership.role || 'member'
   }
 }
 

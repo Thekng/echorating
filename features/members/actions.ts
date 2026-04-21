@@ -112,21 +112,12 @@ async function syncMembershipAndProfile(
     return { ok: false as const, message: formatDatabaseError(memberError.message) }
   }
 
-  const { data: profile } = await admin
-    .from('profiles')
-    .select('company_id')
-    .eq('user_id', userId)
-    .maybeSingle()
-
-  if (profile?.company_id === companyId) {
+  if (typeof updates.isActive === 'boolean') {
     const profilePayload: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     }
-    if (updates.role) profilePayload.role = updates.role
-    if (typeof updates.isActive === 'boolean') {
-      profilePayload.is_active = updates.isActive
-      profilePayload.deleted_at = null
-    }
+    profilePayload.is_active = updates.isActive
+    profilePayload.deleted_at = null
 
     await admin.from('profiles').update(profilePayload).eq('user_id', userId)
   }

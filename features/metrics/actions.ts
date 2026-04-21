@@ -5,10 +5,10 @@ import { z } from 'zod'
 import { metricDeleteSchema, metricFormSchema, metricReorderSchema, metricStatusSchema } from './schemas'
 import { getActorContext } from '@/lib/supabase/actor-context'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { requireRole } from '@/lib/rbac/guards'
 import { ROUTES } from '@/lib/constants/routes'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
 import { validateFormulaExpression, type FormulaValueType } from '@/lib/metrics/formula'
+import { type Role } from '@/lib/rbac/roles'
 import {
   isCalculatedSupportedType,
   normalizeMetricSettings,
@@ -488,6 +488,36 @@ async function validateDepartment(
   return { ok: true as const }
 }
 
+async function canManageMetricsDepartment(
+  admin: ReturnType<typeof createAdminClient>,
+  companyId: string,
+  userId: string,
+  role: Role,
+  departmentId: string,
+) {
+  if (role === 'owner' || role === 'manager') {
+    return { ok: true as const, allowed: true }
+  }
+
+  const { data, error } = await admin
+    .from('department_members')
+    .select('member_role')
+    .eq('department_id', departmentId)
+    .eq('user_id', userId)
+    .eq('is_active', true)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (error) {
+    return { ok: false as const, allowed: false, message: formatDatabaseError(error.message) }
+  }
+
+  return {
+    ok: true as const,
+    allowed: data?.member_role === 'lead',
+  }
+}
+
 async function getFormulaCodeIndexes(
   admin: ReturnType<typeof createAdminClient>,
   companyId: string,
@@ -790,17 +820,25 @@ export async function createMetricAction(
     return actionError(context.message)
   }
 
-  try {
-    requireRole(context.role, 'manager')
-  } catch {
-    return actionError('Insufficient permissions.')
-  }
-
   const departmentValidation = await validateDepartment(context.admin, context.companyId, parsed.data.departmentId)
   if (!departmentValidation.ok) {
     return actionError(departmentValidation.message, {
       departmentId: 'Select a valid active department.',
     })
+  }
+
+  const departmentPermission = await canManageMetricsDepartment(
+    context.admin,
+    context.companyId,
+    context.userId,
+    context.role,
+    parsed.data.departmentId,
+  )
+  if (!departmentPermission.ok) {
+    return actionError(departmentPermission.message)
+  }
+  if (!departmentPermission.allowed) {
+    return actionError('Insufficient permissions.')
   }
 
   const metricSettings = buildMetricSettings(parsed.data.dataType, formData)
@@ -945,12 +983,6 @@ export async function updateMetricAction(
     return actionError(context.message)
   }
 
-  try {
-    requireRole(context.role, 'manager')
-  } catch {
-    return actionError('Insufficient permissions.')
-  }
-
   const { data: existingMetric, error: existingMetricError } = await context.admin
     .from('metrics')
     .select('metric_id, department_id, sort_order')
@@ -969,11 +1001,39 @@ export async function updateMetricAction(
     })
   }
 
+  const existingDepartmentPermission = await canManageMetricsDepartment(
+    context.admin,
+    context.companyId,
+    context.userId,
+    context.role,
+    existingMetric.department_id as string,
+  )
+  if (!existingDepartmentPermission.ok) {
+    return actionError(existingDepartmentPermission.message)
+  }
+  if (!existingDepartmentPermission.allowed) {
+    return actionError('Insufficient permissions.')
+  }
+
   const departmentValidation = await validateDepartment(context.admin, context.companyId, parsed.data.departmentId)
   if (!departmentValidation.ok) {
     return actionError(departmentValidation.message, {
       departmentId: 'Select a valid active department.',
     })
+  }
+
+  const targetDepartmentPermission = await canManageMetricsDepartment(
+    context.admin,
+    context.companyId,
+    context.userId,
+    context.role,
+    parsed.data.departmentId,
+  )
+  if (!targetDepartmentPermission.ok) {
+    return actionError(targetDepartmentPermission.message)
+  }
+  if (!targetDepartmentPermission.allowed) {
+    return actionError('Insufficient permissions.')
   }
 
   const metricSettings = buildMetricSettings(parsed.data.dataType, formData)
@@ -1135,12 +1195,6 @@ export async function reorderMetricAction(formData: FormData): Promise<MetricAct
     return actionError(context.message)
   }
 
-  try {
-    requireRole(context.role, 'manager')
-  } catch {
-    return actionError('Insufficient permissions.')
-  }
-
   const { data: metric, error: metricError } = await context.admin
     .from('metrics')
     .select('metric_id, department_id')
@@ -1153,6 +1207,20 @@ export async function reorderMetricAction(formData: FormData): Promise<MetricAct
     return actionError(formatDatabaseError(metricError?.message ?? 'Metric not found.'), {
       metricId: 'Metric not found.',
     })
+  }
+
+  const departmentPermission = await canManageMetricsDepartment(
+    context.admin,
+    context.companyId,
+    context.userId,
+    context.role,
+    metric.department_id as string,
+  )
+  if (!departmentPermission.ok) {
+    return actionError(departmentPermission.message)
+  }
+  if (!departmentPermission.allowed) {
+    return actionError('Insufficient permissions.')
   }
 
   const orderedResult = await listDepartmentMetricIdsInOrder(
@@ -1208,15 +1276,9 @@ export async function toggleMetricStatusAction(formData: FormData): Promise<Metr
     return actionError(context.message)
   }
 
-  try {
-    requireRole(context.role, 'manager')
-  } catch {
-    return actionError('Insufficient permissions.')
-  }
-
   const { data: metric, error: metricError } = await context.admin
     .from('metrics')
-    .select('metric_id, is_active')
+    .select('metric_id, department_id, is_active')
     .eq('metric_id', parsed.data.metricId)
     .eq('company_id', context.companyId)
     .is('deleted_at', null)
@@ -1226,6 +1288,20 @@ export async function toggleMetricStatusAction(formData: FormData): Promise<Metr
     return actionError(formatDatabaseError(metricError?.message ?? 'Metric not found.'), {
       metricId: 'Metric not found.',
     })
+  }
+
+  const departmentPermission = await canManageMetricsDepartment(
+    context.admin,
+    context.companyId,
+    context.userId,
+    context.role,
+    metric.department_id as string,
+  )
+  if (!departmentPermission.ok) {
+    return actionError(departmentPermission.message)
+  }
+  if (!departmentPermission.allowed) {
+    return actionError('Insufficient permissions.')
   }
 
   const nextActive = parsed.data.nextStatus === 'active'
@@ -1266,15 +1342,9 @@ export async function deleteMetricAction(formData: FormData): Promise<MetricActi
     return actionError(context.message)
   }
 
-  try {
-    requireRole(context.role, 'manager')
-  } catch {
-    return actionError('Insufficient permissions.')
-  }
-
   const { data: metric, error: metricError } = await context.admin
     .from('metrics')
-    .select('metric_id, name')
+    .select('metric_id, department_id, name')
     .eq('metric_id', parsed.data.metricId)
     .eq('company_id', context.companyId)
     .is('deleted_at', null)
@@ -1284,6 +1354,20 @@ export async function deleteMetricAction(formData: FormData): Promise<MetricActi
     return actionError(formatDatabaseError(metricError?.message ?? 'Metric not found.'), {
       metricId: 'Metric not found.',
     })
+  }
+
+  const departmentPermission = await canManageMetricsDepartment(
+    context.admin,
+    context.companyId,
+    context.userId,
+    context.role,
+    metric.department_id as string,
+  )
+  if (!departmentPermission.ok) {
+    return actionError(departmentPermission.message)
+  }
+  if (!departmentPermission.allowed) {
+    return actionError('Insufficient permissions.')
   }
 
   const { data: dependentLinks, error: dependentLinksError } = await context.admin

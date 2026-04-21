@@ -86,24 +86,23 @@ async function isUserInDepartment(
   departmentId: string,
   userId: string,
 ) {
-  const { data: profile, error: profileError } = await admin
-    .from('profiles')
+  const { data: membership, error: membershipError } = await admin
+    .from('company_members')
     .select('user_id')
     .eq('user_id', userId)
     .eq('company_id', companyId)
     .eq('is_active', true)
-    .is('deleted_at', null)
     .maybeSingle()
 
-  if (profileError) {
-    return { ok: false as const, message: formatDatabaseError(profileError.message) }
+  if (membershipError) {
+    return { ok: false as const, message: formatDatabaseError(membershipError.message) }
   }
 
-  if (!profile) {
+  if (!membership) {
     return { ok: false as const, message: 'Agent not found in company.' }
   }
 
-  const { data: membership, error: membershipError } = await admin
+  const { data: departmentMembership, error: departmentMembershipError } = await admin
     .from('department_members')
     .select('department_id')
     .eq('department_id', departmentId)
@@ -112,15 +111,110 @@ async function isUserInDepartment(
     .is('deleted_at', null)
     .maybeSingle()
 
-  if (membershipError) {
-    return { ok: false as const, message: formatDatabaseError(membershipError.message) }
+  if (departmentMembershipError) {
+    return { ok: false as const, message: formatDatabaseError(departmentMembershipError.message) }
   }
 
-  if (!membership) {
+  if (!departmentMembership) {
     return { ok: false as const, message: 'Agent is not active in this department.' }
   }
 
   return { ok: true as const }
+}
+
+async function getViewerDepartmentRole(
+  admin: ReturnType<typeof createAdminClient>,
+  departmentId: string,
+  userId: string,
+) {
+  const { data, error } = await admin
+    .from('department_members')
+    .select('member_role')
+    .eq('department_id', departmentId)
+    .eq('user_id', userId)
+    .eq('is_active', true)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (error) {
+    return {
+      ok: false as const,
+      message: formatDatabaseError(error.message),
+      memberRole: null as 'lead' | 'member' | null,
+    }
+  }
+
+  return {
+    ok: true as const,
+    message: '',
+    memberRole:
+      data?.member_role === 'lead' || data?.member_role === 'member'
+        ? data.member_role
+        : null,
+  }
+}
+
+async function resolveDailyLogTarget(
+  admin: ReturnType<typeof createAdminClient>,
+  companyId: string,
+  departmentId: string,
+  viewerUserId: string,
+  viewerRole: Role,
+  requestedUserId?: string,
+) {
+  if (viewerRole === 'owner' || viewerRole === 'manager') {
+    if (!requestedUserId) {
+      return {
+        ok: false as const,
+        message: 'Select an agent first.',
+        targetUserId: null as string | null,
+      }
+    }
+
+    const targetValidation = await isUserInDepartment(admin, companyId, departmentId, requestedUserId)
+    if (!targetValidation.ok) {
+      return {
+        ok: false as const,
+        message: targetValidation.message,
+        targetUserId: null as string | null,
+      }
+    }
+
+    return { ok: true as const, message: '', targetUserId: requestedUserId }
+  }
+
+  const viewerDepartmentRole = await getViewerDepartmentRole(admin, departmentId, viewerUserId)
+  if (!viewerDepartmentRole.ok) {
+    return {
+      ok: false as const,
+      message: viewerDepartmentRole.message,
+      targetUserId: null as string | null,
+    }
+  }
+
+  const targetUserId = requestedUserId ?? viewerUserId
+  if (targetUserId === viewerUserId) {
+    return { ok: true as const, message: '', targetUserId }
+  }
+
+  if (viewerDepartmentRole.memberRole !== 'lead') {
+    return {
+      ok: false as const,
+      message: 'You can only write your own daily log.',
+      targetUserId: null as string | null,
+    }
+  }
+
+  const targetValidation = await isUserInDepartment(admin, companyId, departmentId, targetUserId)
+  if (!targetValidation.ok) {
+    return {
+      ok: false as const,
+      message: targetValidation.message,
+      targetUserId: null as string | null,
+    }
+  }
+
+  return { ok: true as const, message: '', targetUserId }
 }
 
 async function getManualMetricsForDepartment(
@@ -440,35 +534,24 @@ export async function saveDailyLogAction(
     }
   }
 
-  const targetUserId =
-    context.role === 'owner' || context.role === 'manager'
-      ? (parsed.data.userId ?? '')
-      : context.userId
+  const targetResolution = await resolveDailyLogTarget(
+    context.admin,
+    context.companyId,
+    parsed.data.departmentId,
+    context.userId,
+    context.role,
+    parsed.data.userId,
+  )
 
-  if (!targetUserId) {
+  if (!targetResolution.ok || !targetResolution.targetUserId) {
     return {
       ...INITIAL_ERROR_STATE,
-      message: 'Select an agent first.',
+      message: targetResolution.message,
       intent: parsed.data.intent,
     }
   }
 
-  if (context.role === 'owner' || context.role === 'manager') {
-    const targetValidation = await isUserInDepartment(
-      context.admin,
-      context.companyId,
-      parsed.data.departmentId,
-      targetUserId,
-    )
-
-    if (!targetValidation.ok) {
-      return {
-        ...INITIAL_ERROR_STATE,
-        message: targetValidation.message,
-        intent: parsed.data.intent,
-      }
-    }
-  }
+  const targetUserId = targetResolution.targetUserId
 
   const metricsResult = await getManualMetricsForDepartment(
     context.admin,
@@ -713,21 +796,17 @@ export async function deleteDailyLogAction(formData: FormData): Promise<void> {
     return
   }
 
-  if (context.role === 'member' && entry.user_id !== context.userId) {
+  const targetResolution = await resolveDailyLogTarget(
+    context.admin,
+    context.companyId,
+    entry.department_id as string,
+    context.userId,
+    context.role,
+    entry.user_id as string,
+  )
+
+  if (!targetResolution.ok || targetResolution.targetUserId !== entry.user_id) {
     return
-  }
-
-  if (context.role !== 'member') {
-    const accessibleDepartments = await getAccessibleDepartmentIds(
-      context.admin,
-      context.companyId,
-      context.userId,
-      context.role,
-    )
-
-    if (!accessibleDepartments.ok || !accessibleDepartments.departmentIds.includes(entry.department_id as string)) {
-      return
-    }
   }
 
   const { error: deleteError } = await context.admin
@@ -769,12 +848,25 @@ export async function updateDepartmentLogKeyMetricsAction(
     }
   }
 
-  try {
-    requireRole(context.role, 'manager')
-  } catch {
-    return {
-      ...KEY_METRIC_ERROR_STATE,
-      message: 'Insufficient permissions.',
+  if (context.role !== 'owner' && context.role !== 'manager') {
+    const viewerDepartmentRole = await getViewerDepartmentRole(
+      context.admin,
+      parsed.data.departmentId,
+      context.userId,
+    )
+
+    if (!viewerDepartmentRole.ok) {
+      return {
+        ...KEY_METRIC_ERROR_STATE,
+        message: viewerDepartmentRole.message,
+      }
+    }
+
+    if (viewerDepartmentRole.memberRole !== 'lead') {
+      return {
+        ...KEY_METRIC_ERROR_STATE,
+        message: 'Insufficient permissions.',
+      }
     }
   }
 

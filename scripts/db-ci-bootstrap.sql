@@ -1,6 +1,6 @@
 -- Minimal Supabase-compatible scaffolding so migrations can apply against a
 -- plain postgres:17 CI container. Production uses real Supabase; CI only needs
--- enough of the auth schema to satisfy references in lib/db/migrations/.
+-- enough of the auth schema to satisfy references in supabase/migrations/.
 
 create extension if not exists pgcrypto;
 

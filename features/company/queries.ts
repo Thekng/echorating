@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
+import { getSessionClaims } from '@/lib/supabase/session-claims'
 
 export async function getCompanyDetails() {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -25,24 +26,42 @@ export async function getCompanyDetails() {
     return { success: false, error: 'Authentication required.', data: null }
   }
 
-  const { data: profile, error: profileError } = await admin
-    .from('profiles')
-    .select('company_id, role, name')
-    .eq('user_id', user.id)
-    .maybeSingle()
+  const claims = getSessionClaims(user)
+  if (!claims.active_company_id) {
+    return { success: false, error: 'No active company selected.', data: null }
+  }
+
+  const [{ data: membership, error: membershipError }, { data: profile, error: profileError }] =
+    await Promise.all([
+      admin
+        .from('company_members')
+        .select('role, is_active')
+        .eq('user_id', user.id)
+        .eq('company_id', claims.active_company_id)
+        .maybeSingle(),
+      admin
+        .from('profiles')
+        .select('name')
+        .eq('user_id', user.id)
+        .maybeSingle(),
+    ])
+
+  if (membershipError) {
+    return { success: false, error: formatDatabaseError(membershipError.message), data: null }
+  }
 
   if (profileError) {
     return { success: false, error: formatDatabaseError(profileError.message), data: null }
   }
 
-  if (!profile?.company_id) {
-    return { success: false, error: 'Company profile not found.', data: null }
+  if (!membership?.role || membership.is_active === false) {
+    return { success: false, error: 'Active company membership not found.', data: null }
   }
 
   const { data: company, error: companyError } = await admin
     .from('companies')
-    .select('company_id, name, timezone, is_active, created_at, updated_at')
-    .eq('company_id', profile.company_id)
+    .select('company_id, name, timezone, is_active, created_at, updated_at, contact_email, owner_user_id')
+    .eq('company_id', claims.active_company_id)
     .maybeSingle()
 
   if (companyError) {
@@ -57,8 +76,8 @@ export async function getCompanyDetails() {
     success: true,
     data: {
       company,
-      role: profile.role,
-      profileName: profile.name,
+      role: membership.role,
+      profileName: profile?.name ?? null,
     },
   }
 }

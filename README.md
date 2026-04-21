@@ -34,12 +34,13 @@ Performance tracking platform for agencies. Companies define metrics and daily t
 - [features/](features/) — feature-scoped server actions, queries, and domain logic
 - [components/](components/) — UI grouped by feature plus shared shadcn primitives in [components/ui/](components/ui/)
 - [lib/](lib/) — cross-cutting utilities
-  - [lib/db/](lib/db/) — schema and SQL migrations
+  - [lib/db/](lib/db/) — application-side database utilities
   - [lib/rbac/](lib/rbac/) — roles, permissions, and route guards
   - [lib/supabase/](lib/supabase/) — server, browser, and admin clients
   - [lib/metrics/](lib/metrics/), [lib/daily-log/](lib/daily-log/), [lib/validations/](lib/validations/), [lib/time/](lib/time/), [lib/errors/](lib/errors/), [lib/constants/](lib/constants/)
 - [emails/](emails/) — Resend client and React email templates
 - [middleware.ts](middleware.ts) — auth + RBAC route protection
+- [supabase/](supabase/) — Supabase CLI config, canonical SQL migrations, and local-db workflow
 - [scripts/](scripts/) — one-off migrations and recalculation workers
 - [tests/](tests/) — `unit/` and `e2e/` suites using Node's test runner
 
@@ -74,7 +75,25 @@ Set these in `.env.local`:
 
 ## Database
 
-Schema and migrations live in [lib/db/migrations/](lib/db/migrations/). Apply them in chronological order against your Supabase Postgres instance (Supabase SQL editor or `psql`). Start with `schema_v2_improved.sql`, then run the dated migrations in order.
+Canonical schema migrations live in [supabase/migrations/](supabase/migrations/). Use the Supabase CLI to apply them.
+
+Typical workflow:
+
+```bash
+supabase login
+supabase link --project-ref YOUR_PROJECT_REF
+npm run db:push
+```
+
+For local verification against the Supabase local database:
+
+```bash
+supabase start
+npm run db:reset
+npm run db:lint
+```
+
+The older files in `lib/db/migrations/` are retained only as historical source material during the transition. New schema changes should be created in `supabase/migrations/` with the Supabase CLI.
 
 ## Scripts
 
@@ -82,6 +101,11 @@ Schema and migrations live in [lib/db/migrations/](lib/db/migrations/). Apply th
 - `npm run build` — create a production build
 - `npm run start` — run the production server
 - `npm run lint` — run ESLint (fails on any warning)
+- `npm run db:push` — apply pending `supabase/migrations` to the linked remote project
+- `npm run db:push:local` — apply pending `supabase/migrations` to the local Supabase database
+- `npm run db:reset` — rebuild the local Supabase database from `supabase/migrations`
+- `npm run db:lint` — lint the local Supabase database schema
+- `npm run db:list` — show local vs. remote Supabase migration history
 - `npm run test:unit` — run unit tests in [tests/unit/](tests/unit/)
 - `npm run test:e2e` — run end-to-end tests in [tests/e2e/](tests/e2e/)
 - `npm run migrate:formulas:notion-v1` — migrate legacy formulas to the Notion-style engine

@@ -44,7 +44,7 @@ export async function getAccessibleDepartmentIds(
   userId: string,
   role: Role,
 ): Promise<DepartmentIdsResult> {
-  if (role === 'owner') {
+  if (role === 'owner' || role === 'manager') {
     const { data, error } = await admin
       .from('departments')
       .select('department_id')
@@ -92,7 +92,7 @@ export async function getAccessibleDepartments(
   userId: string,
   role: Role,
 ): Promise<DepartmentOptionsResult> {
-  if (role === 'owner') {
+  if (role === 'owner' || role === 'manager') {
     const { data, error } = await admin
       .from('departments')
       .select('department_id, name')

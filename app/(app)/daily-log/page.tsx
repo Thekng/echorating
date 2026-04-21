@@ -51,10 +51,10 @@ export default async function DailyLogPage({ searchParams }: DailyLogPageProps) 
     recentLogsPage,
     recentLogsPerPage,
     recentLogsTotalCount,
-    viewerRole,
+    canManageSelectedDepartment,
   } = result.data
 
-  const canManage = viewerRole === 'owner' || viewerRole === 'manager'
+  const canManage = canManageSelectedDepartment ?? false
   const showDepartmentFilter = canManage || departments.length > 1
 
   const pendingCalculatedCount = selectedDepartmentId

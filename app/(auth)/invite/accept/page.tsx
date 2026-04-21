@@ -63,13 +63,14 @@ export default async function InviteAcceptPage() {
     return <InvalidInviteState />
   }
 
-  const { data: existingProfile } = await admin
-    .from('profiles')
+  const { data: existingMembership } = await admin
+    .from('company_members')
     .select('user_id')
     .eq('user_id', user.id)
+    .limit(1)
     .maybeSingle()
 
-  const isExistingUser = Boolean(existingProfile)
+  const isExistingUser = Boolean(existingMembership)
   const companyName = getCompanyName(invitation.companies as CompanyRelation)
 
   return (
