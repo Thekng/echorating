@@ -677,7 +677,7 @@ export async function saveDailyLogAction(
       p_status: nextEntryStatus,
       p_submitted_at: nextSubmittedAt,
       p_notes: notes,
-      p_values: valueRows.length > 0 ? JSON.stringify(valueRows) : null,
+      p_values: valueRows.length > 0 ? valueRows : null,
     },
   )
 
