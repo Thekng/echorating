@@ -8,7 +8,7 @@ import { getAccessibleDepartments } from '@/lib/rbac/department-access'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
 import { type MetricDataType } from '@/lib/metrics/data-types'
 
-type LeaderboardPeriod = 'today' | 'current_week' | 'this_month' | 'last_week' | 'last_month' | 'custom'
+type LeaderboardPeriod = 'today' | 'yesterday' | 'current_week' | 'this_month' | 'last_week' | 'last_month' | 'custom'
 type IncomingLeaderboardPeriod = LeaderboardPeriod | 'this_week' | 'month'
 
 type DateRangeResult =
@@ -59,6 +59,7 @@ export type LeaderboardData = {
 const RANKING_METRIC_TYPES: MetricDataType[] = ['number', 'currency', 'percent', 'duration', 'boolean']
 const PERIOD_ALIASES: Record<IncomingLeaderboardPeriod, LeaderboardPeriod> = {
   today: 'today',
+  yesterday: 'yesterday',
   current_week: 'current_week',
   this_week: 'current_week',
   month: 'this_month',
@@ -120,6 +121,17 @@ function resolveDateRange(
       startDate: today,
       endDate: today,
       cutoffDate: today,
+    }
+  }
+
+  if (period === 'yesterday') {
+    const yesterday = dateKeyUtc(addUtcDays(now, -1))
+    return {
+      ok: true,
+      period,
+      startDate: yesterday,
+      endDate: yesterday,
+      cutoffDate: yesterday,
     }
   }
 

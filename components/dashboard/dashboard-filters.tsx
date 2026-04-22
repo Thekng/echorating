@@ -14,7 +14,7 @@ type DashboardFiltersProps = {
     name: string
   }>
   selectedUserId?: string | null
-  period: 'today' | 'current_week' | 'this_month' | 'last_week' | 'last_month' | 'custom'
+  period: 'today' | 'yesterday' | 'current_week' | 'this_month' | 'last_week' | 'last_month' | 'custom'
   startDate: string
   endDate: string
 }
@@ -130,6 +130,7 @@ export function DashboardFilters({
             }}
           >
             <option value="today">Today</option>
+            <option value="yesterday">Yesterday</option>
             <option value="current_week">Current week</option>
             <option value="last_week">Last week</option>
             <option value="this_month">This month</option>

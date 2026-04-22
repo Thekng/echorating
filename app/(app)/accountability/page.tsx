@@ -10,7 +10,7 @@ import { Trophy } from 'lucide-react'
 type AccountabilityPageProps = {
   searchParams: Promise<{
     departmentId?: string
-    period?: 'today' | 'current_week' | 'this_week' | 'this_month' | 'custom'
+    period?: 'today' | 'yesterday' | 'current_week' | 'this_week' | 'this_month' | 'custom'
     startDate?: string
     endDate?: string
     q?: string
@@ -28,8 +28,8 @@ function formatDate(value: string | null) {
 
 export default async function AccountabilityPage({ searchParams }: AccountabilityPageProps) {
   const params = await searchParams
-  const filterPeriod: 'today' | 'current_week' | 'this_month' | 'custom' =
-    params.period === 'current_week' || params.period === 'this_month' || params.period === 'custom'
+  const filterPeriod: 'today' | 'yesterday' | 'current_week' | 'this_month' | 'custom' =
+    params.period === 'current_week' || params.period === 'this_month' || params.period === 'custom' || params.period === 'yesterday'
       ? params.period
       : params.period === 'this_week'
         ? 'current_week'

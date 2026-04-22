@@ -7,7 +7,7 @@ import { formatDatabaseError } from '@/lib/supabase/error-messages'
 import { requireRole } from '@/lib/rbac/guards'
 import { type MetricDataType, type MetricSettings } from '@/lib/metrics/data-types'
 
-type DepartmentPeriod = 'today' | 'current_week' | 'this_week' | 'this_month' | 'custom'
+type DepartmentPeriod = 'today' | 'yesterday' | 'current_week' | 'this_week' | 'this_month' | 'custom'
 type IncomingDepartmentPeriod = DepartmentPeriod | 'this_week'
 
 type DateRangeResult =
@@ -35,6 +35,7 @@ type DepartmentAggregateStats = {
 const RANKING_METRIC_TYPES: MetricDataType[] = ['number', 'currency', 'percent', 'duration', 'boolean']
 const PERIOD_ALIASES: Record<IncomingDepartmentPeriod, DepartmentPeriod> = {
   today: 'today',
+  yesterday: 'yesterday',
   current_week: 'current_week',
   this_week: 'current_week',
   this_month: 'this_month',
@@ -88,6 +89,11 @@ function resolveDateRange(
 
   if (period === 'today') {
     const key = dateKeyUtc(now)
+    return { ok: true, period, startDate: key, endDate: key }
+  }
+
+  if (period === 'yesterday') {
+    const key = dateKeyUtc(addUtcDays(now, -1))
     return { ok: true, period, startDate: key, endDate: key }
   }
 

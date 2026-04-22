@@ -6,7 +6,7 @@ export async function GET(req: Request) {
     const url = new URL(req.url)
     const departmentId = url.searchParams.get('departmentId')
     const metricId = url.searchParams.get('metricId')
-    const period = url.searchParams.get('period') as 'today' | 'current_week' | 'this_week' | 'this_month' | 'custom' | null
+    const period = url.searchParams.get('period') as 'today' | 'yesterday' | 'current_week' | 'this_week' | 'this_month' | 'last_week' | 'last_month' | 'custom' | null
     const startDate = url.searchParams.get('startDate')
     const endDate = url.searchParams.get('endDate')
     const limit = url.searchParams.get('limit') ? Number(url.searchParams.get('limit')) : undefined

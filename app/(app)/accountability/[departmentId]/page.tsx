@@ -9,13 +9,13 @@ import { AgentsFilters } from '@/components/agents/agents-filters'
 type DepartmentDetailPageProps = {
   params: Promise<{ departmentId: string }>
   searchParams: Promise<{
-    period?: 'today' | 'current_week' | 'this_week' | 'this_month' | 'custom'
+    period?: 'today' | 'yesterday' | 'current_week' | 'this_week' | 'this_month' | 'custom'
     startDate?: string
     endDate?: string
   }>
 }
 
-type AgentFilterPeriod = 'today' | 'current_week' | 'this_month' | 'custom'
+type AgentFilterPeriod = 'today' | 'yesterday' | 'current_week' | 'this_month' | 'custom'
 
 function formatDate(value: string | null) {
   if (!value) {
@@ -75,7 +75,7 @@ export default async function DepartmentDetailPage({ params, searchParams }: Dep
 
   const { department, stats, metrics, recent_entries, members_count } = deptResult.data
   const filterPeriod: AgentFilterPeriod =
-    query.period === 'current_week' || query.period === 'this_month' || query.period === 'custom'
+    query.period === 'current_week' || query.period === 'this_month' || query.period === 'custom' || query.period === 'yesterday'
       ? query.period
       : query.period === 'this_week'
         ? 'current_week'

@@ -11,7 +11,7 @@ type MetricDataTypeInput = Parameters<typeof normalizeMetricSettings>[0]
 type Agent1To1PageProps = {
   params: Promise<{ departmentId: string; userId: string }>
   searchParams: Promise<{
-    period?: 'today' | 'current_week' | 'this_week' | 'this_month' | 'custom'
+    period?: 'today' | 'yesterday' | 'current_week' | 'this_week' | 'this_month' | 'custom'
     startDate?: string
     endDate?: string
   }>

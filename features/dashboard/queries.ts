@@ -8,7 +8,7 @@ import { getAccessibleDepartments } from '@/lib/rbac/department-access'
 import { type MetricDataType } from '@/lib/metrics/data-types'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
 
-type DashboardPeriod = 'today' | 'current_week' | 'this_month' | 'last_week' | 'last_month' | 'custom'
+type DashboardPeriod = 'today' | 'yesterday' | 'current_week' | 'this_month' | 'last_week' | 'last_month' | 'custom'
 type IncomingDashboardPeriod = DashboardPeriod | 'last_7_days' | 'last_30_days' | 'last_90_days' | 'this_week'
 
 type DateRangeResult =
@@ -119,6 +119,7 @@ const SUPPORTED_KPI_TYPES: MetricDataType[] = ['number', 'currency', 'percent', 
 
 const PERIOD_ALIASES: Record<IncomingDashboardPeriod, DashboardPeriod> = {
   today: 'today',
+  yesterday: 'yesterday',
   current_week: 'current_week',
   this_week: 'current_week',
   this_month: 'this_month',
@@ -215,6 +216,26 @@ function resolveDateRange(
       previousStartDate: dateKeyUtc(addUtcDays(now, -1)),
       previousEndDate: dateKeyUtc(addUtcDays(now, -1)),
       previousCutoffDate: previousDay,
+      windowDays: 1,
+      elapsedDays: 1,
+      remainingDays: 0,
+      ...pace,
+    }
+  }
+
+  if (period === 'yesterday') {
+    const yesterday = dateKeyUtc(addUtcDays(now, -1))
+    const dayBefore = dateKeyUtc(addUtcDays(now, -2))
+    const pace = resolvePaceUnits(yesterday, yesterday, today)
+    return {
+      ok: true,
+      period,
+      startDate: yesterday,
+      endDate: yesterday,
+      cutoffDate: yesterday,
+      previousStartDate: dayBefore,
+      previousEndDate: dayBefore,
+      previousCutoffDate: dayBefore,
       windowDays: 1,
       elapsedDays: 1,
       remainingDays: 0,

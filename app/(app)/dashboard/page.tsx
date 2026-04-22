@@ -2,8 +2,6 @@ import { DashboardFilters } from '@/components/dashboard/dashboard-filters'
 import { DashboardInteractive } from '@/components/dashboard/dashboard-interactive'
 import { DashboardTrendChart } from '@/components/dashboard/dashboard-trend-chart'
 import { getDashboardData } from '@/features/dashboard/queries'
-import { PendingCalculatedBanner } from '@/components/calculated-jobs/pending-banner'
-import { getPendingCalculatedCountForViewer } from '@/features/calculated-jobs/queries'
 import Link from 'next/link'
 import { Trophy } from 'lucide-react'
 
@@ -11,7 +9,7 @@ type DashboardPageProps = {
   searchParams: Promise<{
     departmentId?: string
     userId?: string
-    period?: 'today' | 'current_week' | 'this_month' | 'last_week' | 'last_month' | 'custom' | 'last_7_days' | 'last_30_days' | 'last_90_days' | 'this_week'
+    period?: 'today' | 'yesterday' | 'current_week' | 'this_month' | 'last_week' | 'last_month' | 'custom' | 'last_7_days' | 'last_30_days' | 'last_90_days' | 'this_week'
     startDate?: string
     endDate?: string
     metricId?: string
@@ -50,7 +48,7 @@ async function DashboardContent({
 }: {
   departmentId?: string
   userId?: string
-  period?: 'today' | 'current_week' | 'this_month' | 'last_week' | 'last_month' | 'custom' | 'last_7_days' | 'last_30_days' | 'last_90_days' | 'this_week'
+  period?: 'today' | 'yesterday' | 'current_week' | 'this_month' | 'last_week' | 'last_month' | 'custom' | 'last_7_days' | 'last_30_days' | 'last_90_days' | 'this_week'
   startDate?: string
   endDate?: string
   metricId?: string
@@ -97,10 +95,6 @@ async function DashboardContent({
     )
   }
 
-  const pendingCalculatedCount = selectedDepartmentId
-    ? await getPendingCalculatedCountForViewer([selectedDepartmentId])
-    : 0
-
   return (
     <div className="space-y-4">
       <DashboardFilters
@@ -112,8 +106,6 @@ async function DashboardContent({
         startDate={resolvedStartDate}
         endDate={resolvedEndDate}
       />
-
-      <PendingCalculatedBanner pendingCount={pendingCalculatedCount} />
 
       {kpis.length === 0 ? (
         <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">

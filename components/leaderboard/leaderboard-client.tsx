@@ -32,7 +32,7 @@ type RankingRow = {
 type LeaderboardApiPayload = {
   departments: Department[]
   departmentId: string
-  period: 'today' | 'current_week' | 'this_month' | 'last_week' | 'last_month' | 'custom'
+  period: 'today' | 'yesterday' | 'current_week' | 'this_month' | 'last_week' | 'last_month' | 'custom'
   startDate: string
   endDate: string
   metrics: Metric[]
@@ -42,13 +42,14 @@ type LeaderboardApiPayload = {
   message?: string
 }
 
-type Period = 'today' | 'current_week' | 'this_month' | 'last_week' | 'last_month' | 'custom'
+type Period = 'today' | 'yesterday' | 'current_week' | 'this_month' | 'last_week' | 'last_month' | 'custom'
 const EMPTY_DEPARTMENTS: Department[] = []
 const EMPTY_METRICS: Metric[] = []
 const EMPTY_ROWS: RankingRow[] = []
 
 function getPeriodLabel(period: Period, start?: string, end?: string): string {
   if (period === 'today') return 'Today'
+  if (period === 'yesterday') return 'Yesterday'
   if (period === 'current_week') return 'This week'
   if (period === 'this_month') return 'This month'
   if (period === 'last_week') return 'Last week'
@@ -176,6 +177,7 @@ export default function LeaderboardClient() {
               className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
             >
               <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
               <option value="current_week">Current week</option>
               <option value="this_month">This month</option>
               <option value="last_week">Last week</option>

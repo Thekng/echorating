@@ -8,7 +8,7 @@ import { getAccessibleDepartments } from '@/lib/rbac/department-access'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
 import { type MetricDataType, type MetricSettings } from '@/lib/metrics/data-types'
 
-type AgentsPeriod = 'today' | 'current_week' | 'this_month' | 'custom'
+type AgentsPeriod = 'today' | 'yesterday' | 'current_week' | 'this_month' | 'custom'
 type IncomingAgentsPeriod = AgentsPeriod | 'this_week'
 
 type DateRangeResult =
@@ -108,6 +108,7 @@ type ViewerContext = ActorContext
 const RANKING_METRIC_TYPES: MetricDataType[] = ['number', 'currency', 'percent', 'duration', 'boolean']
 const PERIOD_ALIASES: Record<IncomingAgentsPeriod, AgentsPeriod> = {
   today: 'today',
+  yesterday: 'yesterday',
   current_week: 'current_week',
   this_week: 'current_week',
   this_month: 'this_month',
@@ -165,6 +166,16 @@ function resolveDateRange(
       period,
       startDate: todayKey,
       endDate: todayKey,
+    }
+  }
+
+  if (period === 'yesterday') {
+    const yesterday = dateKeyUtc(addUtcDays(now, -1))
+    return {
+      ok: true,
+      period,
+      startDate: yesterday,
+      endDate: yesterday,
     }
   }
 

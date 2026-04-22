@@ -3,8 +3,6 @@ import { DailyLogFilters } from '@/components/daily-log/daily-log-filters'
 import { HistoryColumnsConfig } from '@/components/daily-log/history-columns-config'
 import { RecentLogsTable } from '@/components/daily-log/recent-logs-table'
 import { getDailyLogFormData } from '@/features/daily-log/queries'
-import { PendingCalculatedBanner } from '@/components/calculated-jobs/pending-banner'
-import { getPendingCalculatedCountForViewer } from '@/features/calculated-jobs/queries'
 
 type DailyLogPageProps = {
   searchParams: Promise<{
@@ -57,18 +55,12 @@ export default async function DailyLogPage({ searchParams }: DailyLogPageProps) 
   const canManage = canManageSelectedDepartment ?? false
   const showDepartmentFilter = canManage || departments.length > 1
 
-  const pendingCalculatedCount = selectedDepartmentId
-    ? await getPendingCalculatedCountForViewer([selectedDepartmentId])
-    : 0
-
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Daily Log</h1>
         <p className="text-sm text-muted-foreground">Manage performance with consistent daily inputs.</p>
       </div>
-
-      <PendingCalculatedBanner pendingCount={pendingCalculatedCount} />
 
       {departments.length === 0 ? (
         <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
