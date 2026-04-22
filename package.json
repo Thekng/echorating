@@ -36,7 +36,8 @@
     "svix": "^1.90.0",
     "swr": "^2.4.0",
     "tailwind-merge": "latest",
-    "tw-animate-css": "latest"
+    "tw-animate-css": "latest",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
