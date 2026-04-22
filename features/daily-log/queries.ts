@@ -162,6 +162,7 @@ async function getDepartmentAgents(
   admin: ReturnType<typeof createAdminClient>,
   companyId: string,
   departmentId: string,
+  includeViewerUserId?: string,
 ) {
   const { data: memberships, error: membershipsError } = await admin
     .from('department_members')
@@ -178,7 +179,13 @@ async function getDepartmentAgents(
     }
   }
 
-  const userIds = (memberships ?? []).map((item) => item.user_id as string).filter(Boolean)
+  const userIdSet = new Set<string>(
+    (memberships ?? []).map((item) => item.user_id as string).filter(Boolean),
+  )
+  if (includeViewerUserId) {
+    userIdSet.add(includeViewerUserId)
+  }
+  const userIds = Array.from(userIdSet)
   if (userIds.length === 0) {
     return { ok: true as const, agents: [] as DailyLogAgentOption[] }
   }
@@ -593,7 +600,12 @@ export async function getDailyLogFormData(rawFilters?: {
   }
 
   if (canManageSelectedDepartment) {
-    const agentsResult = await getDepartmentAgents(context.admin, context.companyId, selectedDepartmentId)
+    const agentsResult = await getDepartmentAgents(
+      context.admin,
+      context.companyId,
+      selectedDepartmentId,
+      context.userId,
+    )
     if (!agentsResult.ok) {
       return { success: false as const, error: agentsResult.message, data: null }
     }
@@ -601,8 +613,9 @@ export async function getDailyLogFormData(rawFilters?: {
     agentOptions = agentsResult.agents
     selectedUserId =
       agentOptions.find((agent) => agent.user_id === requestedUserId)?.user_id ??
+      agentOptions.find((agent) => agent.user_id === context.userId)?.user_id ??
       agentOptions[0]?.user_id ??
-      ''
+      context.userId
   }
 
   let entry: {

@@ -162,16 +162,16 @@ async function resolveDailyLogTarget(
   viewerRole: Role,
   requestedUserId?: string,
 ) {
-  if (viewerRole === 'owner' || viewerRole === 'manager') {
-    if (!requestedUserId) {
-      return {
-        ok: false as const,
-        message: 'Select an agent first.',
-        targetUserId: null as string | null,
-      }
-    }
+  const targetUserId = requestedUserId ?? viewerUserId
 
-    const targetValidation = await isUserInDepartment(admin, companyId, departmentId, requestedUserId)
+  // Self-log: any active company member can log their own entry in any department
+  // of their company. Company membership was already validated by getActorContext.
+  if (targetUserId === viewerUserId) {
+    return { ok: true as const, message: '', targetUserId }
+  }
+
+  if (viewerRole === 'owner' || viewerRole === 'manager') {
+    const targetValidation = await isUserInDepartment(admin, companyId, departmentId, targetUserId)
     if (!targetValidation.ok) {
       return {
         ok: false as const,
@@ -180,7 +180,7 @@ async function resolveDailyLogTarget(
       }
     }
 
-    return { ok: true as const, message: '', targetUserId: requestedUserId }
+    return { ok: true as const, message: '', targetUserId }
   }
 
   const viewerDepartmentRole = await getViewerDepartmentRole(admin, departmentId, viewerUserId)
@@ -190,11 +190,6 @@ async function resolveDailyLogTarget(
       message: viewerDepartmentRole.message,
       targetUserId: null as string | null,
     }
-  }
-
-  const targetUserId = requestedUserId ?? viewerUserId
-  if (targetUserId === viewerUserId) {
-    return { ok: true as const, message: '', targetUserId }
   }
 
   if (viewerDepartmentRole.memberRole !== 'lead') {

@@ -237,7 +237,7 @@ begin
     values (p_user_id, p_user_name, true)
     on conflict (user_id) do update
     set
-      name = coalesce(nullif(trim(public.profiles.name), ''), excluded.name),
+      name = coalesce(nullif(trim(excluded.name), ''), public.profiles.name),
       is_active = true,
       deleted_at = null,
       updated_at = now();
@@ -293,7 +293,7 @@ begin
   )
   on conflict (user_id) do update
   set
-    name = coalesce(nullif(trim(public.profiles.name), ''), excluded.name),
+    name = coalesce(nullif(trim(excluded.name), ''), public.profiles.name),
     is_active = true,
     deleted_at = null,
     updated_at = now();
@@ -372,7 +372,7 @@ begin
   insert into public.profiles (user_id, name, is_active)
   values (p_user_id, p_user_name, true)
   on conflict (user_id) do update set
-    name       = coalesce(nullif(trim(public.profiles.name), ''), excluded.name),
+    name       = coalesce(nullif(trim(excluded.name), ''), public.profiles.name),
     is_active  = true,
     deleted_at = null,
     updated_at = now();
@@ -512,6 +512,9 @@ end;
 $$;
 
 grant execute on function public.accept_invitation(uuid, uuid, text) to service_role;
+
+drop trigger if exists trg_profiles_sync_company_memberships on public.profiles;
+drop function if exists public.sync_profile_to_company_memberships();
 
 drop policy if exists "profiles_select_own_company" on public.profiles;
 create policy "profiles_select_own_company"
