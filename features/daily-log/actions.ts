@@ -692,6 +692,9 @@ export async function saveDailyLogAction(
   const savedEntryId = typeof entryId === 'string' ? entryId : String(entryId)
   telemetryEntryId = savedEntryId
 
+  // Enqueue recompute as a fast-path only. The cron sweep is the durable
+  // path, so a failure here must NOT fail the save — the entry is already
+  // committed above.
   const enqueueResult = await enqueueCalculatedRecomputeJob(
     context.admin,
     context.companyId,
@@ -699,20 +702,13 @@ export async function saveDailyLogAction(
     savedEntryId,
   )
 
+  telemetryHadEnqueue = enqueueResult.ok
+
   if (!enqueueResult.ok) {
-    return {
-      ...INITIAL_ERROR_STATE,
-      message: enqueueResult.message,
-      intent: parsed.data.intent,
-      entryId: savedEntryId,
-    }
+    console.warn('[ENQUEUE_RECOMPUTE_FAILED]', enqueueResult.message)
+  } else {
+    after(() => triggerCalculatedRecomputeWorker())
   }
-
-  telemetryHadEnqueue = true
-
-  // Fire the worker after the response is flushed — the cron sweep is the
-  // durable path; this is just the fast path for single-save recompute.
-  after(() => triggerCalculatedRecomputeWorker())
 
   revalidatePath(ROUTES.DAILY_LOG)
 

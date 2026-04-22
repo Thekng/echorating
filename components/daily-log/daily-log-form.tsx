@@ -460,20 +460,6 @@ export function DailyLogForm({
           </p>
         ) : (
           <>
-            <div className="max-w-xs space-y-2">
-              <label htmlFor="daily-log-entry-date" className="text-sm font-medium">
-                Log date
-              </label>
-              <input
-                id="daily-log-entry-date"
-                type="date"
-                value={logDate}
-                onChange={(event) => setLogDate(event.currentTarget.value)}
-                disabled={disabledForm}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              />
-            </div>
-
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               {metrics.map((metric) => (
                 <div key={metric.metric_id} className="space-y-2">
