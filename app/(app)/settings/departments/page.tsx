@@ -101,7 +101,8 @@ export default function DepartmentsSettingsPage() {
   }
 
   useEffect(() => {
-    fetchDepartments()
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchDepartments()
   }, [])
 
   function closeCreateModal() {

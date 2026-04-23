@@ -139,7 +139,8 @@ export default function MetricsSettingsPage() {
   }
 
   useEffect(() => {
-    fetchMetrics(queryFilters)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchMetrics(queryFilters)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryFilters.departmentId, queryFilters.mode, queryFilters.q, queryFilters.status])
 
