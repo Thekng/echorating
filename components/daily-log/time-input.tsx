@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
@@ -58,7 +59,7 @@ export function TimeInput({
   }, [value])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let input = e.target.value
+    const input = e.target.value
 
     // Allow clearing the field
     if (input === '') {

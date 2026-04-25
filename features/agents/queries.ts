@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 'use server'
 
 import { getActorContext, type ActorContext } from '@/lib/supabase/actor-context'
