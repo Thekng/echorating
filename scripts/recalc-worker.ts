@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { createAdminClient } from '../lib/supabase/admin'
 import { parseFormulaExpression } from '../lib/metrics/formula'
 
