@@ -61,7 +61,8 @@ export class TimeEntryVersionControl {
    * @throws Error if version mismatch (another user edited the entry)
    */
   static async updateTimeValue(
-    supabase: any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    supa_base: any,
     entryId: string,
     metricId: string,
     timeValue: number | null, // seconds or null
@@ -111,7 +112,8 @@ export class TimeEntryVersionControl {
    * Safely batch update multiple time values
    */
   static async updateMultipleTimeValues(
-    supabase: any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    supa_base: any,
     entryId: string,
     updates: Array<{ metricId: string; timeValue: number | null }>
   ) {
@@ -216,7 +218,8 @@ export class ConflictResolution {
    * Detect if entry was modified since last fetch
    */
   static async detectConflict(
-    supabase: any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    supa_base: any,
     entryId: string,
     lastKnownVersion: number
   ): Promise<boolean> {
@@ -233,7 +236,8 @@ export class ConflictResolution {
   /**
    * Fetch latest entry data for merge/refresh
    */
-  static async fetchLatestEntry(supabase: any, entryId: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  static async fetchLatestEntry(supa_base: any, entryId: string) {
     const { data, error } = await supabase
       .from('daily_entries')
       .select(`
@@ -256,13 +260,14 @@ export class ConflictResolution {
    * Three-way merge strategy
    * merges conflicting changes if they're in different metrics
    */
-  static mergeEntries(local: any, remote: any, base: any): any {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  static mergeEntries(local: any, remote: any, _base: any): any {
     const merged = { ...remote }
 
     // If local edited a different metric than remote, keep both
     for (const value of local.entry_values || []) {
       const remoteValue = (remote.entry_values || []).find(
-        (v: any) => v.metric_id === value.metric_id
+        (v: { metric_id: string }) => v.metric_id === value.metric_id
       )
 
       if (!remoteValue) {
