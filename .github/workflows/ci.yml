@@ -16,7 +16,7 @@ jobs:
           version: 10
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm run typecheck
@@ -50,9 +50,11 @@ jobs:
           version: 10
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
       - uses: supabase/setup-cli@v1
+        with:
+          version: 2.22.6
       - run: pnpm install --frozen-lockfile
       - name: Install psql client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
@@ -73,7 +75,7 @@ jobs:
           version: 10
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm run test:unit
