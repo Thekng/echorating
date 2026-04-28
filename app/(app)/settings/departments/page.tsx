@@ -12,6 +12,7 @@ import { SettingsHeader } from '@/components/settings/settings-header'
 import { SettingsSurface } from '@/components/settings/settings-surface'
 import { SettingsEmptyState } from '@/components/settings/settings-empty-state'
 import { SettingsError } from '@/components/settings/settings-error'
+import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { formatDateShort } from '@/lib/utils'
 import { FolderKanban, Pencil, Plus, Trash2 } from 'lucide-react'
@@ -67,6 +68,9 @@ export default function DepartmentsSettingsPage() {
   const [pendingCreate, startCreateTransition] = useTransition()
   const [pendingUpdate, startUpdateTransition] = useTransition()
   const [pendingDeleteDepartmentId, setPendingDeleteDepartmentId] = useState<string | null>(null)
+  const [confirmingDeleteDepartment, setConfirmingDeleteDepartment] = useState<Department | null>(
+    null,
+  )
   const [isDeleting, startDeleteTransition] = useTransition()
 
   const activeDepartments = useMemo(
@@ -100,6 +104,7 @@ export default function DepartmentsSettingsPage() {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchDepartments()
   }, [])
 
@@ -152,14 +157,18 @@ export default function DepartmentsSettingsPage() {
   }
 
   function handleDeleteDepartment(department: Department) {
-    const confirmed = window.confirm(
-      `Delete "${department.name}"? This will also deactivate its metrics, targets, and member assignments.`,
-    )
-    if (!confirmed) {
+    setConfirmingDeleteDepartment(department)
+  }
+
+  function handleConfirmDelete() {
+    if (!confirmingDeleteDepartment) {
       return
     }
 
+    const department = confirmingDeleteDepartment
+    setConfirmingDeleteDepartment(null)
     setPendingDeleteDepartmentId(department.department_id)
+
     startDeleteTransition(async () => {
       const formData = new FormData()
       formData.set('departmentId', department.department_id)
@@ -452,6 +461,16 @@ export default function DepartmentsSettingsPage() {
             </form>
           </div>
         </div>
+      ) : null}
+
+      {confirmingDeleteDepartment ? (
+        <ConfirmDialog
+          title={`Delete "${confirmingDeleteDepartment.name}"?`}
+          description="This will also deactivate its metrics, targets, and member assignments."
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setConfirmingDeleteDepartment(null)}
+          confirmText="Delete"
+        />
       ) : null}
     </div>
   )
