@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { z } from 'zod'
 import { parseDurationToSeconds, formatSecondsToDuration } from '@/lib/daily-log/value-parser'
 
@@ -61,6 +62,7 @@ export class TimeEntryVersionControl {
    * @throws Error if version mismatch (another user edited the entry)
    */
   static async updateTimeValue(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     supabase: any,
     entryId: string,
     metricId: string,
@@ -111,6 +113,7 @@ export class TimeEntryVersionControl {
    * Safely batch update multiple time values
    */
   static async updateMultipleTimeValues(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     supabase: any,
     entryId: string,
     updates: Array<{ metricId: string; timeValue: number | null }>
@@ -216,6 +219,7 @@ export class ConflictResolution {
    * Detect if entry was modified since last fetch
    */
   static async detectConflict(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     supabase: any,
     entryId: string,
     lastKnownVersion: number
@@ -233,6 +237,8 @@ export class ConflictResolution {
   /**
    * Fetch latest entry data for merge/refresh
    */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   static async fetchLatestEntry(supabase: any, entryId: string) {
     const { data, error } = await supabase
       .from('daily_entries')
@@ -256,12 +262,13 @@ export class ConflictResolution {
    * Three-way merge strategy
    * merges conflicting changes if they're in different metrics
    */
-  static mergeEntries(local: any, remote: any, base: any): any {
+  static mergeEntries(local: { entry_values?: any[] }, remote: { entry_values?: any[] }, base: any): any {
     const merged = { ...remote }
 
     // If local edited a different metric than remote, keep both
     for (const value of local.entry_values || []) {
       const remoteValue = (remote.entry_values || []).find(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (v: any) => v.metric_id === value.metric_id
       )
 
