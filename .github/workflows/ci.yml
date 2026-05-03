@@ -13,9 +13,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
-      - run: npm ci
+      - run: npm install
       - run: npm run typecheck
       - run: npm run lint
       - name: Fail on runtime schema-drift fallbacks
@@ -44,10 +44,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - uses: supabase/setup-cli@v1
-      - run: npm ci
+        with:
+          version: 2.22.6
+      - run: npm install
       - name: Install psql client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
       - name: Apply Supabase-compat scaffolding
@@ -64,7 +66,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
-      - run: npm ci
+      - run: npm install
       - run: npm run test:unit
