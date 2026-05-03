@@ -11,18 +11,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-      - run: pnpm install
-      - run: pnpm typecheck
-      - run: pnpm lint
+          cache: npm
+      - run: npm install
+      - run: npm run typecheck
+      - run: npm run lint
       - name: Fail on runtime schema-drift fallbacks
-        run: pnpm run check:schema-drift
+        run: npm run check:schema-drift
 
   migrate:
     name: apply Supabase migrations against ephemeral postgres
@@ -45,17 +42,14 @@ jobs:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/echorating_ci
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
+          cache: npm
       - uses: supabase/setup-cli@v1
         with:
           version: 2.22.6
-      - run: pnpm install
+      - run: npm install
       - name: Install psql client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
       - name: Apply Supabase-compat scaffolding
@@ -70,12 +64,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-      - run: pnpm install
-      - run: pnpm test:unit
+          cache: npm
+      - run: npm install
+      - run: npm run test:unit
