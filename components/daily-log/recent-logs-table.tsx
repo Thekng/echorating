@@ -3,7 +3,9 @@
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Trash2, Pencil } from 'lucide-react'
+import { useState, useTransition } from 'react'
 import { deleteDailyLogAction } from '@/features/daily-log/actions'
+import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import type {
   DailyLogKeyMetric,
   DailyLogRecentEntry,
@@ -173,6 +175,8 @@ export function RecentLogsTable({
 }: RecentLogsTableProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const [isDeleting, startDeleteTransition] = useTransition()
+  const [logToDelete, setLogToDelete] = useState<string | null>(null)
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
   const startItem = totalCount === 0 ? 0 : (currentPage - 1) * pageSize + 1
@@ -346,24 +350,34 @@ export function RecentLogsTable({
                   </Link>
 
                   {canDelete ? (
-                    <form
-                      action={deleteDailyLogAction}
-                      onSubmit={(event) => {
-                        if (!window.confirm('Delete this log permanently?')) {
-                          event.preventDefault()
-                        }
-                      }}
-                    >
-                      <input type="hidden" name="entryId" value={log.entry_id} />
+                    <>
                       <button
-                        type="submit"
+                        type="button"
+                        onClick={() => setLogToDelete(log.entry_id)}
                         className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-destructive/30 text-destructive hover:bg-destructive/10"
                         title="Delete"
                         aria-label="Delete"
                       >
                         <Trash2 className="size-3.5" />
                       </button>
-                    </form>
+
+                      {logToDelete === log.entry_id && (
+                        <ConfirmDialog
+                          title="Delete log?"
+                          description="Delete this log permanently? This action cannot be undone."
+                          isLoading={isDeleting}
+                          onConfirm={() => {
+                            startDeleteTransition(async () => {
+                              const formData = new FormData()
+                              formData.set('entryId', log.entry_id)
+                              await deleteDailyLogAction(formData)
+                              setLogToDelete(null)
+                            })
+                          }}
+                          onCancel={() => setLogToDelete(null)}
+                        />
+                      )}
+                    </>
                   ) : null}
                 </div>
               </td>
