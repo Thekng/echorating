@@ -27,7 +27,6 @@
     "@supabase/supabase-js": "^2.95.3",
     "class-variance-authority": "latest",
     "clsx": "latest",
-    "dotenv": "^16.4.5",
     "lucide-react": "latest",
     "next": "latest",
     "react": "latest",
@@ -37,12 +36,10 @@
     "svix": "^1.90.0",
     "swr": "^2.4.0",
     "tailwind-merge": "latest",
-    "tw-animate-css": "latest",
-    "zod": "^3.23.3"
+    "tw-animate-css": "latest"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/dotenv": "^8.2.3",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

@@ -160,13 +160,9 @@ export default function DepartmentsSettingsPage() {
       const formData = new FormData()
       formData.set('departmentId', deletingDepartment.department_id)
       const result = await deleteDepartmentAction(INITIAL_ACTION_STATE, formData)
-      if (result.status === 'success') {
-        setFeedback({ tone: 'success', message: result.message })
-        setDeletingDepartment(null)
-        await fetchDepartments()
-      } else {
-        setFeedback({ tone: 'error', message: result.message })
-      }
+      setFeedback({ tone: result.status === 'success' ? 'success' : 'error', message: result.message })
+      if (result.status === 'success') await fetchDepartments()
+      setDeletingDepartment(null)
     })
   }
 
