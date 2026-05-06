@@ -159,22 +159,14 @@ export default function DepartmentsSettingsPage() {
 
   function confirmDeleteDepartment() {
     if (!departmentToDelete) return
-
     const departmentId = departmentToDelete.department_id
     setPendingDeleteDepartmentId(departmentId)
-
     startDeleteTransition(async () => {
       const formData = new FormData()
       formData.set('departmentId', departmentId)
       const result = await deleteDepartmentAction(INITIAL_ACTION_STATE, formData)
-
-      if (result.status === 'success') {
-        setFeedback({ tone: 'success', message: result.message })
-        await fetchDepartments()
-      } else {
-        setFeedback({ tone: 'error', message: result.message })
-      }
-
+      setFeedback({ tone: result.status === 'success' ? 'success' : 'error', message: result.message })
+      if (result.status === 'success') await fetchDepartments()
       setPendingDeleteDepartmentId(null)
       setDepartmentToDelete(null)
     })
@@ -391,8 +383,7 @@ export default function DepartmentsSettingsPage() {
       {departmentToDelete && (
         <ConfirmDialog
           title={`Delete "${departmentToDelete.name}"?`}
-          description="This will also deactivate its metrics, targets, and member assignments."
-          confirmText="Delete Department"
+          description="This will deactivate its metrics and member assignments."
           onConfirm={confirmDeleteDepartment}
           onCancel={() => setDepartmentToDelete(null)}
           isLoading={isDeleting}
