@@ -54,7 +54,7 @@ export function TimeInput({
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setDisplayValue(value)
     } else {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+
       setDisplayValue('')
     }
   }, [value])

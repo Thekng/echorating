@@ -103,7 +103,6 @@ type AgentStats = {
   lastEntryDate: string | null
 }
 
-type ViewerContext = ActorContext
 
 const RANKING_METRIC_TYPES: MetricDataType[] = ['number', 'currency', 'percent', 'duration', 'boolean']
 const PERIOD_ALIASES: Record<IncomingAgentsPeriod, AgentsPeriod> = {
