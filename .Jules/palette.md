@@ -1,0 +1,3 @@
+## 2025-05-15 - [Accessible Confirm Dialogs]
+**Learning:** Replacing native `window.confirm` with a custom dialog improves visual consistency but requires manual focus trapping and ARIA attributes (role="alertdialog") to remain accessible to keyboard and screen reader users. Using `useTransition` allows the dialog to show a loading state while the server action processes, providing much better feedback than the native alternative.
+**Action:** Always include a focus trap and ARIA labels when building custom dialogs, and leverage React 19's `useTransition` to maintain the dialog state until async operations are complete.
