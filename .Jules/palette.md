@@ -1,0 +1,3 @@
+## 2025-05-15 - Accessible ConfirmDialog Pattern
+**Learning:** Replacing native `window.confirm` with a custom, accessible dialog improves UX consistency and accessibility. Using `role="alertdialog"`, `aria-modal="true"`, and `useId` for stable labeling ensures compatibility with screen readers. Managing async server actions with `useTransition` and an `isLoading` prop in the dialog provides clear loading feedback without prematurely unmounting the dialog.
+**Action:** Always prefer the custom `ConfirmDialog` over `window.confirm`. Ensure `isLoading` is used for async actions to maintain a smooth feedback loop.
