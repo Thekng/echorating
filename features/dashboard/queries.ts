@@ -1,7 +1,6 @@
 'use server'
 
 import { getActorContext } from '@/lib/supabase/actor-context'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { requireRole } from '@/lib/rbac/guards'
 import { type Role } from '@/lib/rbac/roles'
 import { getAccessibleDepartments } from '@/lib/rbac/department-access'
