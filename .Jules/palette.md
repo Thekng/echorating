@@ -1,0 +1,3 @@
+## 2025-05-15 - Improving destructive action confirmation
+**Learning:** Native `window.confirm` is easy to use but lacks accessibility (limited ARIA control), branding consistency, and support for async loading states. A custom `ConfirmDialog` with `role="alertdialog"`, stable ARIA labeling via `useId`, and an `isLoading` prop provides a much more robust and pleasant user experience.
+**Action:** Replace native `window.confirm` with the custom `ConfirmDialog`. Always ensure it handles the Escape key, manages focus (auto-focusing the confirm button), and provides visual feedback during async server actions using `useTransition`.

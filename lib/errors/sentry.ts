@@ -8,6 +8,7 @@ export function initSentry() {
   })
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function captureException(error: Error, context?: Record<string, any>) {
   Sentry.captureException(error, { extra: context })
 }
