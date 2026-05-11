@@ -36,13 +36,16 @@
     "svix": "^1.90.0",
     "swr": "^2.4.0",
     "tailwind-merge": "latest",
-    "tw-animate-css": "latest"
+    "tw-animate-css": "latest",
+    "zod": "^3.23.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/dotenv": "^8.2.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "dotenv": "^16.4.5",
     "eslint": "^9",
     "eslint-config-next": "latest",
     "postcss": "^8",
