@@ -28,6 +28,7 @@ export function CreateDepartmentModal() {
 
   useEffect(() => {
     if (state.status === 'success') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setOpen(false)
     }
   }, [state.status])

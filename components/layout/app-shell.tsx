@@ -30,8 +30,11 @@ export function AppShell({ children, companyName }: AppShellProps) {
       ? savedTheme 
       : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
     
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCollapsed(savedCollapsed)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTheme(resolvedTheme)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true)
   }, [])
 

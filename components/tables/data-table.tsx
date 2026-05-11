@@ -2,22 +2,22 @@
 
 import React from 'react'
 
-interface DataTableProps {
-  columns: any[]
-  data: any[]
+interface DataTableProps<TData, TValue> {
+  columns: TData[]
+  data: TValue[]
 }
 
-export function DataTable({ columns, data }: DataTableProps) {
+export function DataTable<TData, TValue>({ columns: _columns, data: _data }: DataTableProps<TData, TValue>) {
   return (
     <div className="rounded-md border">
-      <table className="w-full">
+      <table className="w-full text-sm">
         <thead>
-          <tr className="border-b bg-muted">
-            {/* Column headers */}
+          <tr className="border-b bg-muted/50">
+            {/* Column headers placeholder */}
           </tr>
         </thead>
         <tbody>
-          {/* Rows */}
+          {/* Rows placeholder */}
         </tbody>
       </table>
     </div>
