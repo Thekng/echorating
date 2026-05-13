@@ -1,0 +1,3 @@
+## 2026-05-13 - Accessible Confirmation Dialogs
+**Learning:** Replacing native `window.confirm` with a custom React component improves UX consistency but requires careful focus management (focus trap) and accessibility attributes (`role="alertdialog"`, `aria-modal="true"`) to remain accessible. A robust focus trap must skip disabled elements to avoid trapping focus on non-interactive nodes.
+**Action:** Use the enhanced `ConfirmDialog` for all destructive actions. Ensure `isLoading` state is correctly wired to `useTransition` to provide visual feedback and prevent multiple submissions while keeping the dialog open until the operation completes.
