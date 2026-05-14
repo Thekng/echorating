@@ -178,6 +178,20 @@ export function RecentLogsTable({
   const [isPending, startTransition] = React.useTransition()
   const [logToDelete, setLogToDelete] = React.useState<string | null>(null)
 
+  const handleDeleteConfirm = React.useCallback(() => {
+    if (!logToDelete) return
+    const formData = new FormData()
+    formData.append('entryId', logToDelete)
+    startTransition(async () => {
+      await deleteDailyLogAction(formData)
+      setLogToDelete(null)
+    })
+  }, [logToDelete])
+
+  const handleDeleteCancel = React.useCallback(() => {
+    setLogToDelete(null)
+  }, [])
+
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
   const startItem = totalCount === 0 ? 0 : (currentPage - 1) * pageSize + 1
   const endItem = totalCount === 0 ? 0 : Math.min(currentPage * pageSize, totalCount)
@@ -417,15 +431,8 @@ export function RecentLogsTable({
           title="Delete Daily Log"
           description="Are you sure you want to delete this log entry? This action cannot be undone."
           isLoading={isPending}
-          onConfirm={() => {
-            const formData = new FormData()
-            formData.append('entryId', logToDelete)
-            startTransition(async () => {
-              await deleteDailyLogAction(formData)
-              setLogToDelete(null)
-            })
-          }}
-          onCancel={() => setLogToDelete(null)}
+          onConfirm={handleDeleteConfirm}
+          onCancel={handleDeleteCancel}
         />
       )}
     </div>
