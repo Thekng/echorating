@@ -15,7 +15,10 @@ export function ConfirmDialog({ title, description, onConfirm, onCancel, isLoadi
   const id = React.useId()
   const dialogRef = React.useRef<HTMLDivElement>(null)
   const onCancelRef = React.useRef(onCancel)
-  onCancelRef.current = onCancel
+
+  React.useEffect(() => {
+    onCancelRef.current = onCancel
+  }, [onCancel])
 
   React.useEffect(() => {
     const previousFocus = document.activeElement as HTMLElement
