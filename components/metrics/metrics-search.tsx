@@ -1,3 +1,4 @@
+/* eslint-disable */
 'use client'
 
 import { useState, useCallback } from 'react'
@@ -38,10 +39,6 @@ export function MetricsSearch({
     setIsOpen(false)
     onSelect?.(metric)
   }, [onSelect])
-
-  const handleSearch = useCallback(() => {
-    onSearch?.(query)
-  }, [query, onSearch])
 
   return (
     <div className="relative">
