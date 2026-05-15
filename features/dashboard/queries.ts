@@ -641,7 +641,7 @@ export async function getDashboardData(filters?: {
   }
 
   let kpis: DashboardKpi[] = []
-  let trend: DashboardTrendPoint[] = []
+  const trend: DashboardTrendPoint[] = []
   let primaryMetricLabel: string | null = null
 
   if (selectedMetricIds.length > 0) {
@@ -738,10 +738,8 @@ export async function getDashboardData(filters?: {
       })
       
       const dateFormatter = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' })
-      let currentDate = new Date(`${range.startDate}T00:00:00Z`)
       const cutoffDateObj = new Date(`${range.cutoffDate}T00:00:00Z`)
-      
-      while (currentDate <= cutoffDateObj) {
+      for (let currentDate = new Date(`${range.startDate}T00:00:00Z`); currentDate <= cutoffDateObj; currentDate = addUtcDays(currentDate, 1)) {
         const dateKey = dateKeyUtc(currentDate)
         trend.push({
           date: dateKey,
@@ -749,22 +747,19 @@ export async function getDashboardData(filters?: {
           submitted_logs: trendLogsByDate.get(dateKey)?.size ?? 0,
           primary_metric_value: Number((trendMetricByDate.get(dateKey) ?? 0).toFixed(2)),
         })
-        currentDate = addUtcDays(currentDate, 1)
       }
     } else {
         const primaryMetric = prioritizedMetrics.length > 0 ? prioritizedMetrics[0] : null
         primaryMetricLabel = primaryMetric ? primaryMetric.name : null
         const dateFormatter = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' })
-        let currentDate = new Date(`${range.startDate}T00:00:00Z`)
         const cutoffDateObj = new Date(`${range.cutoffDate}T00:00:00Z`)
-        while (currentDate <= cutoffDateObj) {
+        for (let currentDate = new Date(`${range.startDate}T00:00:00Z`); currentDate <= cutoffDateObj; currentDate = addUtcDays(currentDate, 1)) {
             trend.push({
                 date: dateKeyUtc(currentDate),
                 label: dateFormatter.format(currentDate),
                 submitted_logs: 0,
                 primary_metric_value: 0
             })
-            currentDate = addUtcDays(currentDate, 1)
         }
     }
   }
