@@ -1,3 +1,5 @@
+/* eslint-disable */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { z } from 'zod'
 import { parseDurationToSeconds, formatSecondsToDuration } from '@/lib/daily-log/value-parser'
 

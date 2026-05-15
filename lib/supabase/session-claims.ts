@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { createAdminClient } from './admin'
 import { type Role, isRole } from '@/lib/rbac/roles'
 

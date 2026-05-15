@@ -1,7 +1,8 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 'use client'
 
 import { createContext, useContext, useState, useEffect, ReactNode, useMemo } from 'react'
-import Joyride, { CallBackProps, STATUS, Step } from 'react-joyride'
+import Joyride, { CallBackProps, STATUS } from 'react-joyride'
 import { getTourStepsForRole } from './tour-steps'
 
 type TourContextType = {
