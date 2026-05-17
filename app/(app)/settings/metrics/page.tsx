@@ -99,7 +99,7 @@ export default function MetricsSettingsPage() {
   const [isMutating, startMutationTransition] = useTransition()
   const [metricToDelete, setMetricToDelete] = useState<MetricListItem | null>(null)
 
-  async function fetchMetrics(filters: MetricFilters) {
+  const fetchMetrics = useCallback(async (filters: MetricFilters) => {
     setLoading(true)
     setError(null)
 
@@ -136,21 +136,23 @@ export default function MetricsSettingsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [queryFilters])
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     fetchMetrics(queryFilters)
+    /* eslint-enable react-hooks/set-state-in-effect */
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryFilters.departmentId, queryFilters.mode, queryFilters.q, queryFilters.status])
 
-  function refreshMetrics() {
+  const refreshMetrics = useCallback(() => {
     void fetchMetrics(queryFilters)
-  }
+  }, [queryFilters, fetchMetrics])
 
-  function handleMetricSaved(message: string) {
+  const handleMetricSaved = useCallback((message: string) => {
     setFeedback({ tone: 'success', message })
     refreshMetrics()
-  }
+  }, [refreshMetrics])
 
   function handleToggleMetric(metric: MetricListItem) {
     setPendingAction({ metricId: metric.metric_id, type: 'toggle' })
@@ -197,7 +199,7 @@ export default function MetricsSettingsPage() {
 
       setPendingAction(null)
     })
-  }, [metricToDelete, queryFilters])
+  }, [metricToDelete, queryFilters, fetchMetrics])
 
   function handleReorderMetric(metric: MetricListItem, direction: 'up' | 'down') {
     setPendingAction({ metricId: metric.metric_id, type: direction === 'up' ? 'move-up' : 'move-down' })
