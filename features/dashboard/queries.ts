@@ -1,7 +1,6 @@
 'use server'
 
 import { getActorContext } from '@/lib/supabase/actor-context'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { requireRole } from '@/lib/rbac/guards'
 import { type Role } from '@/lib/rbac/roles'
 import { getAccessibleDepartments } from '@/lib/rbac/department-access'
@@ -641,7 +640,7 @@ export async function getDashboardData(filters?: {
   }
 
   let kpis: DashboardKpi[] = []
-  let trend: DashboardTrendPoint[] = []
+  const trend: DashboardTrendPoint[] = []
   let primaryMetricLabel: string | null = null
 
   if (selectedMetricIds.length > 0) {

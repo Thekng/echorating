@@ -1,0 +1,3 @@
+## 2025-05-14 - [Accessible Confirmation Dialogs]
+**Learning:** Custom confirmation dialogs provide better visual consistency and accessibility (focus trapping, ARIA roles) than native `window.confirm`. However, they must be implemented with care regarding focus restoration (handling deleted elements) and keeping the implementation concise (under 50 lines) to remain "micro-UX".
+**Action:** Use the enhanced `ConfirmDialog` in `components/shared/confirm-dialog.tsx` for all destructive actions. Ensure it includes a focus trap, Escape key listener, and `isLoading` support via the foundational `Button` component.
