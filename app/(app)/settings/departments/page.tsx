@@ -12,6 +12,7 @@ import { SettingsHeader } from '@/components/settings/settings-header'
 import { SettingsSurface } from '@/components/settings/settings-surface'
 import { SettingsEmptyState } from '@/components/settings/settings-empty-state'
 import { SettingsError } from '@/components/settings/settings-error'
+import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { formatDateShort } from '@/lib/utils'
 import { FolderKanban, Pencil, Plus, Trash2 } from 'lucide-react'
@@ -60,6 +61,7 @@ export default function DepartmentsSettingsPage() {
 
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [editingDepartment, setEditingDepartment] = useState<Department | null>(null)
+  const [departmentToDelete, setDepartmentToDelete] = useState<Department | null>(null)
 
   const [createState, setCreateState] = useState<DepartmentActionState>(INITIAL_ACTION_STATE)
   const [updateState, setUpdateState] = useState<DepartmentActionState>(INITIAL_ACTION_STATE)
@@ -100,6 +102,7 @@ export default function DepartmentsSettingsPage() {
   }
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     fetchDepartments()
   }, [])
 
@@ -151,18 +154,13 @@ export default function DepartmentsSettingsPage() {
     })
   }
 
-  function handleDeleteDepartment(department: Department) {
-    const confirmed = window.confirm(
-      `Delete "${department.name}"? This will also deactivate its metrics, targets, and member assignments.`,
-    )
-    if (!confirmed) {
-      return
-    }
+  async function confirmDeleteDepartment() {
+    if (!departmentToDelete) return
 
-    setPendingDeleteDepartmentId(department.department_id)
+    setPendingDeleteDepartmentId(departmentToDelete.department_id)
     startDeleteTransition(async () => {
       const formData = new FormData()
-      formData.set('departmentId', department.department_id)
+      formData.set('departmentId', departmentToDelete.department_id)
       const result = await deleteDepartmentAction(INITIAL_ACTION_STATE, formData)
 
       if (result.status === 'success') {
@@ -171,6 +169,8 @@ export default function DepartmentsSettingsPage() {
       } else {
         setFeedback({ tone: 'error', message: result.message })
       }
+
+      setDepartmentToDelete(null)
 
       setPendingDeleteDepartmentId(null)
     })
@@ -275,7 +275,7 @@ export default function DepartmentsSettingsPage() {
                         title={`Delete ${department.name}`}
                         aria-label={`Delete ${department.name}`}
                         className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                        onClick={() => handleDeleteDepartment(department)}
+                        onClick={() => setDepartmentToDelete(department)}
                         disabled={
                           isDeleting && pendingDeleteDepartmentId === department.department_id
                         }
@@ -383,6 +383,17 @@ export default function DepartmentsSettingsPage() {
           </div>
         </div>
       ) : null}
+
+      {departmentToDelete && (
+        <ConfirmDialog
+          title={`Delete "${departmentToDelete.name}"?`}
+          description="This will also deactivate its metrics, targets, and member assignments. This action cannot be undone."
+          confirmText="Delete Department"
+          isLoading={isDeleting}
+          onConfirm={confirmDeleteDepartment}
+          onCancel={() => setDepartmentToDelete(null)}
+        />
+      )}
 
       {editingDepartment ? (
         <div
