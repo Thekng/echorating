@@ -1,6 +1,6 @@
 import { DashboardFilters } from '@/components/dashboard/dashboard-filters'
 import { DashboardInteractive } from '@/components/dashboard/dashboard-interactive'
-import { DashboardTrendChart } from '@/components/dashboard/dashboard-trend-chart'
+import { AnalyticsLineChart } from '@/components/charts/analytics-line-chart'
 import { getDashboardData } from '@/features/dashboard/queries'
 import Link from 'next/link'
 import { Trophy } from 'lucide-react'
@@ -83,8 +83,7 @@ async function DashboardContent({
     paceUnitLabel,
     kpis,
     stats,
-    trend,
-    primaryMetricLabel,
+    series,
   } = result.data
 
   if (departments.length === 0) {
@@ -121,7 +120,12 @@ async function DashboardContent({
             paceUnitLabel={paceUnitLabel}
             selectedMetricId={metricId}
           />
-          <DashboardTrendChart points={trend} metricLabel={primaryMetricLabel ?? 'Metric'} />
+          <AnalyticsLineChart
+            series={series}
+            startDate={resolvedStartDate}
+            endDate={resolvedEndDate}
+            title="Daily Performance"
+          />
         </>
       )}
     </div>

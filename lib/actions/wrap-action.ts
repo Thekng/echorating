@@ -150,19 +150,7 @@ async function scheduleActionEvent(event: {
   })
 }
 
-async function captureActionException(name: string, err: unknown, requestId: string | null) {
-  if (!process.env.NEXT_PUBLIC_SENTRY_DSN) return
-  try {
-    const Sentry = await import('@sentry/nextjs')
-    Sentry.withScope((scope) => {
-      scope.setTag('action', name)
-      if (requestId) scope.setTag('request_id', requestId)
-      Sentry.captureException(err)
-    })
-  } catch {
-    // Sentry loading may fail in edge/test environments — never surface.
-  }
-}
+
 
 export function wrapAction<TInput, TData>(
   options: WrapActionOptions<TInput, TData>,
@@ -227,7 +215,6 @@ export function wrapAction<TInput, TData>(
     } catch (err) {
       const message = err instanceof Error ? err.message : 'An unexpected error occurred.'
       const requestId = await getRequestId()
-      await captureActionException(name, err, requestId)
       await scheduleActionEvent({
         name,
         outcome: 'unknown',

@@ -13,7 +13,7 @@ Performance tracking platform for agencies. Companies define metrics and daily t
 - Targets at the daily and department level, with backfill tooling for calculated metrics
 - Dashboards, leaderboards, and accountability views with filters and charts
 - Transactional email via Resend, with React-based templates
-- Error monitoring via Sentry and an in-app product tour via react-joyride
+- In-app product tour via react-joyride
 
 ## Stack
 
@@ -22,7 +22,6 @@ Performance tracking platform for agencies. Companies define metrics and daily t
 - Supabase (Postgres, Auth, RLS) via `@supabase/ssr`
 - SWR for client data fetching
 - Resend for transactional email
-- Sentry for error monitoring
 - ESLint 9 + Node's built-in test runner
 
 ## Project Structure
@@ -71,7 +70,6 @@ Set these in `.env.local`:
 - `SUPABASE_SERVICE_ROLE_KEY` — Supabase service-role key (server-only; never exposed to the client)
 - `DATABASE_URL` — Postgres connection used by scripts and server-side queries
 - `RESEND_API_KEY` — Resend API key for transactional email
-- `NEXT_PUBLIC_SENTRY_DSN` — Sentry DSN (optional in local dev)
 
 ## Database
 

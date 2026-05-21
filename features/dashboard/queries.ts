@@ -74,16 +74,21 @@ export type DashboardTrendPoint = {
   primary_metric_value: number
 }
 
-export type DashboardMetricTrendPoint = {
+export type DashboardSeriesPoint = {
   date: string
   label: string
-  submitted_logs: number
-  value: number
+  value: number | null
+  previous_value: number | null
 }
 
-export type DashboardMetricTrend = {
+export type DashboardSeries = {
   metric_id: string
-  points: DashboardMetricTrendPoint[]
+  name: string
+  code: string
+  data_type: MetricDataType
+  unit: string
+  default_visible: boolean
+  points: DashboardSeriesPoint[]
 }
 
 export type DashboardStats = {
@@ -112,6 +117,7 @@ type DashboardResultData = {
   kpis: DashboardKpi[]
   stats: DashboardStats
   trend: DashboardTrendPoint[]
+  series: DashboardSeries[]
   primaryMetricLabel: string | null
 }
 
@@ -509,6 +515,7 @@ export async function getDashboardData(filters?: {
         consistency_rate: 0,
       },
       trend: [],
+      series: [],
       primaryMetricLabel: null,
     }
     return { success: true as const, data: emptyData }
@@ -642,6 +649,7 @@ export async function getDashboardData(filters?: {
 
   let kpis: DashboardKpi[] = []
   let trend: DashboardTrendPoint[] = []
+  let series: DashboardSeries[] = []
   let primaryMetricLabel: string | null = null
 
   if (selectedMetricIds.length > 0) {
@@ -681,13 +689,15 @@ export async function getDashboardData(filters?: {
 
       const currentTotals = new Map<string, number>()
       const previousTotals = new Map<string, number>()
-      
-      const primaryMetric = filters?.metricId 
+
+      const primaryMetric = filters?.metricId
         ? (metricById.get(filters.metricId) || prioritizedMetrics[0])
         : prioritizedMetrics[0]
       primaryMetricLabel = primaryMetric ? primaryMetric.name : null
       const trendLogsByDate = new Map<string, Set<string>>()
       const trendMetricByDate = new Map<string, number>()
+      const currentDailyByMetric = new Map<string, Map<string, number>>()
+      const previousDailyByMetric = new Map<string, Map<string, number>>()
 
       for (const row of (valuesData ?? []) as Array<{
         entry_id: string
@@ -708,7 +718,11 @@ export async function getDashboardData(filters?: {
 
         if (entryDate >= range.startDate && entryDate <= range.cutoffDate) {
           currentTotals.set(row.metric_id, (currentTotals.get(row.metric_id) ?? 0) + value)
-          
+
+          const perDay = currentDailyByMetric.get(row.metric_id) ?? new Map<string, number>()
+          perDay.set(entryDate, (perDay.get(entryDate) ?? 0) + value)
+          currentDailyByMetric.set(row.metric_id, perDay)
+
           if (primaryMetric && row.metric_id === primaryMetric.metric_id) {
             trendMetricByDate.set(entryDate, (trendMetricByDate.get(entryDate) ?? 0) + value)
           }
@@ -718,6 +732,10 @@ export async function getDashboardData(filters?: {
           trendLogsByDate.get(entryDate)?.add(row.entry_id)
         } else if (entryDate >= range.previousStartDate && entryDate <= range.previousCutoffDate) {
           previousTotals.set(row.metric_id, (previousTotals.get(row.metric_id) ?? 0) + value)
+
+          const perDay = previousDailyByMetric.get(row.metric_id) ?? new Map<string, number>()
+          perDay.set(entryDate, (perDay.get(entryDate) ?? 0) + value)
+          previousDailyByMetric.set(row.metric_id, perDay)
         }
       }
 
@@ -738,34 +756,102 @@ export async function getDashboardData(filters?: {
       })
       
       const dateFormatter = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' })
-      let currentDate = new Date(`${range.startDate}T00:00:00Z`)
-      const cutoffDateObj = new Date(`${range.cutoffDate}T00:00:00Z`)
-      
-      while (currentDate <= cutoffDateObj) {
-        const dateKey = dateKeyUtc(currentDate)
-        trend.push({
-          date: dateKey,
-          label: dateFormatter.format(currentDate),
-          submitted_logs: trendLogsByDate.get(dateKey)?.size ?? 0,
-          primary_metric_value: Number((trendMetricByDate.get(dateKey) ?? 0).toFixed(2)),
-        })
-        currentDate = addUtcDays(currentDate, 1)
+      const dateKeys: string[] = []
+      {
+        let cursor = new Date(`${range.startDate}T00:00:00Z`)
+        const cutoffDateObj = new Date(`${range.cutoffDate}T00:00:00Z`)
+        while (cursor <= cutoffDateObj) {
+          const dateKey = dateKeyUtc(cursor)
+          dateKeys.push(dateKey)
+          trend.push({
+            date: dateKey,
+            label: dateFormatter.format(cursor),
+            submitted_logs: trendLogsByDate.get(dateKey)?.size ?? 0,
+            primary_metric_value: Number((trendMetricByDate.get(dateKey) ?? 0).toFixed(2)),
+          })
+          cursor = addUtcDays(cursor, 1)
+        }
       }
+
+      const previousKeys: string[] = []
+      {
+        let cursor = new Date(`${range.previousStartDate}T00:00:00Z`)
+        const prevCutoff = new Date(`${range.previousCutoffDate}T00:00:00Z`)
+        while (cursor <= prevCutoff) {
+          previousKeys.push(dateKeyUtc(cursor))
+          cursor = addUtcDays(cursor, 1)
+        }
+      }
+
+      const coverage = prioritizedMetrics
+        .map((metric) => ({
+          metric_id: metric.metric_id,
+          days: currentDailyByMetric.get(metric.metric_id)?.size ?? 0,
+        }))
+        .sort((a, b) => b.days - a.days)
+      const defaultVisibleIds = new Set(
+        coverage.filter((item) => item.days > 0).slice(0, 4).map((item) => item.metric_id),
+      )
+
+      series = prioritizedMetrics.map((metric) => {
+        const currentDaily = currentDailyByMetric.get(metric.metric_id)
+        const previousDaily = previousDailyByMetric.get(metric.metric_id)
+
+        const points: DashboardSeriesPoint[] = dateKeys.map((dateKey, index) => {
+          const prevKey = previousKeys[index]
+          const value = currentDaily?.get(dateKey)
+          const previous = prevKey ? previousDaily?.get(prevKey) : undefined
+          return {
+            date: dateKey,
+            label: dateFormatter.format(new Date(`${dateKey}T00:00:00Z`)),
+            value: value === undefined ? null : Number(value.toFixed(2)),
+            previous_value: previous === undefined ? null : Number(previous.toFixed(2)),
+          }
+        })
+
+        return {
+          metric_id: metric.metric_id,
+          name: metric.name,
+          code: metric.code,
+          data_type: metric.data_type,
+          unit: metric.unit,
+          default_visible: defaultVisibleIds.has(metric.metric_id),
+          points,
+        }
+      })
     } else {
         const primaryMetric = prioritizedMetrics.length > 0 ? prioritizedMetrics[0] : null
         primaryMetricLabel = primaryMetric ? primaryMetric.name : null
         const dateFormatter = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' })
+        const dateKeys: string[] = []
         let currentDate = new Date(`${range.startDate}T00:00:00Z`)
         const cutoffDateObj = new Date(`${range.cutoffDate}T00:00:00Z`)
         while (currentDate <= cutoffDateObj) {
+            const dateKey = dateKeyUtc(currentDate)
+            dateKeys.push(dateKey)
             trend.push({
-                date: dateKeyUtc(currentDate),
+                date: dateKey,
                 label: dateFormatter.format(currentDate),
                 submitted_logs: 0,
                 primary_metric_value: 0
             })
             currentDate = addUtcDays(currentDate, 1)
         }
+
+        series = prioritizedMetrics.slice(0, 4).map((metric, index) => ({
+          metric_id: metric.metric_id,
+          name: metric.name,
+          code: metric.code,
+          data_type: metric.data_type,
+          unit: metric.unit,
+          default_visible: index < 4,
+          points: dateKeys.map((dateKey) => ({
+            date: dateKey,
+            label: dateFormatter.format(new Date(`${dateKey}T00:00:00Z`)),
+            value: null,
+            previous_value: null,
+          })),
+        }))
     }
   }
 
@@ -787,6 +873,7 @@ export async function getDashboardData(filters?: {
     kpis,
     stats,
     trend,
+    series,
     primaryMetricLabel,
   }
 

@@ -52,7 +52,7 @@ export function AppShell({ children, companyName }: AppShellProps) {
       <aside
         className={cn(
           'hidden md:fixed md:inset-y-0 md:flex md:border-r md:border-border md:bg-background md:transition-[width] md:duration-200',
-          collapsed ? 'md:w-[84px]' : 'md:w-64',
+          collapsed ? 'md:w-22' : 'md:w-72',
         )}
       >
         <Sidebar
@@ -67,7 +67,7 @@ export function AppShell({ children, companyName }: AppShellProps) {
       <div
         className={cn(
           'flex min-h-screen min-w-0 flex-1 flex-col transition-[margin] duration-200',
-          collapsed ? 'md:ml-[84px]' : 'md:ml-64',
+          collapsed ? 'md:ml-22' : 'md:ml-72',
         )}
       >
         <header className="sticky top-0 z-30 bg-background/90 backdrop-blur">

@@ -19,14 +19,15 @@ export function MobileNav() {
             key={item.href}
             href={item.href}
             prefetch={true}
+            aria-label={item.label}
+            title={item.label}
             className={cn(
-              'flex flex-col items-center justify-center rounded-md text-[11px] leading-none transition-colors',
+              'flex items-center justify-center rounded-md transition-colors',
               item.tourId,
               active ? 'text-primary' : 'text-muted-foreground',
             )}
           >
-            <Icon className={cn('mb-1 size-4', active ? 'text-primary' : 'text-muted-foreground')} />
-            {item.shortLabel}
+            <Icon className={cn('size-6', active ? 'text-primary' : 'text-muted-foreground')} />
           </Link>
         )
       })}
