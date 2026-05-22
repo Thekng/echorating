@@ -200,10 +200,15 @@ export function RecentLogsTable({
     if (!itemToDelete) return
 
     startDeleteTransition(async () => {
-      const formData = new FormData()
-      formData.set('entryId', itemToDelete.entry_id)
-      await deleteDailyLogAction(formData)
-      setItemToDelete(null)
+      try {
+        const formData = new FormData()
+        formData.set('entryId', itemToDelete.entry_id)
+        await deleteDailyLogAction(formData)
+      } catch (error) {
+        console.error('Failed to delete log:', error)
+      } finally {
+        setItemToDelete(null)
+      }
     })
   }
 
