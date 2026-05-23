@@ -183,7 +183,7 @@ export function RecentLogsTable({
     startTransition(async () => {
       const formData = new FormData()
       formData.append('entryId', logToDelete)
-      await deleteDailyLogAction(null, formData)
+      await deleteDailyLogAction(formData)
       setLogToDelete(null)
     })
   }, [logToDelete])
