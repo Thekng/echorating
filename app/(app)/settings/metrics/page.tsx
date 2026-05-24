@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useTransition } from 'react'
+import { useEffect, useState, useTransition, useCallback } from 'react'
 import { listMetrics } from '@/features/metrics/queries'
 import { deleteMetricAction, reorderMetricAction, toggleMetricStatusAction } from '@/features/metrics/actions'
 import { SettingsHeader } from '@/components/settings/settings-header'
@@ -12,6 +12,7 @@ import { EditMetricModal } from '@/components/metrics/edit-metric-modal'
 import { Button } from '@/components/ui/button'
 import { areMetricFiltersEqual } from '@/features/settings/helpers'
 import { ArrowDown, ArrowUp, Gauge, Power, Trash2 } from 'lucide-react'
+import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 
 type MetricSettings = Record<string, unknown> | null
 
@@ -96,8 +97,9 @@ export default function MetricsSettingsPage() {
     type: 'toggle' | 'delete' | 'move-up' | 'move-down'
   } | null>(null)
   const [isMutating, startMutationTransition] = useTransition()
+  const [metricToDelete, setMetricToDelete] = useState<MetricListItem | null>(null)
 
-  async function fetchMetrics(filters: MetricFilters) {
+  const fetchMetrics = useCallback(async (filters: MetricFilters) => {
     setLoading(true)
     setError(null)
 
@@ -134,16 +136,17 @@ export default function MetricsSettingsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [queryFilters])
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     fetchMetrics(queryFilters)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryFilters.departmentId, queryFilters.mode, queryFilters.q, queryFilters.status])
 
-  function refreshMetrics() {
+  const refreshMetrics = useCallback(() => {
     void fetchMetrics(queryFilters)
-  }
+  }, [fetchMetrics, queryFilters])
 
   function handleMetricSaved(message: string) {
     setFeedback({ tone: 'success', message })
@@ -173,19 +176,14 @@ export default function MetricsSettingsPage() {
     })
   }
 
-  function handleDeleteMetric(metric: MetricListItem) {
-    const confirmed = window.confirm(
-      `Delete "${metric.name}"? This will disable targets and remove it from active metric lists.`,
-    )
-    if (!confirmed) {
-      return
-    }
+  const handleDeleteConfirm = useCallback(() => {
+    if (!metricToDelete) return
 
-    setPendingAction({ metricId: metric.metric_id, type: 'delete' })
+    setPendingAction({ metricId: metricToDelete.metric_id, type: 'delete' })
 
     startMutationTransition(async () => {
       const formData = new FormData()
-      formData.set('metricId', metric.metric_id)
+      formData.set('metricId', metricToDelete.metric_id)
 
       const result = await deleteMetricAction(formData)
       setFeedback({
@@ -197,9 +195,10 @@ export default function MetricsSettingsPage() {
         await fetchMetrics(queryFilters)
       }
 
+      setMetricToDelete(null)
       setPendingAction(null)
     })
-  }
+  }, [metricToDelete, fetchMetrics, queryFilters])
 
   function handleReorderMetric(metric: MetricListItem, direction: 'up' | 'down') {
     setPendingAction({ metricId: metric.metric_id, type: direction === 'up' ? 'move-up' : 'move-down' })
@@ -475,7 +474,7 @@ export default function MetricsSettingsPage() {
                             className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
                             title={`Delete ${metric.name}`}
                             aria-label={`Delete ${metric.name}`}
-                            onClick={() => handleDeleteMetric(metric)}
+                            onClick={() => setMetricToDelete(metric)}
                             disabled={deletePending}
                           >
                             <Trash2 className="size-4" />
@@ -489,6 +488,17 @@ export default function MetricsSettingsPage() {
             </table>
           </div>
         </SettingsSurface>
+      )}
+
+      {metricToDelete && (
+        <ConfirmDialog
+          title="Delete Metric"
+          description={`Delete "${metricToDelete.name}"? This will disable targets and remove it from active metric lists.`}
+          confirmText="Delete"
+          isLoading={isMutating && pendingAction?.type === 'delete'}
+          onConfirm={handleDeleteConfirm}
+          onCancel={() => setMetricToDelete(null)}
+        />
       )}
     </div>
   )

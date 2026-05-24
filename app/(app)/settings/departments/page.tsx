@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useTransition, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, useTransition, useCallback, type FormEvent } from 'react'
 import {
   createDepartmentAction,
   deleteDepartmentAction,
@@ -15,6 +15,7 @@ import { SettingsError } from '@/components/settings/settings-error'
 import { Button } from '@/components/ui/button'
 import { formatDateShort } from '@/lib/utils'
 import { FolderKanban, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 
 type Department = {
   department_id: string
@@ -60,13 +61,13 @@ export default function DepartmentsSettingsPage() {
 
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [editingDepartment, setEditingDepartment] = useState<Department | null>(null)
+  const [departmentToDelete, setDepartmentToDelete] = useState<Department | null>(null)
 
   const [createState, setCreateState] = useState<DepartmentActionState>(INITIAL_ACTION_STATE)
   const [updateState, setUpdateState] = useState<DepartmentActionState>(INITIAL_ACTION_STATE)
 
   const [pendingCreate, startCreateTransition] = useTransition()
   const [pendingUpdate, startUpdateTransition] = useTransition()
-  const [pendingDeleteDepartmentId, setPendingDeleteDepartmentId] = useState<string | null>(null)
   const [isDeleting, startDeleteTransition] = useTransition()
 
   const activeDepartments = useMemo(
@@ -78,7 +79,7 @@ export default function DepartmentsSettingsPage() {
     [departments],
   )
 
-  async function fetchDepartments() {
+  const fetchDepartments = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -97,11 +98,12 @@ export default function DepartmentsSettingsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     fetchDepartments()
-  }, [])
+  }, [fetchDepartments])
 
   function closeCreateModal() {
     setCreateState(INITIAL_ACTION_STATE)
@@ -151,18 +153,12 @@ export default function DepartmentsSettingsPage() {
     })
   }
 
-  function handleDeleteDepartment(department: Department) {
-    const confirmed = window.confirm(
-      `Delete "${department.name}"? This will also deactivate its metrics, targets, and member assignments.`,
-    )
-    if (!confirmed) {
-      return
-    }
+  const handleDeleteConfirm = useCallback(() => {
+    if (!departmentToDelete) return
 
-    setPendingDeleteDepartmentId(department.department_id)
     startDeleteTransition(async () => {
       const formData = new FormData()
-      formData.set('departmentId', department.department_id)
+      formData.set('departmentId', departmentToDelete.department_id)
       const result = await deleteDepartmentAction(INITIAL_ACTION_STATE, formData)
 
       if (result.status === 'success') {
@@ -172,9 +168,9 @@ export default function DepartmentsSettingsPage() {
         setFeedback({ tone: 'error', message: result.message })
       }
 
-      setPendingDeleteDepartmentId(null)
+      setDepartmentToDelete(null)
     })
-  }
+  }, [departmentToDelete, fetchDepartments])
 
   if (loading) {
     return (
@@ -275,10 +271,8 @@ export default function DepartmentsSettingsPage() {
                         title={`Delete ${department.name}`}
                         aria-label={`Delete ${department.name}`}
                         className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                        onClick={() => handleDeleteDepartment(department)}
-                        disabled={
-                          isDeleting && pendingDeleteDepartmentId === department.department_id
-                        }
+                        onClick={() => setDepartmentToDelete(department)}
+                        disabled={isDeleting && departmentToDelete?.department_id === department.department_id}
                       >
                         <Trash2 className="size-4" />
                       </Button>
@@ -453,6 +447,17 @@ export default function DepartmentsSettingsPage() {
           </div>
         </div>
       ) : null}
+
+      {departmentToDelete && (
+        <ConfirmDialog
+          title="Delete Department"
+          description={`Delete "${departmentToDelete.name}"? This will also deactivate its metrics, targets, and member assignments.`}
+          confirmText="Delete"
+          isLoading={isDeleting}
+          onConfirm={handleDeleteConfirm}
+          onCancel={() => setDepartmentToDelete(null)}
+        />
+      )}
     </div>
   )
 }
