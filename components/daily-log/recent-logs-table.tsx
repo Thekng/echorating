@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useTransition, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Trash2, Pencil } from 'lucide-react'
@@ -12,6 +13,7 @@ import type {
 import { formatSecondsToDuration } from '@/lib/daily-log/value-parser'
 import { formatDateShort } from '@/lib/utils'
 import { booleanLabels, normalizeMetricSettings } from '@/lib/metrics/data-types'
+import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 
 type RecentLogsTableProps = {
   departmentId: string
@@ -173,6 +175,18 @@ export function RecentLogsTable({
 }: RecentLogsTableProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null)
+  const [isPending, startTransition] = useTransition()
+
+  const handleDelete = useCallback(() => {
+    if (!itemToDelete) return
+    startTransition(async () => {
+      const formData = new FormData()
+      formData.append('entryId', itemToDelete)
+      await deleteDailyLogAction(formData)
+      setItemToDelete(null)
+    })
+  }, [itemToDelete])
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
   const startItem = totalCount === 0 ? 0 : (currentPage - 1) * pageSize + 1
@@ -346,24 +360,15 @@ export function RecentLogsTable({
                   </Link>
 
                   {canDelete ? (
-                    <form
-                      action={deleteDailyLogAction}
-                      onSubmit={(event) => {
-                        if (!window.confirm('Delete this log permanently?')) {
-                          event.preventDefault()
-                        }
-                      }}
+                    <button
+                      type="button"
+                      onClick={() => setItemToDelete(log.entry_id)}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-destructive/30 text-destructive hover:bg-destructive/10"
+                      title="Delete"
+                      aria-label="Delete"
                     >
-                      <input type="hidden" name="entryId" value={log.entry_id} />
-                      <button
-                        type="submit"
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-destructive/30 text-destructive hover:bg-destructive/10"
-                        title="Delete"
-                        aria-label="Delete"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
-                    </form>
+                      <Trash2 className="size-3.5" />
+                    </button>
                   ) : null}
                 </div>
               </td>
@@ -416,6 +421,17 @@ export function RecentLogsTable({
           Next
         </button>
       </div>
+
+      {itemToDelete && (
+        <ConfirmDialog
+          title="Delete log permanently?"
+          description="This action cannot be undone."
+          confirmText="Delete"
+          isLoading={isPending}
+          onConfirm={handleDelete}
+          onCancel={() => setItemToDelete(null)}
+        />
+      )}
     </div>
   )
 }
