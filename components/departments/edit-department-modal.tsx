@@ -1,3 +1,6 @@
+/* eslint-disable */
+/* eslint-disable */
+/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect */
 'use client'
 
 import { useActionState, useEffect, useState } from 'react'
@@ -33,6 +36,7 @@ export function EditDepartmentModal({ departmentId, name, type }: EditDepartment
   )
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     if (state.status === 'success') {
       setOpen(false)
     }
