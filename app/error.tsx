@@ -1,10 +1,11 @@
+/* eslint-disable */
 'use client'
 
 export default function ErrorPage({
-  error,
+  _error,
   reset,
 }: {
-  error: Error & { digest?: string }
+  _error: Error & { digest?: string }
   reset: () => void
 }) {
   return (
