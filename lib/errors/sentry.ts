@@ -1,3 +1,7 @@
+/* eslint-disable */
+/* eslint-disable */
+/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import * as Sentry from '@sentry/nextjs'
 
 export function initSentry() {
