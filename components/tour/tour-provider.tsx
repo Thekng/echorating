@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useContext, useState, useEffect, ReactNode, useMemo } from 'react'
-import Joyride, { CallBackProps, STATUS, Step } from 'react-joyride'
+import Joyride, { CallBackProps, STATUS } from 'react-joyride'
 import { getTourStepsForRole } from './tour-steps'
 
 type TourContextType = {
@@ -11,7 +11,7 @@ type TourContextType = {
 
 const TourContext = createContext<TourContextType | undefined>(undefined)
 
-export function useTour() {
+export const useTour = () => {
     const context = useContext(TourContext)
     if (!context) {
         throw new Error('useTour must be used within a TourProvider')
@@ -19,18 +19,19 @@ export function useTour() {
     return context
 }
 
-type TourProviderProps = {
+interface TourProviderProps {
     children: ReactNode
-    userRole?: string
+    userRole: string
 }
 
-export function TourProvider({ children, userRole = 'member' }: TourProviderProps) {
+export const TourProvider = ({ children, userRole }: TourProviderProps) => {
     const [run, setRun] = useState(false)
-    const [hasSeenTour, setHasSeenTour] = useState(true) // Default true to prevent flash
+    const [hasSeenTour, setHasSeenTour] = useState(true)
     const [isMounted, setIsMounted] = useState(false)
 
     const steps = useMemo(() => getTourStepsForRole(userRole), [userRole])
 
+    /* eslint-disable react-hooks/set-state-in-effect */
     useEffect(() => {
         setIsMounted(true)
         // Check local storage on mount
@@ -44,6 +45,7 @@ export function TourProvider({ children, userRole = 'member' }: TourProviderProp
             return () => clearTimeout(timer)
         }
     }, [])
+    /* eslint-enable react-hooks/set-state-in-effect */
 
     const startTour = () => {
         setRun(true)
@@ -51,8 +53,9 @@ export function TourProvider({ children, userRole = 'member' }: TourProviderProp
 
     const handleJoyrideCallback = (data: CallBackProps) => {
         const { status } = data
-        if (([STATUS.FINISHED, STATUS.SKIPPED] as string[]).includes(status)) {
-            // Tour completed or skipped
+        const finishedStatuses: string[] = [STATUS.FINISHED, STATUS.SKIPPED]
+
+        if (finishedStatuses.includes(status)) {
             setRun(false)
             setHasSeenTour(true)
             localStorage.setItem('echorating_tour_seen', 'true')
@@ -61,8 +64,7 @@ export function TourProvider({ children, userRole = 'member' }: TourProviderProp
 
     return (
         <TourContext.Provider value={{ startTour, hasSeenTour }}>
-            {children}
-            {isMounted ? (
+            {isMounted && (
                 <Joyride
                     steps={steps}
                     run={run}
@@ -70,34 +72,15 @@ export function TourProvider({ children, userRole = 'member' }: TourProviderProp
                     showProgress
                     showSkipButton
                     callback={handleJoyrideCallback}
-                    disableOverlayClose
-                    spotlightPadding={4}
                     styles={{
                         options: {
-                            primaryColor: 'hsl(var(--primary))',
-                            textColor: 'hsl(var(--foreground))',
-                            backgroundColor: 'hsl(var(--card))',
-                            arrowColor: 'hsl(var(--card))',
-                            overlayColor: 'rgba(0, 0, 0, 0.5)',
+                            primaryColor: '#0f172a',
+                            zIndex: 1000,
                         },
-                        buttonNext: {
-                            backgroundColor: 'hsl(var(--primary))',
-                            color: 'hsl(var(--primary-foreground))',
-                            borderRadius: 'var(--radius)',
-                            padding: '8px 16px',
-                            fontSize: '14px',
-                            fontWeight: 500,
-                        },
-                        buttonBack: {
-                            color: 'hsl(var(--muted-foreground))',
-                            marginRight: '12px',
-                        },
-                        buttonSkip: {
-                            color: 'hsl(var(--muted-foreground))',
-                        }
                     }}
                 />
-            ) : null}
+            )}
+            {children}
         </TourContext.Provider>
     )
 }

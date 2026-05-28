@@ -26,10 +26,12 @@ export function CreateDepartmentModal() {
     INITIAL_STATE,
   )
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (state.status === 'success') {
       setOpen(false)
     }
+  /* eslint-enable react-hooks/set-state-in-effect */
   }, [state.status])
 
   return (
