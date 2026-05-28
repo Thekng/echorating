@@ -62,24 +62,24 @@ export const TourProvider = ({ children, userRole }: TourProviderProps) => {
         }
     }
 
-    if (!isMounted) return <>{children}</>
-
     return (
         <TourContext.Provider value={{ startTour, hasSeenTour }}>
-            <Joyride
-                steps={steps}
-                run={run}
-                continuous
-                showProgress
-                showSkipButton
-                callback={handleJoyrideCallback}
-                styles={{
-                    options: {
-                        primaryColor: '#0f172a',
-                        zIndex: 1000,
-                    },
-                }}
-            />
+            {isMounted && (
+                <Joyride
+                    steps={steps}
+                    run={run}
+                    continuous
+                    showProgress
+                    showSkipButton
+                    callback={handleJoyrideCallback}
+                    styles={{
+                        options: {
+                            primaryColor: '#0f172a',
+                            zIndex: 1000,
+                        },
+                    }}
+                />
+            )}
             {children}
         </TourContext.Provider>
     )
