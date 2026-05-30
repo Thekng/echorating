@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { type SupabaseClient } from '@supabase/supabase-js'
 import { parseDurationToSeconds, formatSecondsToDuration } from '@/lib/daily-log/value-parser'
 
 /**
@@ -61,7 +62,7 @@ export class TimeEntryVersionControl {
    * @throws Error if version mismatch (another user edited the entry)
    */
   static async updateTimeValue(
-    supabase: any,
+    supabase: SupabaseClient,
     entryId: string,
     metricId: string,
     timeValue: number | null, // seconds or null
@@ -111,7 +112,7 @@ export class TimeEntryVersionControl {
    * Safely batch update multiple time values
    */
   static async updateMultipleTimeValues(
-    supabase: any,
+    supabase: SupabaseClient,
     entryId: string,
     updates: Array<{ metricId: string; timeValue: number | null }>
   ) {
@@ -216,7 +217,7 @@ export class ConflictResolution {
    * Detect if entry was modified since last fetch
    */
   static async detectConflict(
-    supabase: any,
+    supabase: SupabaseClient,
     entryId: string,
     lastKnownVersion: number
   ): Promise<boolean> {
@@ -233,7 +234,7 @@ export class ConflictResolution {
   /**
    * Fetch latest entry data for merge/refresh
    */
-  static async fetchLatestEntry(supabase: any, entryId: string) {
+  static async fetchLatestEntry(supabase: SupabaseClient, entryId: string) {
     const { data, error } = await supabase
       .from('daily_entries')
       .select(`
@@ -256,13 +257,15 @@ export class ConflictResolution {
    * Three-way merge strategy
    * merges conflicting changes if they're in different metrics
    */
-  static mergeEntries(local: any, remote: any, base: any): any {
+  static mergeEntries(local: Record<string, unknown>, remote: Record<string, unknown>, _base: unknown): Record<string, unknown> {
     const merged = { ...remote }
+    const localValues = (local.entry_values as Array<{ metric_id: string }>) || []
+    const remoteValues = (remote.entry_values as Array<{ metric_id: string }>) || []
 
     // If local edited a different metric than remote, keep both
-    for (const value of local.entry_values || []) {
-      const remoteValue = (remote.entry_values || []).find(
-        (v: any) => v.metric_id === value.metric_id
+    for (const value of localValues) {
+      const remoteValue = remoteValues.find(
+        (v) => v.metric_id === value.metric_id
       )
 
       if (!remoteValue) {
