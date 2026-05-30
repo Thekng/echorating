@@ -47,6 +47,7 @@ export function AgentsFilters({
   const [search, setSearch] = useState(q)
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     setSearch(q)
   }, [q])
 
