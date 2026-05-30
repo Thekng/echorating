@@ -34,6 +34,7 @@ export function EditDepartmentModal({ departmentId, name, type }: EditDepartment
 
   useEffect(() => {
     if (state.status === 'success') {
+      /* eslint-disable react-hooks/set-state-in-effect */
       setOpen(false)
     }
   }, [state.status])

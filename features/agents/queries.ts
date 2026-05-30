@@ -1,6 +1,6 @@
 'use server'
 
-import { getActorContext, type ActorContext } from '@/lib/supabase/actor-context'
+import { getActorContext } from '@/lib/supabase/actor-context'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireRole } from '@/lib/rbac/guards'
 import { type Role } from '@/lib/rbac/roles'
@@ -102,8 +102,6 @@ type AgentStats = {
   submittedDays: Set<string>
   lastEntryDate: string | null
 }
-
-type ViewerContext = ActorContext
 
 const RANKING_METRIC_TYPES: MetricDataType[] = ['number', 'currency', 'percent', 'duration', 'boolean']
 const PERIOD_ALIASES: Record<IncomingAgentsPeriod, AgentsPeriod> = {
