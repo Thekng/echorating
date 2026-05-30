@@ -257,23 +257,29 @@ export class ConflictResolution {
    * Three-way merge strategy
    * merges conflicting changes if they're in different metrics
    */
-  static mergeEntries(local: Record<string, unknown>, remote: Record<string, unknown>, _base: unknown): Record<string, unknown> {
-    const merged = { ...remote }
-    const localValues = (local.entry_values as Array<{ metric_id: string }>) || []
-    const remoteValues = (remote.entry_values as Array<{ metric_id: string }>) || []
+  static mergeEntries(
+    local: Record<string, unknown> & { entry_values?: Array<{ metric_id: string }> },
+    remote: Record<string, unknown> & { entry_values?: Array<{ metric_id: string }> },
+    _base: unknown
+  ): Record<string, unknown> {
+    const mergedEntryValues = [...(remote.entry_values || [])]
+    const localValues = local.entry_values || []
 
     // If local edited a different metric than remote, keep both
     for (const value of localValues) {
-      const remoteValue = remoteValues.find(
+      const remoteValue = mergedEntryValues.find(
         (v) => v.metric_id === value.metric_id
       )
 
       if (!remoteValue) {
         // Metric only exists locally, add it
-        merged.entry_values = [...(merged.entry_values || []), value]
+        mergedEntryValues.push(value)
       }
     }
 
-    return merged
+    return {
+      ...remote,
+      entry_values: mergedEntryValues,
+    }
   }
 }

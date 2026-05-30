@@ -138,7 +138,6 @@ export default function MembersSettingsPage() {
   }
 
   useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect */
     fetchMembers(queryFilters)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryFilters.q, queryFilters.role, queryFilters.status])

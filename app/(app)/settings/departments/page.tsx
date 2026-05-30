@@ -100,7 +100,6 @@ export default function DepartmentsSettingsPage() {
   }
 
   useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect */
     fetchDepartments()
   }, [])
 
