@@ -13,6 +13,7 @@ import { SettingsSurface } from '@/components/settings/settings-surface'
 import { SettingsEmptyState } from '@/components/settings/settings-empty-state'
 import { SettingsError } from '@/components/settings/settings-error'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { formatDateShort } from '@/lib/utils'
 import { FolderKanban, Pencil, Plus, Trash2 } from 'lucide-react'
 
@@ -60,13 +61,13 @@ export default function DepartmentsSettingsPage() {
 
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [editingDepartment, setEditingDepartment] = useState<Department | null>(null)
+  const [deletingDepartment, setDeletingDepartment] = useState<Department | null>(null)
 
   const [createState, setCreateState] = useState<DepartmentActionState>(INITIAL_ACTION_STATE)
   const [updateState, setUpdateState] = useState<DepartmentActionState>(INITIAL_ACTION_STATE)
 
   const [pendingCreate, startCreateTransition] = useTransition()
   const [pendingUpdate, startUpdateTransition] = useTransition()
-  const [pendingDeleteDepartmentId, setPendingDeleteDepartmentId] = useState<string | null>(null)
   const [isDeleting, startDeleteTransition] = useTransition()
 
   const activeDepartments = useMemo(
@@ -151,28 +152,22 @@ export default function DepartmentsSettingsPage() {
     })
   }
 
-  function handleDeleteDepartment(department: Department) {
-    const confirmed = window.confirm(
-      `Delete "${department.name}"? This will also deactivate its metrics, targets, and member assignments.`,
-    )
-    if (!confirmed) {
-      return
-    }
-
-    setPendingDeleteDepartmentId(department.department_id)
+  function handleDeleteConfirm() {
+    if (!deletingDepartment) return
     startDeleteTransition(async () => {
-      const formData = new FormData()
-      formData.set('departmentId', department.department_id)
-      const result = await deleteDepartmentAction(INITIAL_ACTION_STATE, formData)
-
-      if (result.status === 'success') {
-        setFeedback({ tone: 'success', message: result.message })
-        await fetchDepartments()
-      } else {
-        setFeedback({ tone: 'error', message: result.message })
+      try {
+        const formData = new FormData()
+        formData.set('departmentId', deletingDepartment.department_id)
+        const result = await deleteDepartmentAction(INITIAL_ACTION_STATE, formData)
+        if (result.status === 'success') {
+          setFeedback({ tone: 'success', message: result.message })
+          await fetchDepartments()
+        } else {
+          setFeedback({ tone: 'error', message: result.message })
+        }
+      } finally {
+        setDeletingDepartment(null)
       }
-
-      setPendingDeleteDepartmentId(null)
     })
   }
 
@@ -275,10 +270,7 @@ export default function DepartmentsSettingsPage() {
                         title={`Delete ${department.name}`}
                         aria-label={`Delete ${department.name}`}
                         className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                        onClick={() => handleDeleteDepartment(department)}
-                        disabled={
-                          isDeleting && pendingDeleteDepartmentId === department.department_id
-                        }
+                        onClick={() => setDeletingDepartment(department)}
                       >
                         <Trash2 className="size-4" />
                       </Button>
@@ -453,6 +445,17 @@ export default function DepartmentsSettingsPage() {
           </div>
         </div>
       ) : null}
+
+      {deletingDepartment && (
+        <ConfirmDialog
+          title={`Delete "${deletingDepartment.name}"?`}
+          description="This will also deactivate its metrics, targets, and member assignments. This action cannot be undone."
+          confirmText="Delete Department"
+          onConfirm={handleDeleteConfirm}
+          onCancel={() => setDeletingDepartment(null)}
+          isLoading={isDeleting}
+        />
+      )}
     </div>
   )
 }
