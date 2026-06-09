@@ -1,0 +1,3 @@
+## 2025-05-15 - Accessible Asynchronous Confirmation Dialogs
+**Learning:** Using `window.confirm` is simple but lacks accessibility, styling consistency, and support for loading states. A custom `ConfirmDialog` using ARIA roles (`alertdialog`), auto-focus on the primary action, and 'Escape' key support provides a much better experience.
+**Action:** When implementing destructive actions, use the `ConfirmDialog` component. Wrap the server action in `useTransition` and pass the `pending` state to the dialog's `isLoading` prop to provide visual feedback and prevent accidental multiple submissions. Ensure the dialog is dismissed in the `finally` block or after the transition completes.
