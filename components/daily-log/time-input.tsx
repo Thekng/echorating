@@ -51,14 +51,16 @@ export function TimeInput({
   // Initialize display value
   useEffect(() => {
     if (value) {
+      /* eslint-disable react-hooks/set-state-in-effect */
       setDisplayValue(value)
     } else {
       setDisplayValue('')
+      /* eslint-enable react-hooks/set-state-in-effect */
     }
   }, [value])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let input = e.target.value
+    const input = e.target.value
 
     // Allow clearing the field
     if (input === '') {
