@@ -64,18 +64,18 @@ export function InviteAcceptForm({ invitationId, companyName, role, isExistingUs
 
       const supabase = createClient()
       const { data: memberships, error: membershipsError } = await supabase
-        .from('company_members')
-        .select('company_id')
+        .from('organization_members')
+        .select('organization_id')
         .eq('user_id', (await supabase.auth.getUser()).data.user?.id ?? '')
 
       if (membershipsError) {
         setStatus('error')
-        setMessage('Invitation accepted, but we could not load your company memberships.')
+        setMessage('Invitation accepted, but we could not load your organization memberships.')
         return
       }
 
       if ((memberships?.length ?? 0) > 1) {
-        router.push('/select-company')
+        router.push('/select-organization')
         return
       }
 

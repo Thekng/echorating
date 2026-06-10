@@ -191,11 +191,10 @@ async function getDepartmentAgents(
   }
 
   const { data: membershipsData, error: companyMembershipsError } = await admin
-    .from('company_members')
-    .select('user_id, role, profiles!inner(name)')
-    .eq('company_id', companyId)
+    .from('organization_members')
+    .select('user_id, role, profiles!inner(full_name)')
+    .eq('organization_id', companyId)
     .in('user_id', userIds)
-    .eq('is_active', true)
 
   if (companyMembershipsError) {
     return {
@@ -208,16 +207,16 @@ async function getDepartmentAgents(
   const agents = ((membershipsData ?? []) as Array<{
     user_id: string
     role: string
-    profiles: { name?: string } | Array<{ name?: string }> | null
+    profiles: { full_name?: string | null } | Array<{ full_name?: string | null }> | null
   }>)
     .map((membership) => {
       const profile = Array.isArray(membership.profiles) ? membership.profiles[0] : membership.profiles
       return {
         user_id: membership.user_id,
-        role: (membership.role === 'owner' || membership.role === 'manager' || membership.role === 'member'
+        role: (membership.role === 'owner' || membership.role === 'admin' || membership.role === 'manager' || membership.role === 'member'
           ? membership.role
           : 'member') as DailyLogAgentOption['role'],
-        name: profile?.name ?? 'Unknown agent',
+        name: profile?.full_name ?? 'Unknown agent',
       }
     })
     .sort((a, b) => a.name.localeCompare(b.name))
@@ -420,11 +419,10 @@ async function getRecentLogs(
   const keyMetricIds = keyMetrics.map((metric) => metric.metric_id)
 
   const { data: profilesData, error: profilesError } = await admin
-    .from('company_members')
-    .select('user_id, profiles!inner(name)')
-    .eq('company_id', companyId)
+    .from('organization_members')
+    .select('user_id, profiles!inner(full_name)')
+    .eq('organization_id', companyId)
     .in('user_id', userIds)
-    .eq('is_active', true)
 
   if (profilesError) {
       return {
@@ -438,10 +436,10 @@ async function getRecentLogs(
   const nameByUserId = new Map(
     ((profilesData ?? []) as Array<{
       user_id: string
-      profiles: { name?: string } | Array<{ name?: string }> | null
+      profiles: { full_name?: string | null } | Array<{ full_name?: string | null }> | null
     }>).map((profile) => {
       const related = Array.isArray(profile.profiles) ? profile.profiles[0] : profile.profiles
-      return [profile.user_id, related?.name ?? 'Unknown agent'] as const
+      return [profile.user_id, related?.full_name ?? 'Unknown agent'] as const
     }),
   )
 
@@ -584,7 +582,7 @@ export async function getDailyLogFormData(rawFilters?: {
 
   let agentOptions: DailyLogAgentOption[] = []
   let selectedUserId = context.userId
-  let canManageSelectedDepartment = context.role === 'owner' || context.role === 'manager'
+  let canManageSelectedDepartment = context.role === 'owner' || context.role === 'admin' || context.role === 'manager'
 
   if (!canManageSelectedDepartment) {
     const { data: viewerDepartmentMembership } = await context.admin

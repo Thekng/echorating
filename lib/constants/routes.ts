@@ -4,11 +4,12 @@ export const ROUTES = {
   SIGNUP: '/signup',
   RESET_PASSWORD: '/reset-password',
   VERIFY_EMAIL: '/verify-email',
+  UNAUTHORIZED: '/unauthorized',
 
   // Onboarding
   ONBOARDING: '/onboarding',
   ONBOARDING_COMPANY: '/onboarding/company',
-  SELECT_COMPANY: '/select-company',
+  SELECT_ORGANIZATION: '/select-organization',
 
   // App
   DASHBOARD: '/dashboard',

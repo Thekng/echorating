@@ -1,174 +1,69 @@
-import { DashboardFilters } from '@/components/dashboard/dashboard-filters'
-import { DashboardInteractive } from '@/components/dashboard/dashboard-interactive'
-import { AnalyticsLineChart } from '@/components/charts/analytics-line-chart'
-import { getDashboardData } from '@/features/dashboard/queries'
-import Link from 'next/link'
-import { Trophy } from 'lucide-react'
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { getSessionClaims } from '@/lib/supabase/session-claims'
+import { redirect } from 'next/navigation'
+import { ROUTES } from '@/lib/constants/routes'
 
-type DashboardPageProps = {
-  searchParams: Promise<{
-    departmentId?: string
-    userId?: string
-    period?: 'today' | 'yesterday' | 'current_week' | 'this_month' | 'last_week' | 'last_month' | 'custom' | 'last_7_days' | 'last_30_days' | 'last_90_days' | 'this_week'
-    startDate?: string
-    endDate?: string
-    metricId?: string
-  }>
-}
-
-import { Suspense } from 'react'
-
-function DashboardSkeleton() {
-  return (
-    <div className="space-y-4">
-      <div className="flex gap-2.5 overflow-x-hidden">
-        {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="min-w-[180px] shrink-0 rounded-lg border bg-card p-3">
-            <div className="mb-2 flex justify-between">
-              <div className="h-4 w-4 rounded bg-muted animate-pulse" />
-              <div className="h-4 w-10 rounded-full bg-muted animate-pulse" />
-            </div>
-            <div className="mt-2 h-7 w-20 rounded bg-muted animate-pulse" />
-            <div className="mt-1.5 h-3 w-24 rounded bg-muted/60 animate-pulse" />
-          </div>
-        ))}
-      </div>
-      <div className="h-[210px] w-full rounded-xl border bg-card/50 animate-pulse" />
-    </div>
-  )
-}
-
-async function DashboardContent({
-  departmentId,
-  userId,
-  period,
-  startDate,
-  endDate,
-  metricId,
-}: {
-  departmentId?: string
-  userId?: string
-  period?: 'today' | 'yesterday' | 'current_week' | 'this_month' | 'last_week' | 'last_month' | 'custom' | 'last_7_days' | 'last_30_days' | 'last_90_days' | 'this_week'
-  startDate?: string
-  endDate?: string
-  metricId?: string
-}) {
-  const result = await getDashboardData({
-    departmentId,
-    userId,
-    period,
-    startDate,
-    endDate,
-    metricId,
-  })
-
-  if (!result.success || !result.data) {
-    return (
-      <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
-        {result.error}
-      </div>
-    )
-  }
-
+export default async function DashboardPage() {
+  const supabase = await createClient()
   const {
-    departments,
-    selectedDepartmentId,
-    agents,
-    selectedUserId,
-    period: resolvedPeriod,
-    startDate: resolvedStartDate,
-    endDate: resolvedEndDate,
-    paceTotalUnits,
-    paceElapsedUnits,
-    paceUnitLabel,
-    kpis,
-    stats,
-    series,
-  } = result.data
+    data: { user },
+  } = await supabase.auth.getUser()
 
-  if (departments.length === 0) {
-    return (
-      <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-        No team available for your profile. Ask a manager to assign you to one.
-      </div>
-    )
+  if (!user) {
+    redirect(ROUTES.LOGIN)
   }
 
-  return (
-    <div className="space-y-4">
-      <DashboardFilters
-        departments={departments}
-        selectedDepartmentId={selectedDepartmentId}
-        agents={agents}
-        selectedUserId={selectedUserId}
-        period={resolvedPeriod}
-        startDate={resolvedStartDate}
-        endDate={resolvedEndDate}
-      />
+  const claims = getSessionClaims(user)
 
-      {kpis.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-          No active stats found for this team. Configure stats in Settings first.
-        </div>
-      ) : (
-        <>
-          <DashboardInteractive
-            kpis={kpis}
-            submittedLogs={stats.submitted_logs}
-            paceTotalUnits={paceTotalUnits}
-            paceElapsedUnits={paceElapsedUnits}
-            paceUnitLabel={paceUnitLabel}
-            selectedMetricId={metricId}
-          />
-          <AnalyticsLineChart
-            series={series}
-            startDate={resolvedStartDate}
-            endDate={resolvedEndDate}
-            title="Daily Performance"
-          />
-        </>
-      )}
-    </div>
-  )
-}
+  if (!claims.active_organization_id) {
+    redirect(ROUTES.ONBOARDING_COMPANY)
+  }
 
-export default async function DashboardPage({ searchParams }: DashboardPageProps) {
-  const params = await searchParams
+  const admin = createAdminClient()
+
+  const [{ data: profile }, { data: organization }] = await Promise.all([
+    admin.from('profiles').select('full_name').eq('id', user.id).maybeSingle(),
+    admin
+      .from('organizations')
+      .select('name')
+      .eq('id', claims.active_organization_id)
+      .maybeSingle(),
+  ])
+
+  const userName = profile?.full_name ?? user.email ?? 'User'
+  const orgName = organization?.name ?? 'Unknown'
+  const role = claims.active_role ?? 'member'
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Dashboard</h1>
-          <p className="text-xs text-muted-foreground md:text-sm">Performance overview by team and period.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link
-            href="/leaderboard"
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-input bg-background px-4 text-sm font-medium transition-colors hover:bg-muted"
-          >
-            <Trophy className="size-4 text-amber-500" />
-            <span className="hidden sm:inline">Leaderboard</span>
-          </Link>
-          <Link
-            href="/daily-log"
-            className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-          >
-            Add Daily Log
-          </Link>
-        </div>
-      </div>
+    <main className="mx-auto w-full max-w-2xl p-6 md:p-10">
+      <section className="rounded-xl border bg-card p-6 text-card-foreground shadow-sm">
+        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Welcome back, {userName}.
+        </p>
 
-      <Suspense fallback={<DashboardSkeleton />}>
-        <DashboardContent
-          departmentId={params.departmentId}
-          userId={params.userId}
-          period={params.period}
-          startDate={params.startDate}
-          endDate={params.endDate}
-          metricId={params.metricId}
-        />
-      </Suspense>
-    </div>
+        <dl className="mt-6 space-y-4">
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Organization
+            </dt>
+            <dd className="mt-1 text-sm">{orgName}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Your Role
+            </dt>
+            <dd className="mt-1 text-sm capitalize">{role}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Email
+            </dt>
+            <dd className="mt-1 text-sm">{user.email}</dd>
+          </div>
+        </dl>
+      </section>
+    </main>
   )
 }

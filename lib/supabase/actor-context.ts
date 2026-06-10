@@ -13,6 +13,8 @@ export type ActorContextSuccess = {
   ok: true
   admin: ReturnType<typeof createAdminClient>
   userId: string
+  organizationId: string
+  /** @deprecated Use organizationId instead. Kept for backward compatibility with legacy feature files. */
   companyId: string
   role: Role
 }
@@ -37,15 +39,15 @@ export async function getActorContext(): Promise<ActorContext> {
 
   const claims = getSessionClaims(user)
 
-  if (!claims.active_company_id) {
-    return { ok: false, message: 'No active company. Complete onboarding or select a company.' }
+  if (!claims.active_organization_id) {
+    return { ok: false, message: 'No active organization. Complete onboarding or select an organization.' }
   }
 
   const { data: membership, error: membershipError } = await admin
-    .from('company_members')
-    .select('role, is_active')
+    .from('organization_members')
+    .select('role')
     .eq('user_id', user.id)
-    .eq('company_id', claims.active_company_id)
+    .eq('organization_id', claims.active_organization_id)
     .maybeSingle()
 
   if (membershipError) {
@@ -53,18 +55,15 @@ export async function getActorContext(): Promise<ActorContext> {
   }
 
   if (!membership || !isRole(membership.role)) {
-    return { ok: false, message: 'Active company membership not found.' }
-  }
-
-  if (membership.is_active === false) {
-    return { ok: false, message: 'Your membership has been deactivated.' }
+    return { ok: false, message: 'Active organization membership not found.' }
   }
 
   return {
     ok: true,
     admin,
     userId: user.id,
-    companyId: claims.active_company_id,
+    organizationId: claims.active_organization_id,
+    companyId: claims.active_organization_id,
     role: membership.role,
   }
 }

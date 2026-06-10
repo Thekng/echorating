@@ -2,21 +2,21 @@ import { createAdminClient } from './admin'
 import { type Role, isRole } from '@/lib/rbac/roles'
 
 export type SessionClaims = {
-  active_company_id: string | null
+  active_organization_id: string | null
   active_role: Role | null
 }
 
 type MembershipRow = {
-  company_id: string
+  organization_id: string
   role: Role
 }
 
 function pickActiveMembership(
   memberships: MembershipRow[],
-  preferredCompanyId: string | null,
+  preferredOrganizationId: string | null,
 ): MembershipRow | null {
-  if (preferredCompanyId) {
-    const preferred = memberships.find((membership) => membership.company_id === preferredCompanyId)
+  if (preferredOrganizationId) {
+    const preferred = memberships.find((membership) => membership.organization_id === preferredOrganizationId)
     if (preferred) {
       return preferred
     }
@@ -31,7 +31,7 @@ function pickActiveMembership(
 
 export async function syncSessionClaims(
   userId: string,
-  companyId: string | null = null,
+  organizationId: string | null = null,
   _role: Role | null = null,
 ) {
   const admin = createAdminClient()
@@ -39,10 +39,9 @@ export async function syncSessionClaims(
     await Promise.all([
       admin.auth.admin.getUserById(userId),
       admin
-        .from('company_members')
-        .select('company_id, role')
-        .eq('user_id', userId)
-        .eq('is_active', true),
+        .from('organization_members')
+        .select('organization_id, role')
+        .eq('user_id', userId),
     ])
 
   if (userError) {
@@ -60,19 +59,19 @@ export async function syncSessionClaims(
   })
 
   const activeMembership = pickActiveMembership(
-    ((memberships ?? []) as Array<{ company_id: string; role: unknown }>)
-      .filter((membership): membership is { company_id: string; role: Role } => isRole(membership.role))
+    ((memberships ?? []) as Array<{ organization_id: string; role: unknown }>)
+      .filter((membership): membership is { organization_id: string; role: Role } => isRole(membership.role))
       .map((membership) => ({
-        company_id: membership.company_id,
+        organization_id: membership.organization_id,
         role: membership.role,
       })),
-    companyId ?? existingClaims.active_company_id,
+    organizationId ?? existingClaims.active_organization_id,
   )
 
   const { error } = await admin.auth.admin.updateUserById(userId, {
     app_metadata: {
       ...((userResult.user?.app_metadata as Record<string, unknown> | undefined) ?? {}),
-      active_company_id: activeMembership?.company_id ?? null,
+      active_organization_id: activeMembership?.organization_id ?? null,
       active_role: activeMembership?.role ?? null,
     },
   })
@@ -85,11 +84,11 @@ export async function syncSessionClaims(
 export function getSessionClaims(user: { app_metadata?: Record<string, unknown> }): SessionClaims {
   const meta = user.app_metadata ?? {}
   return {
-    active_company_id: typeof meta.active_company_id === 'string' ? meta.active_company_id : null,
+    active_organization_id: typeof meta.active_organization_id === 'string' ? meta.active_organization_id : null,
     active_role: isValidRole(meta.active_role) ? meta.active_role : null,
   }
 }
 
 function isValidRole(value: unknown): value is Role {
-  return value === 'owner' || value === 'manager' || value === 'member'
+  return value === 'owner' || value === 'admin' || value === 'manager' || value === 'member'
 }

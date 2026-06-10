@@ -25,7 +25,7 @@ export type DailyLogExistingEntry = {
 export type DailyLogAgentOption = {
   user_id: string
   name: string
-  role: 'owner' | 'manager' | 'member'
+  role: 'owner' | 'admin' | 'manager' | 'member'
 }
 
 export type DailyLogKeyMetricSlot = {

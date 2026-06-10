@@ -23,30 +23,29 @@ async function getSidebarData() {
 
   const claims = getSessionClaims(user)
 
-  if (!claims.active_company_id) {
+  if (!claims.active_organization_id) {
     return { name: null, role: 'member' }
   }
 
   const { data: membership } = await admin
-    .from('company_members')
+    .from('organization_members')
     .select('role')
     .eq('user_id', user.id)
-    .eq('company_id', claims.active_company_id)
-    .eq('is_active', true)
+    .eq('organization_id', claims.active_organization_id)
     .maybeSingle()
 
   if (!membership?.role) {
     return { name: null, role: 'member' }
   }
 
-  const { data: company } = await admin
-    .from('companies')
+  const { data: organization } = await admin
+    .from('organizations')
     .select('name')
-    .eq('company_id', claims.active_company_id)
+    .eq('id', claims.active_organization_id)
     .maybeSingle()
 
   return {
-    name: typeof company?.name === 'string' ? company.name : null,
+    name: typeof organization?.name === 'string' ? organization.name : null,
     role: membership.role || 'member'
   }
 }

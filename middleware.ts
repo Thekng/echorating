@@ -10,7 +10,7 @@ const protectedRoutes = [
   ROUTES.DAILY_LOG,
   ROUTES.LEADERBOARD,
   ROUTES.ONBOARDING,
-  ROUTES.SELECT_COMPANY,
+  ROUTES.SELECT_ORGANIZATION,
 ]
 
 const appRoutes = [
@@ -110,22 +110,22 @@ export async function middleware(request: NextRequest) {
   }
 
   if (user && (isAppRoute || isOnboardingRoute || Boolean(roleRule))) {
-    const companyId = typeof user.app_metadata?.active_company_id === 'string'
-      ? user.app_metadata.active_company_id
+    const organizationId = typeof user.app_metadata?.active_organization_id === 'string'
+      ? user.app_metadata.active_organization_id
       : null
     const role = isRole(user.app_metadata?.active_role)
       ? user.app_metadata.active_role
       : null
-    const hasCompany = Boolean(companyId)
+    const hasOrganization = Boolean(organizationId)
 
-    if (isAppRoute && !hasCompany) {
+    if (isAppRoute && !hasOrganization) {
       const onboardingUrl = request.nextUrl.clone()
       onboardingUrl.pathname = ROUTES.ONBOARDING_COMPANY
       onboardingUrl.search = ''
       return withResponseCookies(NextResponse.redirect(onboardingUrl), response)
     }
 
-    if (isOnboardingRoute && hasCompany) {
+    if (isOnboardingRoute && hasOrganization) {
       const dashboardUrl = request.nextUrl.clone()
       dashboardUrl.pathname = ROUTES.DASHBOARD
       dashboardUrl.search = ''
@@ -133,10 +133,10 @@ export async function middleware(request: NextRequest) {
     }
 
     if (roleRule && (!role || !hasPermission(role, roleRule.minRole))) {
-      const dashboardUrl = request.nextUrl.clone()
-      dashboardUrl.pathname = ROUTES.DASHBOARD
-      dashboardUrl.search = ''
-      return withResponseCookies(NextResponse.redirect(dashboardUrl), response)
+      const unauthorizedUrl = request.nextUrl.clone()
+      unauthorizedUrl.pathname = ROUTES.UNAUTHORIZED
+      unauthorizedUrl.search = ''
+      return withResponseCookies(NextResponse.redirect(unauthorizedUrl), response)
     }
   }
 

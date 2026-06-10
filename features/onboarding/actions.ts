@@ -28,9 +28,10 @@ export async function completeOnboardingAction(
   formData: FormData,
 ): Promise<OnboardingActionState> {
   const parsed = onboardingSchema.safeParse({
-    companyName: field(formData, 'companyName'),
+    organizationName: field(formData, 'organizationName'),
+    slug: field(formData, 'slug'),
     industry: field(formData, 'industry'),
-    teamSize: field(formData, 'teamSize'),
+    locationName: field(formData, 'locationName'),
     timezone: field(formData, 'timezone'),
   })
 
@@ -57,42 +58,37 @@ export async function completeOnboardingAction(
 
   const admin = createAdminClient()
 
-  const profileName =
-    typeof user.user_metadata?.name === 'string' && user.user_metadata.name.trim()
-      ? user.user_metadata.name
-      : user.email ?? 'User'
-
-  const { data: companyId, error: provisionError } = await admin.rpc(
-    'provision_workspace',
+  const { data: organizationId, error: provisionError } = await admin.rpc(
+    'provision_organization',
     {
       p_user_id: user.id,
-      p_user_name: profileName,
-      p_company_name: parsed.data.companyName,
+      p_name: parsed.data.organizationName,
+      p_slug: parsed.data.slug,
       p_timezone: parsed.data.timezone,
       p_industry: parsed.data.industry,
-      p_team_size: parsed.data.teamSize,
+      p_location_name: parsed.data.locationName,
     },
   )
 
   if (provisionError) {
-    const missingRpc = provisionError.message.includes('provision_workspace')
+    const missingRpc = provisionError.message.includes('provision_organization')
 
     if (missingRpc) {
       return {
         status: 'error',
         message:
-          'Database migration missing: run 2026-04-17_provision_workspace.sql in Supabase.',
+          'Database migration missing: run the Phase 2 migration in Supabase.',
       }
     }
 
     return { status: 'error', message: formatDatabaseError(provisionError.message) }
   }
 
-  if (!companyId) {
-    return { status: 'error', message: 'Company creation failed.' }
+  if (!organizationId) {
+    return { status: 'error', message: 'Organization creation failed.' }
   }
 
-  await syncSessionClaims(user.id, companyId, 'owner')
+  await syncSessionClaims(user.id, organizationId, 'owner')
 
   redirect(ROUTES.DASHBOARD)
 }

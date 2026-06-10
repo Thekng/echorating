@@ -87,11 +87,10 @@ async function isUserInDepartment(
   userId: string,
 ) {
   const { data: membership, error: membershipError } = await admin
-    .from('company_members')
+    .from('organization_members')
     .select('user_id')
     .eq('user_id', userId)
-    .eq('company_id', companyId)
-    .eq('is_active', true)
+    .eq('organization_id', companyId)
     .maybeSingle()
 
   if (membershipError) {
@@ -99,7 +98,7 @@ async function isUserInDepartment(
   }
 
   if (!membership) {
-    return { ok: false as const, message: 'Agent not found in company.' }
+    return { ok: false as const, message: 'Agent not found in organization.' }
   }
 
   const { data: departmentMembership, error: departmentMembershipError } = await admin
@@ -170,7 +169,7 @@ async function resolveDailyLogTarget(
     return { ok: true as const, message: '', targetUserId }
   }
 
-  if (viewerRole === 'owner' || viewerRole === 'manager') {
+  if (viewerRole === 'owner' || viewerRole === 'admin' || viewerRole === 'manager') {
     const targetValidation = await isUserInDepartment(admin, companyId, departmentId, targetUserId)
     if (!targetValidation.ok) {
       return {
@@ -839,7 +838,7 @@ export async function updateDepartmentLogKeyMetricsAction(
     }
   }
 
-  if (context.role !== 'owner' && context.role !== 'manager') {
+  if (context.role !== 'owner' && context.role !== 'admin' && context.role !== 'manager') {
     const viewerDepartmentRole = await getViewerDepartmentRole(
       context.admin,
       parsed.data.departmentId,

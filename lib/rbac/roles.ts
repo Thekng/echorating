@@ -1,7 +1,8 @@
-export type Role = 'owner' | 'manager' | 'member'
+export type Role = 'owner' | 'admin' | 'manager' | 'member'
 
 export const roleHierarchy: Record<Role, number> = {
-  owner: 3,
+  owner: 4,
+  admin: 3,
   manager: 2,
   member: 1,
 }
@@ -11,5 +12,5 @@ export function hasPermission(userRole: Role, requiredRole: Role): boolean {
 }
 
 export function isRole(value: unknown): value is Role {
-  return value === 'owner' || value === 'manager' || value === 'member'
+  return value === 'owner' || value === 'admin' || value === 'manager' || value === 'member'
 }

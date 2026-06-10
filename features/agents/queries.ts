@@ -28,8 +28,10 @@ type ProfileRow = {
 }
 
 type CompanyMemberProfileRelation = {
+  full_name?: string | null
   name?: string
 } | Array<{
+  full_name?: string | null
   name?: string
 }> | null
 
@@ -682,16 +684,12 @@ export async function getAgentsList(filters?: {
   const query = filters?.q?.trim() ?? ''
 
   let profilesQuery = context.admin
-    .from('company_members')
-    .select('user_id, role, is_active, profiles!inner(name)')
-    .eq('company_id', context.companyId)
+    .from('organization_members')
+    .select('user_id, role, profiles!inner(full_name)')
+    .eq('organization_id', context.organizationId)
 
   if (context.role === 'member') {
     profilesQuery = profilesQuery.eq('user_id', context.userId)
-  }
-
-  if (status !== 'all') {
-    profilesQuery = profilesQuery.eq('is_active', status === 'active')
   }
 
   const { data: profilesData, error: profilesError } = await profilesQuery
@@ -702,17 +700,20 @@ export async function getAgentsList(filters?: {
   let profiles = ((profilesData ?? []) as Array<{
     user_id: string
     role: Role
-    is_active: boolean
     profiles: CompanyMemberProfileRelation
   }>).map((row) => {
     const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles
     return {
       user_id: row.user_id,
-      name: profile?.name ?? 'Unknown user',
+      name: profile?.full_name ?? profile?.name ?? 'Unknown user',
       role: row.role,
-      is_active: row.is_active !== false,
+      is_active: true,
     }
   }) as ProfileRow[]
+
+  if (status === 'inactive') {
+    profiles = []
+  }
 
   if (query) {
     const loweredQuery = query.toLowerCase()
@@ -936,9 +937,9 @@ export async function getAgentProfile(
   }
 
   const { data: profileData, error: profileError } = await context.admin
-    .from('company_members')
-    .select('user_id, role, is_active, profiles!inner(name)')
-    .eq('company_id', context.companyId)
+    .from('organization_members')
+    .select('user_id, role, profiles!inner(full_name)')
+    .eq('organization_id', context.organizationId)
     .eq('user_id', userId)
     .maybeSingle()
 
@@ -953,9 +954,9 @@ export async function getAgentProfile(
   const relatedProfile = Array.isArray(profileData.profiles) ? profileData.profiles[0] : profileData.profiles
   const normalizedProfileData: ProfileRow = {
     user_id: profileData.user_id as string,
-    name: relatedProfile?.name ?? 'Unknown user',
+    name: (relatedProfile as { full_name?: string | null })?.full_name ?? 'Unknown user',
     role: profileData.role as Role,
-    is_active: profileData.is_active !== false,
+    is_active: true,
   }
 
   const departmentsResult = await getAccessibleDepartments(

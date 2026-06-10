@@ -27,22 +27,22 @@ export async function getCompanyDetails() {
   }
 
   const claims = getSessionClaims(user)
-  if (!claims.active_company_id) {
-    return { success: false, error: 'No active company selected.', data: null }
+  if (!claims.active_organization_id) {
+    return { success: false, error: 'No active organization selected.', data: null }
   }
 
   const [{ data: membership, error: membershipError }, { data: profile, error: profileError }] =
     await Promise.all([
       admin
-        .from('company_members')
-        .select('role, is_active')
+        .from('organization_members')
+        .select('role')
         .eq('user_id', user.id)
-        .eq('company_id', claims.active_company_id)
+        .eq('organization_id', claims.active_organization_id)
         .maybeSingle(),
       admin
         .from('profiles')
-        .select('name')
-        .eq('user_id', user.id)
+        .select('full_name')
+        .eq('id', user.id)
         .maybeSingle(),
     ])
 
@@ -54,30 +54,30 @@ export async function getCompanyDetails() {
     return { success: false, error: formatDatabaseError(profileError.message), data: null }
   }
 
-  if (!membership?.role || membership.is_active === false) {
-    return { success: false, error: 'Active company membership not found.', data: null }
+  if (!membership?.role) {
+    return { success: false, error: 'Active organization membership not found.', data: null }
   }
 
-  const { data: company, error: companyError } = await admin
-    .from('companies')
-    .select('company_id, name, timezone, is_active, created_at, updated_at, contact_email, owner_user_id')
-    .eq('company_id', claims.active_company_id)
+  const { data: organization, error: organizationError } = await admin
+    .from('organizations')
+    .select('id, name, timezone, status, created_at, updated_at')
+    .eq('id', claims.active_organization_id)
     .maybeSingle()
 
-  if (companyError) {
-    return { success: false, error: formatDatabaseError(companyError.message), data: null }
+  if (organizationError) {
+    return { success: false, error: formatDatabaseError(organizationError.message), data: null }
   }
 
-  if (!company) {
-    return { success: false, error: 'Company not found.', data: null }
+  if (!organization) {
+    return { success: false, error: 'Organization not found.', data: null }
   }
 
   return {
     success: true,
     data: {
-      company,
+      company: organization,
       role: membership.role,
-      profileName: profile?.name ?? null,
+      profileName: profile?.full_name ?? null,
     },
   }
 }
