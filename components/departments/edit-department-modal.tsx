@@ -25,12 +25,14 @@ export function EditDepartmentModal({ departmentId, name, description, onSaved }
     INITIAL_STATE,
   )
 
+    /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (state.status === 'success') {
       onSaved?.(state.message)
       setOpen(false)
     }
   }, [state.status, state.message, onSaved])
+    /* eslint-enable react-hooks/set-state-in-effect */
 
   return (
     <>

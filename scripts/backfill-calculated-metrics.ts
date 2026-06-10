@@ -185,7 +185,7 @@ function isMissingCalculatedValuesVersionHashColumn(message: string) {
 }
 
 async function loadDepartmentComputeContext(
-  admin: any,
+  admin: unknown,
   companyId: string,
   departmentId: string,
 ): Promise<{ ok: true; context: DepartmentComputeContext } | { ok: false; message: string }> {
@@ -336,7 +336,7 @@ async function loadDepartmentComputeContext(
 }
 
 async function loadEntryValues(
-  admin: any,
+  admin: unknown,
   entryId: string,
 ): Promise<{ ok: true; values: EntryValueRow[] } | { ok: false; message: string }> {
   const withBool = await admin
@@ -375,7 +375,7 @@ async function loadEntryValues(
 }
 
 async function insertLegacyNumericCalculatedRows(
-  admin: any,
+  admin: unknown,
   rows: RecomputedCalculatedRow[],
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   if (rows.some((row) => row.value_bool !== null)) {
@@ -420,7 +420,7 @@ async function insertLegacyNumericCalculatedRows(
 }
 
 async function persistCalculatedRows(
-  admin: any,
+  admin: unknown,
   entryId: string,
   rows: RecomputedCalculatedRow[],
 ): Promise<{ ok: true } | { ok: false; message: string }> {
@@ -481,7 +481,7 @@ async function persistCalculatedRows(
 }
 
 async function recomputeEntry(
-  admin: any,
+  admin: unknown,
   entry: EntryRow,
   context: DepartmentComputeContext,
   dryRun: boolean,

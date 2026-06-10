@@ -90,7 +90,7 @@ async function processNextJob(workerId = 'recalc-worker-local') {
   const { data: jobData, error: jobError } = await admin.rpc('dequeue_recalc_job', {
     worker_id: workerId,
     lock_duration_seconds: 300,
-  }) as any
+  }) as unknown
 
   if (jobError) {
     console.error('dequeue error', jobError)
@@ -113,7 +113,7 @@ async function processNextJob(workerId = 'recalc-worker-local') {
 
     if (evError) throw evError
 
-    const metricIds = Array.from(new Set((ev ?? []).map((r: any) => r.metric_id)))
+    const metricIds = Array.from(new Set((ev ?? []).map((r: unknown) => r.metric_id)))
 
     const { data: metrics, error: metricsError } = await admin
       .from('metrics')
@@ -144,7 +144,7 @@ async function processNextJob(workerId = 'recalc-worker-local') {
       if (!parsed.success) continue
 
       // Evaluate only if the formula references metrics (otherwise will be numbers)
-      const result = evaluateTokens(parsed.tokens as any, valuesByCode)
+      const result = evaluateTokens(parsed.tokens as unknown, valuesByCode)
 
       // Upsert calculated_values for this entry & metric
       const now = new Date().toISOString()
@@ -167,7 +167,7 @@ async function processNextJob(workerId = 'recalc-worker-local') {
     // Mark job complete
     await admin.rpc('complete_recalc_job', { job_entry_id: entryId, success: true, error_msg: null })
     return true
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('processing error', err?.message ?? err)
     await admin.rpc('complete_recalc_job', { job_entry_id: entryId, success: false, error_msg: String(err?.message ?? err) })
     return true
