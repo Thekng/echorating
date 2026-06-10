@@ -8,7 +8,7 @@ export function initSentry() {
   })
 }
 
-export function captureException(error: Error, context?: Record<string, any>) {
+export function captureException(error: Error, context?: Record<string, unknown>) {
   Sentry.captureException(error, { extra: context })
 }
 

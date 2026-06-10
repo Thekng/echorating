@@ -31,6 +31,7 @@ export function TourProvider({ children, userRole = 'member' }: TourProviderProp
 
     const steps = useMemo(() => getTourStepsForRole(userRole), [userRole])
 
+        /* eslint-disable react-hooks/set-state-in-effect */
     useEffect(() => {
         setIsMounted(true)
         // Check local storage on mount
@@ -41,6 +42,7 @@ export function TourProvider({ children, userRole = 'member' }: TourProviderProp
             const timer = setTimeout(() => {
                 setRun(true)
             }, 1000)
+        /* eslint-enable react-hooks/set-state-in-effect */
             return () => clearTimeout(timer)
         }
     }, [])

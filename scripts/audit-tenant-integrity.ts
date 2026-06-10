@@ -123,7 +123,7 @@ function parseOptions(): CliOptions {
   return options
 }
 
-async function fetchAll<T>(buildQuery: () => any, pageSize = 1000): Promise<T[]> {
+async function fetchAll<T>(buildQuery: () => unknown, pageSize = 1000): Promise<T[]> {
   let from = 0
   const rows: T[] = []
 
@@ -166,7 +166,7 @@ function lower(value: string | null | undefined) {
   return value?.trim().toLowerCase() ?? ''
 }
 
-async function loadOwnerAuthSnapshots(admin: any, ownerUserIds: string[]) {
+async function loadOwnerAuthSnapshots(admin: unknown, ownerUserIds: string[]) {
   const snapshots = new Map<string, AuthUserSnapshot>()
 
   await Promise.all(

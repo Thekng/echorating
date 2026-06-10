@@ -3,8 +3,8 @@
 import React from 'react'
 
 interface DataTableProps {
-  columns: any[]
-  data: any[]
+  columns: unknown[]
+  data: unknown[]
 }
 
 export function DataTable({ columns, data }: DataTableProps) {
