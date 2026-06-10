@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const memberRoleSchema = z.enum(['owner', 'manager', 'member'])
+export const memberRoleSchema = z.enum(['owner', 'admin', 'manager', 'member'])
 
 const optionalDepartmentIdSchema = z.preprocess(
   (value) => {
@@ -16,14 +16,6 @@ const optionalDepartmentIdSchema = z.preprocess(
 export const memberFilterSchema = z.object({
   q: z.string().optional(),
   role: z.union([z.literal('all'), memberRoleSchema]).default('all'),
-  status: z.enum(['all', 'active', 'inactive']).default('active'),
-})
-
-export const createMemberSchema = z.object({
-  name: z.string().min(2, 'Name is required'),
-  email: z.string().email('Invalid email'),
-  role: memberRoleSchema,
-  departmentId: optionalDepartmentIdSchema,
 })
 
 export const updateMemberRoleSchema = z.object({
@@ -34,6 +26,12 @@ export const updateMemberRoleSchema = z.object({
 export const assignMemberDepartmentSchema = z.object({
   userId: z.string().uuid('Invalid member'),
   departmentId: optionalDepartmentIdSchema,
+})
+
+export const departmentMemberSchema = z.object({
+  userId: z.string().uuid('Invalid user'),
+  departmentId: z.string().uuid('Invalid department'),
+  role: z.enum(['lead', 'member']),
 })
 
 export const toggleMemberStatusSchema = z.object({

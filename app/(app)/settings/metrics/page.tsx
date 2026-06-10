@@ -10,48 +10,30 @@ import { SettingsError } from '@/components/settings/settings-error'
 import { CreateMetricModal } from '@/components/metrics/create-metric-modal'
 import { EditMetricModal } from '@/components/metrics/edit-metric-modal'
 import { Button } from '@/components/ui/button'
-import { areMetricFiltersEqual } from '@/features/settings/helpers'
 import { ArrowDown, ArrowUp, Gauge, Power, Trash2 } from 'lucide-react'
 
-type MetricSettings = Record<string, unknown> | null
-
 type MetricListItem = {
-  metric_id: string
+  id: string
   department_id: string
   department_name: string
   name: string
-  code: string
+  code: string | null
   description: string | null
-  data_type: 'number' | 'currency' | 'percent' | 'boolean' | 'duration' | 'text' | 'datetime' | 'selection' | 'file'
-  unit: string
-  settings: MetricSettings
-  input_mode: 'manual' | 'calculated'
+  data_type: 'number' | 'currency' | 'percentage' | 'boolean' | 'text'
+  is_required: boolean
   sort_order: number | null
   is_active: boolean
-  formula_expression: string | null
-  daily_target_value: number | null
   created_at: string
-  updated_at: string
 }
 
 type DepartmentOption = {
-  department_id: string
+  id: string
   name: string
-}
-
-type DependencyMetric = {
-  metric_id: string
-  name: string
-  code: string
-  department_id: string
-  department_name: string
-  data_type: MetricListItem['data_type']
 }
 
 type MetricFilters = {
   q: string
   departmentId: string
-  mode: string
   status: 'all' | 'active' | 'inactive'
 }
 
@@ -63,26 +45,24 @@ type Feedback = {
 const DATA_TYPE_LABELS: Record<MetricListItem['data_type'], string> = {
   number: 'Number',
   currency: 'Currency',
-  percent: 'Percent',
+  percentage: 'Percentage',
   boolean: 'Yes / No',
-  duration: 'Duration',
   text: 'Text',
-  datetime: 'Date & Time',
-  selection: 'Selection',
-  file: 'File',
 }
 
 const INITIAL_FILTERS: MetricFilters = {
   q: '',
   departmentId: 'all',
-  mode: 'all',
   status: 'active',
+}
+
+function areFiltersEqual(a: MetricFilters, b: MetricFilters) {
+  return a.q === b.q && a.departmentId === b.departmentId && a.status === b.status
 }
 
 export default function MetricsSettingsPage() {
   const [metrics, setMetrics] = useState<MetricListItem[]>([])
   const [departments, setDepartments] = useState<DepartmentOption[]>([])
-  const [dependencyMetrics, setDependencyMetrics] = useState<DependencyMetric[]>([])
 
   const [queryFilters, setQueryFilters] = useState<MetricFilters>(INITIAL_FILTERS)
   const [formFilters, setFormFilters] = useState<MetricFilters>(INITIAL_FILTERS)
@@ -105,7 +85,6 @@ export default function MetricsSettingsPage() {
       const result = await listMetrics({
         q: filters.q || undefined,
         departmentId: filters.departmentId,
-        mode: filters.mode,
         status: filters.status,
       })
 
@@ -117,15 +96,13 @@ export default function MetricsSettingsPage() {
       const nextFilters: MetricFilters = {
         q: result.data.filters.q ?? '',
         departmentId: result.data.filters.departmentId,
-        mode: result.data.filters.mode,
         status: result.data.filters.status,
       }
 
       setMetrics((result.data.metrics ?? []) as MetricListItem[])
       setDepartments((result.data.departments ?? []) as DepartmentOption[])
-      setDependencyMetrics((result.data.dependencyMetrics ?? []) as DependencyMetric[])
 
-      if (!areMetricFiltersEqual(nextFilters, queryFilters)) {
+      if (!areFiltersEqual(nextFilters, queryFilters)) {
         setQueryFilters(nextFilters)
         setFormFilters(nextFilters)
       }
@@ -139,7 +116,7 @@ export default function MetricsSettingsPage() {
   useEffect(() => {
     fetchMetrics(queryFilters)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queryFilters.departmentId, queryFilters.mode, queryFilters.q, queryFilters.status])
+  }, [queryFilters.departmentId, queryFilters.q, queryFilters.status])
 
   function refreshMetrics() {
     void fetchMetrics(queryFilters)
@@ -151,11 +128,11 @@ export default function MetricsSettingsPage() {
   }
 
   function handleToggleMetric(metric: MetricListItem) {
-    setPendingAction({ metricId: metric.metric_id, type: 'toggle' })
+    setPendingAction({ metricId: metric.id, type: 'toggle' })
 
     startMutationTransition(async () => {
       const formData = new FormData()
-      formData.set('metricId', metric.metric_id)
+      formData.set('metricId', metric.id)
       formData.set('nextStatus', metric.is_active ? 'inactive' : 'active')
 
       const result = await toggleMetricStatusAction(formData)
@@ -175,17 +152,15 @@ export default function MetricsSettingsPage() {
 
   function handleDeleteMetric(metric: MetricListItem) {
     const confirmed = window.confirm(
-      `Delete "${metric.name}"? This will disable targets and remove it from active metric lists.`,
+      `Delete "${metric.name}"? This action cannot be undone.`,
     )
-    if (!confirmed) {
-      return
-    }
+    if (!confirmed) return
 
-    setPendingAction({ metricId: metric.metric_id, type: 'delete' })
+    setPendingAction({ metricId: metric.id, type: 'delete' })
 
     startMutationTransition(async () => {
       const formData = new FormData()
-      formData.set('metricId', metric.metric_id)
+      formData.set('metricId', metric.id)
 
       const result = await deleteMetricAction(formData)
       setFeedback({
@@ -202,11 +177,11 @@ export default function MetricsSettingsPage() {
   }
 
   function handleReorderMetric(metric: MetricListItem, direction: 'up' | 'down') {
-    setPendingAction({ metricId: metric.metric_id, type: direction === 'up' ? 'move-up' : 'move-down' })
+    setPendingAction({ metricId: metric.id, type: direction === 'up' ? 'move-up' : 'move-down' })
 
     startMutationTransition(async () => {
       const formData = new FormData()
-      formData.set('metricId', metric.metric_id)
+      formData.set('metricId', metric.id)
       formData.set('direction', direction)
 
       const result = await reorderMetricAction(formData)
@@ -237,7 +212,7 @@ export default function MetricsSettingsPage() {
   if (error) {
     return (
       <div className="space-y-6">
-        <SettingsHeader title="Metrics" description="Define and manage KPIs with formulas and data types." />
+        <SettingsHeader title="Metrics" description="Define and manage KPIs for your departments." />
         <SettingsError error={error} />
         <div>
           <Button type="button" variant="outline" onClick={() => fetchMetrics(queryFilters)}>
@@ -252,11 +227,10 @@ export default function MetricsSettingsPage() {
     <div className="space-y-6">
       <SettingsHeader
         title="Metrics"
-        description="Define and manage KPIs with formulas, data types, and activation status."
+        description="Define and manage KPIs with data types and activation status."
         actions={
           <CreateMetricModal
             departments={departments}
-            dependencyMetrics={dependencyMetrics}
             onSaved={handleMetricSaved}
           />
         }
@@ -281,7 +255,7 @@ export default function MetricsSettingsPage() {
           </p>
         ) : null}
         <form
-          className="grid gap-3 md:grid-cols-5"
+          className="grid gap-3 md:grid-cols-4"
           onSubmit={(event) => {
             event.preventDefault()
             setQueryFilters(formFilters)
@@ -312,26 +286,10 @@ export default function MetricsSettingsPage() {
             >
               <option value="all">All departments</option>
               {departments.map((department) => (
-                <option key={department.department_id} value={department.department_id}>
+                <option key={department.id} value={department.id}>
                   {department.name}
                 </option>
               ))}
-            </select>
-          </div>
-
-          <div>
-            <label htmlFor="metric-filter-mode" className="mb-1 block text-sm font-medium">
-              Mode
-            </label>
-            <select
-              id="metric-filter-mode"
-              value={formFilters.mode}
-              onChange={(event) => setFormFilters((current) => ({ ...current, mode: event.target.value }))}
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-            >
-              <option value="all">All</option>
-              <option value="manual">Manual</option>
-              <option value="calculated">Calculated</option>
             </select>
           </div>
 
@@ -356,7 +314,7 @@ export default function MetricsSettingsPage() {
             </select>
           </div>
 
-          <div className="md:col-span-5 flex items-center justify-end gap-2">
+          <div className="md:col-span-4 flex items-center justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => setFormFilters(INITIAL_FILTERS)}>
               Clear
             </Button>
@@ -381,14 +339,14 @@ export default function MetricsSettingsPage() {
                   <th className="px-3 py-2 font-medium">Metric</th>
                   <th className="px-3 py-2 font-medium">Department</th>
                   <th className="px-3 py-2 font-medium">Type</th>
-                  <th className="px-3 py-2 font-medium">Mode</th>
+                  <th className="px-3 py-2 font-medium">Required</th>
                   <th className="px-3 py-2 font-medium">Status</th>
                   <th className="px-3 py-2 font-medium text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {metrics.map((metric, index) => {
-                  const rowPending = isMutating && pendingAction?.metricId === metric.metric_id
+                  const rowPending = isMutating && pendingAction?.metricId === metric.id
                   const togglePending = rowPending && pendingAction?.type === 'toggle'
                   const deletePending = rowPending && pendingAction?.type === 'delete'
                   const moveUpPending = rowPending && pendingAction?.type === 'move-up'
@@ -396,22 +354,19 @@ export default function MetricsSettingsPage() {
                   const reorderEnabled = queryFilters.departmentId !== 'all'
 
                   return (
-                    <tr key={metric.metric_id} className="border-b align-top">
+                    <tr key={metric.id} className="border-b align-top">
                       <td className="px-3 py-3">
                         <p className="font-medium">{metric.name}</p>
-                        <p className="text-xs text-muted-foreground">{metric.code}</p>
+                        {metric.code ? (
+                          <p className="text-xs font-mono text-muted-foreground">{metric.code}</p>
+                        ) : null}
                         {metric.description ? (
                           <p className="mt-1 text-xs text-muted-foreground">{metric.description}</p>
-                        ) : null}
-                        {metric.input_mode === 'calculated' && metric.formula_expression ? (
-                          <p className="mt-1 truncate text-xs font-mono text-muted-foreground">
-                            {metric.formula_expression}
-                          </p>
                         ) : null}
                       </td>
                       <td className="px-3 py-3">{metric.department_name}</td>
                       <td className="px-3 py-3">{DATA_TYPE_LABELS[metric.data_type]}</td>
-                      <td className="px-3 py-3">{metric.input_mode === 'manual' ? 'Manual' : 'Calculated'}</td>
+                      <td className="px-3 py-3">{metric.is_required ? 'Yes' : 'No'}</td>
                       <td className="px-3 py-3">
                         <span
                           className={
@@ -452,7 +407,6 @@ export default function MetricsSettingsPage() {
                           <EditMetricModal
                             metric={metric}
                             departments={departments}
-                            dependencyMetrics={dependencyMetrics}
                             onSaved={handleMetricSaved}
                           />
 

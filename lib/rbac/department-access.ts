@@ -5,7 +5,8 @@ import { type Role } from './roles'
 type Admin = ReturnType<typeof createAdminClient>
 
 export type DepartmentOption = {
-  department_id: string
+  id: string
+  department_id: string // alias for backward compatibility
   name: string
 }
 
@@ -25,8 +26,6 @@ async function listMembershipDepartmentIds(
     .from('department_members')
     .select('department_id')
     .eq('user_id', userId)
-    .eq('is_active', true)
-    .is('deleted_at', null)
 
   if (error) {
     return { ok: false, message: formatDatabaseError(error.message), departmentIds: [] }
@@ -40,17 +39,16 @@ async function listMembershipDepartmentIds(
 
 export async function getAccessibleDepartmentIds(
   admin: Admin,
-  companyId: string,
+  organizationId: string,
   userId: string,
   role: Role,
 ): Promise<DepartmentIdsResult> {
-  if (role === 'owner' || role === 'manager') {
+  if (role === 'owner' || role === 'admin' || role === 'manager') {
     const { data, error } = await admin
       .from('departments')
-      .select('department_id')
-      .eq('company_id', companyId)
+      .select('id')
+      .eq('organization_id', organizationId)
       .eq('is_active', true)
-      .is('deleted_at', null)
 
     if (error) {
       return { ok: false, message: formatDatabaseError(error.message), departmentIds: [] }
@@ -58,7 +56,7 @@ export async function getAccessibleDepartmentIds(
 
     return {
       ok: true,
-      departmentIds: (data ?? []).map((row) => row.department_id as string),
+      departmentIds: (data ?? []).map((row) => row.id as string),
     }
   }
 
@@ -70,11 +68,10 @@ export async function getAccessibleDepartmentIds(
 
   const { data, error } = await admin
     .from('departments')
-    .select('department_id')
-    .eq('company_id', companyId)
-    .in('department_id', memberships.departmentIds)
+    .select('id')
+    .eq('organization_id', organizationId)
+    .in('id', memberships.departmentIds)
     .eq('is_active', true)
-    .is('deleted_at', null)
 
   if (error) {
     return { ok: false, message: formatDatabaseError(error.message), departmentIds: [] }
@@ -82,30 +79,36 @@ export async function getAccessibleDepartmentIds(
 
   return {
     ok: true,
-    departmentIds: (data ?? []).map((row) => row.department_id as string),
+    departmentIds: (data ?? []).map((row) => row.id as string),
   }
 }
 
 export async function getAccessibleDepartments(
   admin: Admin,
-  companyId: string,
+  organizationId: string,
   userId: string,
   role: Role,
 ): Promise<DepartmentOptionsResult> {
-  if (role === 'owner' || role === 'manager') {
+  if (role === 'owner' || role === 'admin' || role === 'manager') {
     const { data, error } = await admin
       .from('departments')
-      .select('department_id, name')
-      .eq('company_id', companyId)
+      .select('id, name')
+      .eq('organization_id', organizationId)
       .eq('is_active', true)
-      .is('deleted_at', null)
       .order('name', { ascending: true })
 
     if (error) {
       return { ok: false, message: formatDatabaseError(error.message), departments: [] }
     }
 
-    return { ok: true, departments: (data ?? []) as DepartmentOption[] }
+    return {
+      ok: true,
+      departments: (data ?? []).map((row) => ({
+        id: row.id as string,
+        department_id: row.id as string,
+        name: row.name as string,
+      })),
+    }
   }
 
   const memberships = await listMembershipDepartmentIds(admin, userId)
@@ -118,28 +121,34 @@ export async function getAccessibleDepartments(
 
   const { data, error } = await admin
     .from('departments')
-    .select('department_id, name')
-    .eq('company_id', companyId)
-    .in('department_id', memberships.departmentIds)
+    .select('id, name')
+    .eq('organization_id', organizationId)
+    .in('id', memberships.departmentIds)
     .eq('is_active', true)
-    .is('deleted_at', null)
     .order('name', { ascending: true })
 
   if (error) {
     return { ok: false, message: formatDatabaseError(error.message), departments: [] }
   }
 
-  return { ok: true, departments: (data ?? []) as DepartmentOption[] }
+  return {
+    ok: true,
+    departments: (data ?? []).map((row) => ({
+      id: row.id as string,
+      department_id: row.id as string,
+      name: row.name as string,
+    })),
+  }
 }
 
 export async function canAccessDepartment(
   admin: Admin,
-  companyId: string,
+  organizationId: string,
   userId: string,
   role: Role,
   departmentId: string,
 ): Promise<{ ok: true; allowed: boolean } | { ok: false; message: string }> {
-  const result = await getAccessibleDepartmentIds(admin, companyId, userId, role)
+  const result = await getAccessibleDepartmentIds(admin, organizationId, userId, role)
   if (!result.ok) {
     return { ok: false, message: result.message }
   }

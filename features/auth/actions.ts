@@ -78,16 +78,15 @@ export async function loginAction(
 
   const admin = createAdminClient()
   const { data: memberships } = await admin
-    .from('company_members')
-    .select('company_id, role')
+    .from('organization_members')
+    .select('organization_id, role')
     .eq('user_id', authData.user.id)
-    .eq('is_active', true)
 
   const membershipCount = memberships?.length || 0
   await syncSessionClaims(authData.user.id)
 
   if (membershipCount > 1) {
-    redirect(ROUTES.SELECT_COMPANY)
+    redirect(ROUTES.SELECT_ORGANIZATION)
   }
 
   const nextPath = sanitizeRedirectPath(field(formData, 'next'))
@@ -156,13 +155,13 @@ export async function resetPasswordAction(
   }
 }
 
-export async function selectCompanyAction(
+export async function selectOrganizationAction(
   _prevState: AuthActionState,
   formData: FormData,
 ): Promise<AuthActionState> {
-  const companyId = field(formData, 'companyId')
-  if (!companyId) {
-    return { status: 'error', message: 'No company selected.' }
+  const organizationId = field(formData, 'organizationId')
+  if (!organizationId) {
+    return { status: 'error', message: 'No organization selected.' }
   }
 
   const supabase = await createClient()
@@ -173,22 +172,18 @@ export async function selectCompanyAction(
   }
 
   const { data: membership, error: membershipError } = await supabase
-    .from('company_members')
-    .select('role, is_active')
+    .from('organization_members')
+    .select('role')
     .eq('user_id', authData.user.id)
-    .eq('company_id', companyId)
+    .eq('organization_id', organizationId)
     .single()
 
   if (membershipError || !membership) {
-    return { status: 'error', message: 'You are not a member of this company.' }
-  }
-
-  if (membership.is_active === false) {
-    return { status: 'error', message: 'This membership is inactive.' }
+    return { status: 'error', message: 'You are not a member of this organization.' }
   }
 
   const memberRole = isRole(membership.role) ? membership.role : 'member' as Role
-  await syncSessionClaims(authData.user.id, companyId, memberRole)
+  await syncSessionClaims(authData.user.id, organizationId, memberRole)
 
   redirect(ROUTES.DASHBOARD)
 }
@@ -229,3 +224,6 @@ export async function signOutAction() {
   await supabase.auth.signOut()
   redirect(ROUTES.LOGIN)
 }
+
+// Legacy alias — the old select-company-form still imports this name.
+export const selectCompanyAction = selectOrganizationAction

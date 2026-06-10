@@ -15,9 +15,10 @@ type CompanyActionState = {
 }
 
 type CompanyDetails = {
+  id: string
   name: string
   timezone: string
-  is_active: boolean
+  status: string
   created_at: string
   updated_at: string
 }
@@ -170,10 +171,10 @@ export default function CompanySettingsPage() {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Status</span>
                 <span className="font-medium">
-                  {company.is_active ? (
+                  {company.status === 'active' ? (
                     <span className="text-green-600">Active</span>
                   ) : (
-                    <span className="text-yellow-600">Inactive</span>
+                    <span className="text-yellow-600">{company.status ?? 'Unknown'}</span>
                   )}
                 </span>
               </div>

@@ -5,14 +5,6 @@ import { updateDepartmentAction, type DepartmentActionState } from '@/features/d
 import { Button } from '@/components/ui/button'
 import { Pencil } from 'lucide-react'
 
-const DEPARTMENT_TYPES = [
-  { value: 'sales', label: 'Sales' },
-  { value: 'service', label: 'Service' },
-  { value: 'life', label: 'Life' },
-  { value: 'marketing', label: 'Marketing' },
-  { value: 'custom', label: 'Custom' },
-] as const
-
 const INITIAL_STATE: DepartmentActionState = {
   status: 'idle',
   message: '',
@@ -22,10 +14,11 @@ const INITIAL_STATE: DepartmentActionState = {
 type EditDepartmentModalProps = {
   departmentId: string
   name: string
-  type: string
+  description: string | null
+  onSaved?: (message: string) => void
 }
 
-export function EditDepartmentModal({ departmentId, name, type }: EditDepartmentModalProps) {
+export function EditDepartmentModal({ departmentId, name, description, onSaved }: EditDepartmentModalProps) {
   const [open, setOpen] = useState(false)
   const [state, formAction, pending] = useActionState<DepartmentActionState, FormData>(
     updateDepartmentAction,
@@ -34,9 +27,10 @@ export function EditDepartmentModal({ departmentId, name, type }: EditDepartment
 
   useEffect(() => {
     if (state.status === 'success') {
+      onSaved?.(state.message)
       setOpen(false)
     }
-  }, [state.status])
+  }, [state.status, state.message, onSaved])
 
   return (
     <>
@@ -52,8 +46,11 @@ export function EditDepartmentModal({ departmentId, name, type }: EditDepartment
       </Button>
 
       {open ? (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-xl border bg-card p-6 text-card-foreground shadow-lg">
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={() => setOpen(false)}>
+          <div
+            className="w-full max-w-md rounded-xl border bg-card p-6 text-card-foreground shadow-lg"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="mb-5">
               <h2 className="text-lg font-semibold">Edit Department</h2>
               <p className="text-sm text-muted-foreground">Update department data.</p>
@@ -74,24 +71,22 @@ export function EditDepartmentModal({ departmentId, name, type }: EditDepartment
                   defaultValue={name}
                   className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                 />
+                {state.fieldErrors.name ? (
+                  <p className="text-xs text-destructive">{state.fieldErrors.name}</p>
+                ) : null}
               </div>
 
               <div className="space-y-2">
-                <label htmlFor={`edit-department-type-${departmentId}`} className="text-sm font-medium">
-                  Type
+                <label htmlFor={`edit-department-description-${departmentId}`} className="text-sm font-medium">
+                  Description (optional)
                 </label>
-                <select
-                  id={`edit-department-type-${departmentId}`}
-                  name="type"
-                  defaultValue={type}
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                >
-                  {DEPARTMENT_TYPES.map((item) => (
-                    <option key={item.value} value={item.value}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
+                <textarea
+                  id={`edit-department-description-${departmentId}`}
+                  name="description"
+                  rows={2}
+                  defaultValue={description ?? ''}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                />
               </div>
 
               {state.status !== 'idle' ? (

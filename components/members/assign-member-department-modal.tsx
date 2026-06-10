@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition, type FormEvent } from 'react'
-import { assignMemberDepartmentAction, type MemberActionState } from '@/features/members/actions'
+import { assignDepartmentAction, type MemberActionState } from '@/features/members/actions'
 import { Button } from '@/components/ui/button'
 import { Building2 } from 'lucide-react'
 
@@ -10,7 +10,7 @@ type AssignMemberDepartmentModalProps = {
   memberName: string
   currentDepartmentId?: string
   departments: Array<{
-    department_id: string
+    id: string
     name: string
   }>
   onSaved?: (message: string) => void
@@ -39,7 +39,7 @@ export function AssignMemberDepartmentModal({
 
     setState(INITIAL_STATE)
     startTransition(async () => {
-      const nextState = await assignMemberDepartmentAction(INITIAL_STATE, formData)
+      const nextState = await assignDepartmentAction(INITIAL_STATE, formData)
       setState(nextState)
 
       if (nextState.status === 'success') {
@@ -91,7 +91,7 @@ export function AssignMemberDepartmentModal({
                 >
                   <option value="">No department</option>
                   {departments.map((department) => (
-                    <option key={department.department_id} value={department.department_id}>
+                    <option key={department.id} value={department.id}>
                       {department.name}
                     </option>
                   ))}

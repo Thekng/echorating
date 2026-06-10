@@ -14,13 +14,14 @@ import { SettingsEmptyState } from '@/components/settings/settings-empty-state'
 import { SettingsError } from '@/components/settings/settings-error'
 import { Button } from '@/components/ui/button'
 import { formatDateShort } from '@/lib/utils'
-import { FolderKanban, Pencil, Plus, Trash2 } from 'lucide-react'
+import { FolderKanban, Pencil, Plus, Power, Trash2 } from 'lucide-react'
 
 type Department = {
-  department_id: string
+  id: string
   name: string
-  type: 'sales' | 'service' | 'life' | 'marketing' | 'custom'
+  description: string | null
   is_active: boolean
+  member_count: number
   created_at: string
   updated_at: string
 }
@@ -34,22 +35,6 @@ const INITIAL_ACTION_STATE: DepartmentActionState = {
   status: 'idle',
   message: '',
   fieldErrors: {},
-}
-
-const DEPARTMENT_TYPES = [
-  { value: 'sales', label: 'Sales' },
-  { value: 'service', label: 'Service' },
-  { value: 'life', label: 'Life' },
-  { value: 'marketing', label: 'Marketing' },
-  { value: 'custom', label: 'Custom' },
-] as const
-
-const TYPE_LABELS: Record<Department['type'], string> = {
-  sales: 'Sales',
-  service: 'Service',
-  life: 'Life',
-  marketing: 'Marketing',
-  custom: 'Custom',
 }
 
 export default function DepartmentsSettingsPage() {
@@ -66,8 +51,8 @@ export default function DepartmentsSettingsPage() {
 
   const [pendingCreate, startCreateTransition] = useTransition()
   const [pendingUpdate, startUpdateTransition] = useTransition()
-  const [pendingDeleteDepartmentId, setPendingDeleteDepartmentId] = useState<string | null>(null)
-  const [isDeleting, startDeleteTransition] = useTransition()
+  const [pendingActionId, setPendingActionId] = useState<string | null>(null)
+  const [isMutating, startMutationTransition] = useTransition()
 
   const activeDepartments = useMemo(
     () => departments.filter((department) => department.is_active),
@@ -82,9 +67,7 @@ export default function DepartmentsSettingsPage() {
     setLoading(true)
     setError(null)
     try {
-      const result = await listDepartments({
-        status: 'all',
-      })
+      const result = await listDepartments({ status: 'all' })
 
       if (!result.success) {
         setError(result.error || 'Failed to load departments.')
@@ -151,28 +134,45 @@ export default function DepartmentsSettingsPage() {
     })
   }
 
+  function handleToggleDepartment(department: Department) {
+    setPendingActionId(department.id)
+    startMutationTransition(async () => {
+      const formData = new FormData()
+      formData.set('departmentId', department.id)
+      formData.set('nextStatus', department.is_active ? 'inactive' : 'active')
+
+      await (await import('@/features/departments/actions')).toggleDepartmentStatusAction(formData)
+      setFeedback({
+        tone: 'success',
+        message: department.is_active ? 'Department deactivated.' : 'Department activated.',
+      })
+      await fetchDepartments()
+      setPendingActionId(null)
+    })
+  }
+
   function handleDeleteDepartment(department: Department) {
     const confirmed = window.confirm(
-      `Delete "${department.name}"? This will also deactivate its metrics, targets, and member assignments.`,
+      `Delete "${department.name}"? This will also remove its members and metrics.`,
     )
-    if (!confirmed) {
-      return
-    }
+    if (!confirmed) return
 
-    setPendingDeleteDepartmentId(department.department_id)
-    startDeleteTransition(async () => {
+    setPendingActionId(department.id)
+    startMutationTransition(async () => {
       const formData = new FormData()
-      formData.set('departmentId', department.department_id)
+      formData.set('departmentId', department.id)
       const result = await deleteDepartmentAction(INITIAL_ACTION_STATE, formData)
 
+      setFeedback({
+        tone: result.status === 'success' ? 'success' : 'error',
+        message: result.message,
+      })
+
       if (result.status === 'success') {
-        setFeedback({ tone: 'success', message: result.message })
         await fetchDepartments()
-      } else {
-        setFeedback({ tone: 'error', message: result.message })
       }
 
-      setPendingDeleteDepartmentId(null)
+      setPendingActionId(null)
     })
   }
 
@@ -240,80 +240,111 @@ export default function DepartmentsSettingsPage() {
               <SettingsEmptyState message="No active departments." />
             ) : (
               <div className="space-y-2">
-                {activeDepartments.map((department) => (
-                  <div
-                    key={department.department_id}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border px-3 py-2"
-                  >
-                    <div>
-                      <p className="text-sm font-medium">{department.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {TYPE_LABELS[department.type]} · Updated{' '}
-                        {formatDateShort(department.updated_at)}
-                      </p>
-                    </div>
+                {activeDepartments.map((department) => {
+                  const rowPending = isMutating && pendingActionId === department.id
 
-                    <div className="flex items-center gap-2">
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="outline"
-                        title={`Edit ${department.name}`}
-                        aria-label={`Edit ${department.name}`}
-                        onClick={() => {
-                          setUpdateState(INITIAL_ACTION_STATE)
-                          setEditingDepartment(department)
-                        }}
-                      >
-                        <Pencil className="size-4" />
-                      </Button>
+                  return (
+                    <div
+                      key={department.id}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border px-3 py-2"
+                    >
+                      <div>
+                        <p className="text-sm font-medium">{department.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {department.member_count} member{department.member_count !== 1 ? 's' : ''}
+                          {department.description ? ` · ${department.description}` : ''}
+                          {' · Updated '}
+                          {formatDateShort(department.updated_at)}
+                        </p>
+                      </div>
 
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="outline"
-                        title={`Delete ${department.name}`}
-                        aria-label={`Delete ${department.name}`}
-                        className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                        onClick={() => handleDeleteDepartment(department)}
-                        disabled={
-                          isDeleting && pendingDeleteDepartmentId === department.department_id
-                        }
-                      >
-                        <Trash2 className="size-4" />
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="outline"
+                          title={`Edit ${department.name}`}
+                          aria-label={`Edit ${department.name}`}
+                          onClick={() => {
+                            setUpdateState(INITIAL_ACTION_STATE)
+                            setEditingDepartment(department)
+                          }}
+                        >
+                          <Pencil className="size-4" />
+                        </Button>
+
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="outline"
+                          title={`Deactivate ${department.name}`}
+                          aria-label={`Deactivate ${department.name}`}
+                          onClick={() => handleToggleDepartment(department)}
+                          disabled={rowPending}
+                        >
+                          <Power className="size-4" />
+                        </Button>
+
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="outline"
+                          title={`Delete ${department.name}`}
+                          aria-label={`Delete ${department.name}`}
+                          className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          onClick={() => handleDeleteDepartment(department)}
+                          disabled={rowPending}
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </SettingsSurface>
 
-          <SettingsSurface>
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-base font-semibold">Inactive Departments</h2>
-              <span className="text-xs text-muted-foreground">{inactiveDepartments.length}</span>
-            </div>
+          {inactiveDepartments.length > 0 ? (
+            <SettingsSurface>
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-base font-semibold">Inactive Departments</h2>
+                <span className="text-xs text-muted-foreground">{inactiveDepartments.length}</span>
+              </div>
 
-            {inactiveDepartments.length === 0 ? (
-              <SettingsEmptyState message="No inactive departments." />
-            ) : (
               <div className="space-y-2">
-                {inactiveDepartments.map((department) => (
-                  <div
-                    key={department.department_id}
-                    className="rounded-md border border-border px-3 py-2"
-                  >
-                    <p className="text-sm font-medium">{department.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {TYPE_LABELS[department.type]} · Updated{' '}
-                      {formatDateShort(department.updated_at)}
-                    </p>
-                  </div>
-                ))}
+                {inactiveDepartments.map((department) => {
+                  const rowPending = isMutating && pendingActionId === department.id
+
+                  return (
+                    <div
+                      key={department.id}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border px-3 py-2"
+                    >
+                      <div>
+                        <p className="text-sm font-medium">{department.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {department.description ?? 'No description'}
+                        </p>
+                      </div>
+
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="outline"
+                        title={`Activate ${department.name}`}
+                        aria-label={`Activate ${department.name}`}
+                        onClick={() => handleToggleDepartment(department)}
+                        disabled={rowPending}
+                      >
+                        <Power className="size-4" />
+                      </Button>
+                    </div>
+                  )
+                })}
               </div>
-            )}
-          </SettingsSurface>
+            </SettingsSurface>
+          ) : null}
         </>
       )}
 
@@ -327,7 +358,7 @@ export default function DepartmentsSettingsPage() {
             onClick={(event) => event.stopPropagation()}
           >
             <h2 className="text-lg font-semibold">Create Department</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Add a team to your company.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Add a team to your organization.</p>
 
             <form className="mt-4 space-y-4" onSubmit={handleCreateSubmit}>
               <div className="space-y-2">
@@ -347,24 +378,15 @@ export default function DepartmentsSettingsPage() {
               </div>
 
               <div className="space-y-2">
-                <label htmlFor="create-department-type" className="text-sm font-medium">
-                  Type
+                <label htmlFor="create-department-description" className="text-sm font-medium">
+                  Description (optional)
                 </label>
-                <select
-                  id="create-department-type"
-                  name="type"
-                  defaultValue="sales"
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                >
-                  {DEPARTMENT_TYPES.map((departmentType) => (
-                    <option key={departmentType.value} value={departmentType.value}>
-                      {departmentType.label}
-                    </option>
-                  ))}
-                </select>
-                {createState.fieldErrors.type ? (
-                  <p className="text-xs text-destructive">{createState.fieldErrors.type}</p>
-                ) : null}
+                <textarea
+                  id="create-department-description"
+                  name="description"
+                  rows={2}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                />
               </div>
 
               {createState.status === 'error' ? (
@@ -394,10 +416,10 @@ export default function DepartmentsSettingsPage() {
             onClick={(event) => event.stopPropagation()}
           >
             <h2 className="text-lg font-semibold">Edit Department</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Update team name and type.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Update team name and description.</p>
 
             <form className="mt-4 space-y-4" onSubmit={handleUpdateSubmit}>
-              <input type="hidden" name="departmentId" value={editingDepartment.department_id} />
+              <input type="hidden" name="departmentId" value={editingDepartment.id} />
 
               <div className="space-y-2">
                 <label htmlFor="edit-department-name" className="text-sm font-medium">
@@ -417,24 +439,16 @@ export default function DepartmentsSettingsPage() {
               </div>
 
               <div className="space-y-2">
-                <label htmlFor="edit-department-type" className="text-sm font-medium">
-                  Type
+                <label htmlFor="edit-department-description" className="text-sm font-medium">
+                  Description (optional)
                 </label>
-                <select
-                  id="edit-department-type"
-                  name="type"
-                  defaultValue={editingDepartment.type}
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                >
-                  {DEPARTMENT_TYPES.map((departmentType) => (
-                    <option key={departmentType.value} value={departmentType.value}>
-                      {departmentType.label}
-                    </option>
-                  ))}
-                </select>
-                {updateState.fieldErrors.type ? (
-                  <p className="text-xs text-destructive">{updateState.fieldErrors.type}</p>
-                ) : null}
+                <textarea
+                  id="edit-department-description"
+                  name="description"
+                  rows={2}
+                  defaultValue={editingDepartment.description ?? ''}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                />
               </div>
 
               {updateState.status === 'error' ? (

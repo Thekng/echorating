@@ -4,22 +4,17 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import {
   assignMemberDepartmentSchema,
-  createMemberSchema,
-  toggleMemberStatusSchema,
   updateMemberRoleSchema,
 } from './schemas'
 import { getActorContext } from '@/lib/supabase/actor-context'
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireRole } from '@/lib/rbac/guards'
 import { ROUTES } from '@/lib/constants/routes'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
-import { sendEmail } from '@/emails/resend'
-import { InviteMemberTemplate } from '@/emails/templates/invite-member'
 import { type Role, isRole } from '@/lib/rbac/roles'
 import { syncSessionClaims } from '@/lib/supabase/session-claims'
 
-type MemberFieldKey = 'name' | 'email' | 'role' | 'departmentId' | 'userId' | 'nextStatus'
+type MemberFieldKey = 'role' | 'departmentId' | 'userId' | 'nextStatus'
 
 export type MemberActionState = {
   status: 'idle' | 'success' | 'error'
@@ -42,8 +37,6 @@ function zodFieldErrors(error: z.ZodError): Partial<Record<MemberFieldKey, strin
   for (const issue of error.issues) {
     const key = issue.path[0]
     if (
-      key === 'name' ||
-      key === 'email' ||
       key === 'role' ||
       key === 'departmentId' ||
       key === 'userId' ||
@@ -77,80 +70,16 @@ function actionError(
   }
 }
 
-function appBaseUrl() {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXTAUTH_URL ?? 'http://localhost:3000'
-  return baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl
-}
-
-function hasConfiguredResendKey() {
-  const key = process.env.RESEND_API_KEY
-  return Boolean(key && !key.startsWith('your_'))
-}
-
-async function syncMembershipAndProfile(
+async function getTargetOrgMember(
   admin: ReturnType<typeof createAdminClient>,
-  companyId: string,
-  userId: string,
-  updates: {
-    role?: Role
-    isActive?: boolean
-  },
-) {
-  const memberPayload: Record<string, unknown> = {
-    updated_at: new Date().toISOString(),
-  }
-  if (updates.role) memberPayload.role = updates.role
-  if (typeof updates.isActive === 'boolean') memberPayload.is_active = updates.isActive
-
-  const { error: memberError } = await admin
-    .from('company_members')
-    .update(memberPayload)
-    .eq('user_id', userId)
-    .eq('company_id', companyId)
-
-  if (memberError) {
-    return { ok: false as const, message: formatDatabaseError(memberError.message) }
-  }
-
-  if (typeof updates.isActive === 'boolean') {
-    const profilePayload: Record<string, unknown> = {
-      updated_at: new Date().toISOString(),
-    }
-    profilePayload.is_active = updates.isActive
-    profilePayload.deleted_at = null
-
-    await admin.from('profiles').update(profilePayload).eq('user_id', userId)
-  }
-
-  return { ok: true as const }
-}
-
-async function getInviteActorContext() {
-  const base = await getActorContext()
-  if (!base.ok) return base
-
-  const [profileResult, companyResult] = await Promise.all([
-    base.admin.from('profiles').select('name').eq('user_id', base.userId).maybeSingle(),
-    base.admin.from('companies').select('name').eq('company_id', base.companyId).maybeSingle(),
-  ])
-
-  return {
-    ...base,
-    inviterName: profileResult.data?.name ?? null,
-    companyName: companyResult.data?.name ?? 'your company',
-  }
-}
-
-async function getTargetCompanyMember(
-  admin: ReturnType<typeof createAdminClient>,
-  companyId: string,
+  organizationId: string,
   userId: string,
 ) {
   const { data: membership, error: membershipError } = await admin
-    .from('company_members')
-    .select('user_id, role, is_active')
+    .from('organization_members')
+    .select('user_id, role')
     .eq('user_id', userId)
-    .eq('company_id', companyId)
+    .eq('organization_id', organizationId)
     .maybeSingle()
 
   if (membershipError) {
@@ -166,436 +95,8 @@ async function getTargetCompanyMember(
     membership: {
       user_id: membership.user_id as string,
       role: membership.role,
-      is_active: membership.is_active !== false,
     },
   }
-}
-
-async function findAuthUserByEmail(admin: ReturnType<typeof createAdminClient>, email: string) {
-  let page = 1
-  const normalizedEmail = email.toLowerCase()
-
-  while (true) {
-    const { data, error } = await admin.auth.admin.listUsers({
-      page,
-      perPage: 200,
-    })
-
-    if (error) {
-      return { user: null, error: error.message }
-    }
-
-    const user = data.users.find((item) => item.email?.toLowerCase() === normalizedEmail) ?? null
-    if (user) {
-      return { user, error: null }
-    }
-
-    if (data.users.length < 200) {
-      break
-    }
-
-    page += 1
-  }
-
-  return { user: null, error: null }
-}
-
-async function resolveDepartmentIdsForCompany(
-  admin: ReturnType<typeof createAdminClient>,
-  companyId: string,
-) {
-  const { data: departmentsData, error: departmentsError } = await admin
-    .from('departments')
-    .select('department_id')
-    .eq('company_id', companyId)
-    .is('deleted_at', null)
-
-  if (departmentsError) {
-    return { ok: false as const, message: formatDatabaseError(departmentsError.message), departmentIds: [] as string[] }
-  }
-
-  const departmentIds = (departmentsData ?? []).map((department) => department.department_id as string)
-  return { ok: true as const, departmentIds }
-}
-
-async function clearMemberDepartments(
-  admin: ReturnType<typeof createAdminClient>,
-  companyId: string,
-  userId: string,
-) {
-  const departmentIdsResult = await resolveDepartmentIdsForCompany(admin, companyId)
-  if (!departmentIdsResult.ok) {
-    return departmentIdsResult
-  }
-
-  if (departmentIdsResult.departmentIds.length === 0) {
-    return { ok: true as const }
-  }
-
-  const { error: clearError } = await admin
-    .from('department_members')
-    .update({
-      is_active: false,
-      deleted_at: null,
-      end_date: new Date().toISOString().slice(0, 10),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('user_id', userId)
-    .in('department_id', departmentIdsResult.departmentIds)
-
-  if (clearError) {
-    return { ok: false as const, message: formatDatabaseError(clearError.message) }
-  }
-
-  return { ok: true as const }
-}
-
-export async function acceptInviteAction(invitationId: string) {
-  if (!invitationId) {
-    return { success: false as const, message: 'Invitation is required.' }
-  }
-
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return {
-      success: false as const,
-      message: 'SUPABASE_SERVICE_ROLE_KEY is missing in environment variables.',
-    }
-  }
-
-  const supabase = await createClient()
-  const admin = createAdminClient()
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser()
-
-  if (userError || !user) {
-    return { success: false as const, message: 'Authentication required.' }
-  }
-
-  const { data: invitation, error: invitationError } = await admin
-    .from('invitations')
-    .select('invitation_id, company_id, email, role, department_id, status, expires_at, auth_user_id')
-    .eq('invitation_id', invitationId)
-    .maybeSingle()
-
-  if (invitationError) {
-    return { success: false as const, message: formatDatabaseError(invitationError.message) }
-  }
-
-  if (!invitation) {
-    return { success: false as const, message: 'This invite link has expired. Please ask to be invited again.' }
-  }
-
-  if (invitation.auth_user_id && invitation.auth_user_id !== user.id) {
-    return { success: false as const, message: 'This invite link has expired. Please ask to be invited again.' }
-  }
-
-  if (invitation.status === 'revoked') {
-    return { success: false as const, message: 'This invite has been revoked.' }
-  }
-
-  if (invitation.status !== 'pending' || invitation.expires_at <= new Date().toISOString()) {
-    return { success: false as const, message: 'This invite link has expired. Please ask to be invited again.' }
-  }
-
-  const fallbackName =
-    typeof user.user_metadata?.name === 'string' && user.user_metadata.name.trim()
-      ? user.user_metadata.name.trim()
-      : (user.email ?? invitation.email)
-
-  const { data: accepted, error: acceptRpcError } = await admin.rpc('accept_invitation', {
-    p_user_id: user.id,
-    p_invitation_id: invitation.invitation_id,
-    p_fallback_name: fallbackName,
-  })
-
-  if (acceptRpcError) {
-    if (acceptRpcError.message.includes('accept_invitation') && acceptRpcError.message.toLowerCase().includes('does not exist')) {
-      return {
-        success: false as const,
-        message: 'Database migration missing: run 2026-04-17_accept_invitation_rpc.sql in Supabase.',
-      }
-    }
-    return { success: false as const, message: formatDatabaseError(acceptRpcError.message) }
-  }
-
-  const acceptedRow = Array.isArray(accepted) ? accepted[0] : accepted
-  const acceptedCompanyId =
-    (acceptedRow && typeof acceptedRow === 'object' && 'company_id' in acceptedRow
-      ? (acceptedRow as { company_id?: string }).company_id
-      : null) ?? invitation.company_id
-
-  const acceptedRoleRaw =
-    acceptedRow && typeof acceptedRow === 'object' && 'role' in acceptedRow
-      ? (acceptedRow as { role?: string }).role
-      : invitation.role
-
-  const inviteRole = isRole(acceptedRoleRaw ?? '') ? (acceptedRoleRaw as Role) : 'member' as Role
-  await syncSessionClaims(user.id, acceptedCompanyId, inviteRole)
-
-  revalidatePath(ROUTES.SETTINGS_MEMBERS)
-  return { success: true as const, companyId: acceptedCompanyId }
-}
-
-export async function revokeInviteAction(invitationId: string): Promise<MemberActionState> {
-  if (!invitationId) {
-    return actionError('Invitation is required.')
-  }
-
-  const context = await getInviteActorContext()
-  if (!context.ok) {
-    return actionError(context.message)
-  }
-
-  try {
-    requireRole(context.role, 'manager')
-  } catch {
-    return actionError('Insufficient permissions.')
-  }
-
-  const { data: invitation, error: invitationError } = await context.admin
-    .from('invitations')
-    .select('invitation_id')
-    .eq('invitation_id', invitationId)
-    .eq('company_id', context.companyId)
-    .eq('status', 'pending')
-    .maybeSingle()
-
-  if (invitationError) {
-    return actionError(formatDatabaseError(invitationError.message))
-  }
-
-  if (!invitation) {
-    return actionError('Pending invitation not found.')
-  }
-
-  const { error: revokeError } = await context.admin
-    .from('invitations')
-    .update({
-      status: 'revoked',
-      updated_at: new Date().toISOString(),
-    })
-    .eq('invitation_id', invitationId)
-
-  if (revokeError) {
-    return actionError(formatDatabaseError(revokeError.message))
-  }
-
-  revalidatePath(ROUTES.SETTINGS_MEMBERS)
-  return actionSuccess('Invitation revoked.')
-}
-
-export async function createMemberAction(
-  _prevState: MemberActionState,
-  formData: FormData,
-): Promise<MemberActionState> {
-  const parsed = createMemberSchema.safeParse({
-    name: field(formData, 'name'),
-    email: field(formData, 'email'),
-    role: field(formData, 'role'),
-    departmentId: field(formData, 'departmentId'),
-  })
-
-  if (!parsed.success) {
-    return actionError(zodMessage(parsed.error), zodFieldErrors(parsed.error))
-  }
-
-  if (parsed.data.role === 'owner') {
-    return actionError('Only members and managers can be invited.', {
-      role: 'Only members and managers can be invited.',
-    })
-  }
-
-  const context = await getInviteActorContext()
-  if (!context.ok) {
-    return actionError(context.message)
-  }
-
-  try {
-    requireRole(context.role, 'manager')
-  } catch {
-    return actionError("You don't have permission to invite members.")
-  }
-
-  const normalizedEmail = parsed.data.email.toLowerCase()
-  const inviteeName = parsed.data.name.trim()
-  const existingAuthUserResult = await findAuthUserByEmail(context.admin, normalizedEmail)
-
-  if (existingAuthUserResult.error) {
-    return actionError(existingAuthUserResult.error)
-  }
-
-  const existingAuthUserId = existingAuthUserResult.user?.id ?? ''
-
-  const nowIso = new Date().toISOString()
-  const nextExpiryIso = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
-
-  if (parsed.data.departmentId) {
-    const { data: department, error: departmentError } = await context.admin
-      .from('departments')
-      .select('department_id')
-      .eq('department_id', parsed.data.departmentId)
-      .eq('company_id', context.companyId)
-      .eq('is_active', true)
-      .is('deleted_at', null)
-      .maybeSingle()
-
-    if (departmentError) {
-      return actionError(formatDatabaseError(departmentError.message))
-    }
-
-    if (!department) {
-      return actionError('Department not found.', {
-        departmentId: 'Select a valid active department.',
-      })
-    }
-  }
-
-  if (existingAuthUserId) {
-    const { data: existingMembership, error: existingMembershipError } = await context.admin
-      .from('company_members')
-      .select('user_id')
-      .eq('company_id', context.companyId)
-      .eq('user_id', existingAuthUserId)
-      .maybeSingle()
-
-    if (existingMembershipError) {
-      return actionError(formatDatabaseError(existingMembershipError.message))
-    }
-
-    if (existingMembership) {
-      return actionError('This person is already a member of your company.', {
-        email: 'This person is already a member of your company.',
-      })
-    }
-  }
-
-  const { data: pendingInvite, error: pendingInviteError } = await context.admin
-    .from('invitations')
-    .select('invitation_id, resent_count')
-    .eq('company_id', context.companyId)
-    .eq('email', normalizedEmail)
-    .eq('status', 'pending')
-    .maybeSingle()
-
-  if (pendingInviteError) {
-    return actionError(formatDatabaseError(pendingInviteError.message))
-  }
-
-  let invitationId = pendingInvite?.invitation_id ?? ''
-  const invitationWritePayload = {
-    role: parsed.data.role,
-    department_id: parsed.data.departmentId ?? null,
-    invited_by: context.userId,
-    status: 'pending' as const,
-    expires_at: nextExpiryIso,
-    last_sent_at: nowIso,
-    updated_at: nowIso,
-  }
-
-  if (pendingInvite) {
-    const { error: updateInviteError } = await context.admin
-      .from('invitations')
-      .update({
-        ...invitationWritePayload,
-        resent_count: pendingInvite.resent_count + 1,
-      })
-      .eq('invitation_id', pendingInvite.invitation_id)
-
-    if (updateInviteError) {
-      return actionError(formatDatabaseError(updateInviteError.message))
-    }
-
-    invitationId = pendingInvite.invitation_id
-  } else {
-    const { data: createdInvite, error: createInviteError } = await context.admin
-      .from('invitations')
-      .insert({
-        company_id: context.companyId,
-        email: normalizedEmail,
-        ...invitationWritePayload,
-      })
-      .select('invitation_id')
-      .single()
-
-    if (createInviteError || !createdInvite?.invitation_id) {
-      return actionError(formatDatabaseError(createInviteError?.message ?? 'Unable to create invitation.'))
-    }
-
-    invitationId = createdInvite.invitation_id
-  }
-
-  const inviteRedirectPath = '/invite/accept'
-  const inviteRedirectTo = `${appBaseUrl()}${inviteRedirectPath}`
-
-  const { data: inviteData, error: inviteError } = await context.admin.auth.admin.inviteUserByEmail(
-    normalizedEmail,
-    {
-      redirectTo: inviteRedirectTo,
-    },
-  )
-
-  let targetUserId = inviteData.user?.id ?? ''
-  if (!targetUserId) {
-    targetUserId = existingAuthUserId
-  }
-
-  if (inviteError && !targetUserId) {
-    return actionError(formatDatabaseError(inviteError.message))
-  }
-
-  if (targetUserId) {
-    const { error: updateInviteUserError } = await context.admin
-      .from('invitations')
-      .update({
-        auth_user_id: targetUserId,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('invitation_id', invitationId)
-
-    if (updateInviteUserError) {
-      return actionError(formatDatabaseError(updateInviteUserError.message))
-    }
-  }
-
-  if (!hasConfiguredResendKey()) {
-    return actionError('RESEND_API_KEY is missing in environment variables.')
-  }
-
-  const inviteUrl = `${appBaseUrl()}${inviteRedirectPath}`
-  const emailResult = await sendEmail({
-    to: normalizedEmail,
-    subject: `You're invited to join ${context.companyName} on EchoRating`,
-    html: InviteMemberTemplate({
-      inviteeName,
-      inviterName: context.inviterName ?? 'A team member',
-      companyName: context.companyName,
-      role: parsed.data.role,
-      inviteUrl,
-    }),
-  })
-
-  if (!emailResult.success) {
-    return actionError('Invitation created, but we could not deliver the invite email.')
-  }
-
-  if (!pendingInvite) {
-    const { error: updateInviteSentError } = await context.admin
-      .from('invitations')
-      .update({
-        last_sent_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('invitation_id', invitationId)
-
-    if (updateInviteSentError) {
-      return actionError(formatDatabaseError(updateInviteSentError.message))
-    }
-  }
-
-  revalidatePath(ROUTES.SETTINGS_MEMBERS)
-  return actionSuccess('Invitation sent. Check invitee inbox.')
 }
 
 export async function updateMemberRoleAction(
@@ -622,7 +123,7 @@ export async function updateMemberRoleAction(
     return actionError('Insufficient permissions.')
   }
 
-  const targetMemberResult = await getTargetCompanyMember(context.admin, context.companyId, parsed.data.userId)
+  const targetMemberResult = await getTargetOrgMember(context.admin, context.organizationId, parsed.data.userId)
   if (!targetMemberResult.ok) {
     return actionError('Member not found.', {
       userId: 'Member no longer exists.',
@@ -631,27 +132,124 @@ export async function updateMemberRoleAction(
 
   const targetMembership = targetMemberResult.membership
 
-  if (context.role !== 'owner' && (targetMembership.role === 'owner' || parsed.data.role === 'owner')) {
+  // Only owner can set owner/admin roles
+  if (context.role !== 'owner' && (parsed.data.role === 'owner' || parsed.data.role === 'admin')) {
+    return actionError('Only owners can assign owner or admin roles.', {
+      role: 'Only owners can assign owner or admin roles.',
+    })
+  }
+
+  // Cannot downgrade if the target is an owner and you're not an owner
+  if (context.role !== 'owner' && targetMembership.role === 'owner') {
     return actionError('Only owners can change owner roles.', {
       role: 'Only owners can change owner roles.',
     })
   }
 
-  const syncResult = await syncMembershipAndProfile(context.admin, context.companyId, targetMembership.user_id, {
-    role: parsed.data.role,
-  })
-  if (!syncResult.ok) {
-    return actionError(syncResult.message)
+  // Cannot downgrade the last owner
+  if (targetMembership.role === 'owner' && parsed.data.role !== 'owner') {
+    const { data: ownerCount } = await context.admin
+      .from('organization_members')
+      .select('user_id', { count: 'exact', head: true })
+      .eq('organization_id', context.organizationId)
+      .eq('role', 'owner')
+
+    if ((ownerCount as unknown as number) <= 1 || (await context.admin
+      .from('organization_members')
+      .select('user_id', { count: 'exact', head: true })
+      .eq('organization_id', context.organizationId)
+      .eq('role', 'owner')).count === 1) {
+      return actionError('Cannot downgrade the last owner.', {
+        role: 'There must be at least one owner.',
+      })
+    }
+  }
+
+  const { error: updateError } = await context.admin
+    .from('organization_members')
+    .update({
+      role: parsed.data.role,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('user_id', parsed.data.userId)
+    .eq('organization_id', context.organizationId)
+
+  if (updateError) {
+    return actionError(formatDatabaseError(updateError.message))
   }
 
   const newRole = isRole(parsed.data.role) ? parsed.data.role : null
-  await syncSessionClaims(targetMembership.user_id, context.companyId, newRole)
+  await syncSessionClaims(parsed.data.userId, context.organizationId, newRole)
 
   revalidatePath(ROUTES.SETTINGS_MEMBERS)
   return actionSuccess('Member role updated.')
 }
 
-export async function assignMemberDepartmentAction(
+export async function removeMemberAction(
+  formData: FormData,
+): Promise<MemberActionState> {
+  const userId = field(formData, 'userId')
+  if (!userId) {
+    return actionError('User ID is required.')
+  }
+
+  const context = await getActorContext()
+  if (!context.ok) {
+    return actionError(context.message)
+  }
+
+  try {
+    requireRole(context.role, 'manager')
+  } catch {
+    return actionError('Insufficient permissions.')
+  }
+
+  const targetMemberResult = await getTargetOrgMember(context.admin, context.organizationId, userId)
+  if (!targetMemberResult.ok) {
+    return actionError(targetMemberResult.message)
+  }
+
+  // Cannot remove yourself
+  if (userId === context.userId) {
+    return actionError('You cannot remove yourself.')
+  }
+
+  // Cannot remove the last owner
+  if (targetMemberResult.membership.role === 'owner') {
+    const { count } = await context.admin
+      .from('organization_members')
+      .select('user_id', { count: 'exact', head: true })
+      .eq('organization_id', context.organizationId)
+      .eq('role', 'owner')
+
+    if ((count ?? 0) <= 1) {
+      return actionError('Cannot remove the last owner.')
+    }
+  }
+
+  // Only owner can remove owner/admin
+  if (context.role !== 'owner' && (targetMemberResult.membership.role === 'owner' || targetMemberResult.membership.role === 'admin')) {
+    return actionError('Only owners can remove owners or admins.')
+  }
+
+  // DELETE from organization_members (CASCADE removes department_members)
+  const { error: deleteError } = await context.admin
+    .from('organization_members')
+    .delete()
+    .eq('user_id', userId)
+    .eq('organization_id', context.organizationId)
+
+  if (deleteError) {
+    return actionError(formatDatabaseError(deleteError.message))
+  }
+
+  await syncSessionClaims(userId, null, null)
+
+  revalidatePath(ROUTES.SETTINGS_MEMBERS)
+  return actionSuccess('Member removed.')
+}
+
+export async function assignDepartmentAction(
   _prevState: MemberActionState,
   formData: FormData,
 ): Promise<MemberActionState> {
@@ -675,76 +273,93 @@ export async function assignMemberDepartmentAction(
     return actionError('Insufficient permissions.')
   }
 
-  const targetMemberResult = await getTargetCompanyMember(context.admin, context.companyId, parsed.data.userId)
+  // Verify user is a member of the org
+  const targetMemberResult = await getTargetOrgMember(context.admin, context.organizationId, parsed.data.userId)
   if (!targetMemberResult.ok) {
     return actionError('Member not found.', {
       userId: 'Member no longer exists.',
     })
   }
 
-  const targetMembership = targetMemberResult.membership
-
-  if (!targetMembership.is_active) {
-    return actionError('Cannot assign departments to an inactive member.')
-  }
-
-  if (parsed.data.departmentId) {
-    const { data: department, error: departmentError } = await context.admin
+  if (!parsed.data.departmentId) {
+    // Remove all department assignments for this user in this org
+    const { data: orgDepts } = await context.admin
       .from('departments')
-      .select('department_id')
-      .eq('department_id', parsed.data.departmentId)
-      .eq('company_id', context.companyId)
-      .eq('is_active', true)
-      .is('deleted_at', null)
-      .maybeSingle()
+      .select('id')
+      .eq('organization_id', context.organizationId)
 
-    if (departmentError) {
-      return actionError(formatDatabaseError(departmentError.message))
+    const deptIds = (orgDepts ?? []).map((d) => (d as { id: string }).id)
+    if (deptIds.length > 0) {
+      await context.admin
+        .from('department_members')
+        .delete()
+        .eq('user_id', parsed.data.userId)
+        .in('department_id', deptIds)
     }
 
-    if (!department) {
-      return actionError('Department not found.', {
-        departmentId: 'Select a valid active department.',
-      })
-    }
+    revalidatePath(ROUTES.SETTINGS_MEMBERS)
+    return actionSuccess('Member department updated.')
   }
 
-  const clearDepartmentsResult = await clearMemberDepartments(context.admin, context.companyId, parsed.data.userId)
-  if (!clearDepartmentsResult.ok) {
-    return actionError(clearDepartmentsResult.message)
+  // Validate department belongs to org
+  const { data: department, error: departmentError } = await context.admin
+    .from('departments')
+    .select('id')
+    .eq('id', parsed.data.departmentId)
+    .eq('organization_id', context.organizationId)
+    .eq('is_active', true)
+    .maybeSingle()
+
+  if (departmentError) {
+    return actionError(formatDatabaseError(departmentError.message))
   }
 
-  if (parsed.data.departmentId) {
-    const { error: upsertError } = await context.admin.from('department_members').upsert(
-      {
-        department_id: parsed.data.departmentId,
-        user_id: parsed.data.userId,
-        member_role: 'member',
-        is_active: true,
-        deleted_at: null,
-        end_date: null,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'department_id,user_id' },
-    )
+  if (!department) {
+    return actionError('Department not found.', {
+      departmentId: 'Select a valid active department.',
+    })
+  }
 
-    if (upsertError) {
-      return actionError(formatDatabaseError(upsertError.message))
-    }
+  // Remove existing assignments in this org, then upsert new one
+  const { data: orgDepts } = await context.admin
+    .from('departments')
+    .select('id')
+    .eq('organization_id', context.organizationId)
+
+  const deptIds = (orgDepts ?? []).map((d) => (d as { id: string }).id)
+  if (deptIds.length > 0) {
+    await context.admin
+      .from('department_members')
+      .delete()
+      .eq('user_id', parsed.data.userId)
+      .in('department_id', deptIds)
+  }
+
+  const { error: upsertError } = await context.admin.from('department_members').upsert(
+    {
+      department_id: parsed.data.departmentId,
+      user_id: parsed.data.userId,
+      role: 'member',
+    },
+    { onConflict: 'department_id,user_id' },
+  )
+
+  if (upsertError) {
+    return actionError(formatDatabaseError(upsertError.message))
   }
 
   revalidatePath(ROUTES.SETTINGS_MEMBERS)
   return actionSuccess('Member department updated.')
 }
 
-export async function toggleMemberStatusAction(formData: FormData): Promise<MemberActionState> {
-  const parsed = toggleMemberStatusSchema.safeParse({
-    userId: field(formData, 'userId'),
-    nextStatus: field(formData, 'nextStatus'),
-  })
+export async function removeDepartmentAssignmentAction(
+  formData: FormData,
+): Promise<MemberActionState> {
+  const userId = field(formData, 'userId')
+  const departmentId = field(formData, 'departmentId')
 
-  if (!parsed.success) {
-    return actionError(zodMessage(parsed.error), zodFieldErrors(parsed.error))
+  if (!userId || !departmentId) {
+    return actionError('User ID and department ID are required.')
   }
 
   const context = await getActorContext()
@@ -758,45 +373,68 @@ export async function toggleMemberStatusAction(formData: FormData): Promise<Memb
     return actionError('Insufficient permissions.')
   }
 
-  const targetMemberResult = await getTargetCompanyMember(context.admin, context.companyId, parsed.data.userId)
-  if (!targetMemberResult.ok) {
-    return actionError(targetMemberResult.message, {
-      userId: 'Member not found.',
-    })
-  }
+  const { error } = await context.admin
+    .from('department_members')
+    .delete()
+    .eq('user_id', userId)
+    .eq('department_id', departmentId)
 
-  const targetMembership = targetMemberResult.membership
-
-  if (targetMembership.user_id === context.userId && parsed.data.nextStatus === 'inactive') {
-    return actionError('You cannot deactivate your own account.')
-  }
-
-  if (context.role !== 'owner' && targetMembership.role === 'owner') {
-    return actionError('Only owners can change owner status.')
-  }
-
-  const nextActive = parsed.data.nextStatus === 'active'
-  if (targetMembership.is_active === nextActive) {
-    return actionSuccess(nextActive ? 'Member is already active.' : 'Member is already inactive.')
-  }
-
-  const syncProfileResult = await syncMembershipAndProfile(context.admin, context.companyId, targetMembership.user_id, {
-    isActive: nextActive,
-  })
-  if (!syncProfileResult.ok) {
-    return actionError(syncProfileResult.message)
-  }
-
-  if (!nextActive) {
-    const clearDepartmentsResult = await clearMemberDepartments(context.admin, context.companyId, targetMembership.user_id)
-    if (!clearDepartmentsResult.ok) {
-      return actionError(clearDepartmentsResult.message)
-    }
-    await syncSessionClaims(targetMembership.user_id, null, null)
-  } else {
-    await syncSessionClaims(targetMembership.user_id, context.companyId, targetMembership.role as Role)
+  if (error) {
+    return actionError(formatDatabaseError(error.message))
   }
 
   revalidatePath(ROUTES.SETTINGS_MEMBERS)
-  return actionSuccess(nextActive ? 'Member activated.' : 'Member deactivated.')
+  return actionSuccess('Department assignment removed.')
+}
+
+export async function updateDepartmentMemberRoleAction(
+  formData: FormData,
+): Promise<MemberActionState> {
+  const userId = field(formData, 'userId')
+  const departmentId = field(formData, 'departmentId')
+  const role = field(formData, 'role')
+
+  if (!userId || !departmentId || (role !== 'lead' && role !== 'member')) {
+    return actionError('Invalid request.')
+  }
+
+  const context = await getActorContext()
+  if (!context.ok) {
+    return actionError(context.message)
+  }
+
+  try {
+    requireRole(context.role, 'manager')
+  } catch {
+    return actionError('Insufficient permissions.')
+  }
+
+  const { error } = await context.admin
+    .from('department_members')
+    .update({ role })
+    .eq('user_id', userId)
+    .eq('department_id', departmentId)
+
+  if (error) {
+    return actionError(formatDatabaseError(error.message))
+  }
+
+  revalidatePath(ROUTES.SETTINGS_MEMBERS)
+  return actionSuccess('Department member role updated.')
+}
+
+// Legacy stub — invitations are out of scope for Phase 3.
+// The create-member-modal component still imports this function.
+export async function createMemberAction(
+  _prevState: MemberActionState,
+  _formData: FormData,
+): Promise<MemberActionState> {
+  return actionError('Member invitations are not supported in this version.')
+}
+
+// Legacy stub — the invite-accept-form component still imports this function.
+export async function acceptInviteAction(
+  _invitationId: string,
+): Promise<{ success: boolean; message: string }> {
+  return { success: false, message: 'Invitations are not supported in this version.' }
 }

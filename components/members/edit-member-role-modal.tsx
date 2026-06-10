@@ -8,7 +8,7 @@ import { ShieldCheck } from 'lucide-react'
 type EditMemberRoleModalProps = {
   userId: string
   memberName: string
-  currentRole: 'owner' | 'manager' | 'member'
+  currentRole: 'owner' | 'admin' | 'manager' | 'member'
   canManageOwnerRole: boolean
   onSaved?: (message: string) => void
 }
@@ -87,6 +87,7 @@ export function EditMemberRoleModal({
                   className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                 >
                   {canManageOwnerRole ? <option value="owner">Owner</option> : null}
+                  {canManageOwnerRole ? <option value="admin">Admin</option> : null}
                   <option value="manager">Manager</option>
                   <option value="member">Member</option>
                 </select>

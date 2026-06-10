@@ -1,16 +1,22 @@
+// Phase 3 canonical data types for new metrics (used by settings UI dropdowns)
 export const METRIC_DATA_TYPES = [
   'number',
   'currency',
-  'percent',
+  'percentage',
   'boolean',
-  'duration',
   'text',
-  'datetime',
-  'selection',
-  'file',
 ] as const
 
-export type MetricDataType = (typeof METRIC_DATA_TYPES)[number]
+// MetricDataType is a broad union that includes both Phase 3 types and legacy
+// types so that daily-log, dashboard, leaderboard, and accountability code
+// compiles without changes while those features are migrated.
+export type MetricDataType =
+  | (typeof METRIC_DATA_TYPES)[number]
+  | 'percent'
+  | 'duration'
+  | 'datetime'
+  | 'selection'
+  | 'file'
 
 export const BOOLEAN_PRESETS = [
   'yes_no',
@@ -79,7 +85,7 @@ export function parseSelectionOptions(raw: string) {
   )
 }
 
-export function normalizeMetricSettings(dataType: MetricDataType, raw: unknown): MetricSettings {
+export function normalizeMetricSettings(dataType: string, raw: unknown): MetricSettings {
   const value = asRecord(raw)
 
   if (dataType === 'number') {
@@ -98,7 +104,6 @@ export function normalizeMetricSettings(dataType: MetricDataType, raw: unknown):
 
   if (dataType === 'boolean') {
     return {
-      // Keep boolean metrics consistent and agency-friendly across all screens.
       booleanPreset: 'yes_no',
     }
   }
@@ -157,7 +162,7 @@ export function booleanLabels(settings: MetricSettings) {
   return BOOLEAN_LABELS
 }
 
-export function isCalculatedSupportedType(dataType: MetricDataType) {
+export function isCalculatedSupportedType(dataType: string) {
   return (
     dataType === 'number' ||
     dataType === 'currency' ||
