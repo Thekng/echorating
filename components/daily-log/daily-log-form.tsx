@@ -84,6 +84,7 @@ function renderMetricInput(
   value: string,
   pending: boolean,
   onChange: (nextValue: string) => void,
+  id: string,
 ) {
   const settings = normalizeMetricSettings(metric.data_type, metric.settings)
 
@@ -92,6 +93,7 @@ function renderMetricInput(
 
     return (
       <select
+        id={id}
         name={`metric_${metric.metric_id}`}
         value={value}
         onChange={(event) => onChange(event.currentTarget.value)}
@@ -109,6 +111,7 @@ function renderMetricInput(
     if (settings.durationFormat && settings.durationFormat !== 'hh_mm_ss') {
       return (
         <input
+          id={id}
           name={`metric_${metric.metric_id}`}
           type="number"
           step={settings.durationFormat === 'days' ? '0.01' : '1'}
@@ -125,6 +128,7 @@ function renderMetricInput(
 
     return (
       <DurationSelector
+        id={id}
         name={`metric_${metric.metric_id}`}
         value={value}
         onChange={onChange}
@@ -138,6 +142,7 @@ function renderMetricInput(
     if (settings.textFormat === 'long_text') {
       return (
         <textarea
+          id={id}
           name={`metric_${metric.metric_id}`}
           rows={3}
           value={value}
@@ -160,6 +165,7 @@ function renderMetricInput(
 
     return (
       <input
+        id={id}
         name={`metric_${metric.metric_id}`}
         type={inputType}
         inputMode={settings.textFormat === 'phone' ? 'tel' : 'text'}
@@ -182,6 +188,7 @@ function renderMetricInput(
 
     return (
       <input
+        id={id}
         name={`metric_${metric.metric_id}`}
         type={inputType}
         value={value}
@@ -208,6 +215,7 @@ function renderMetricInput(
         <>
           <input type="hidden" name={`metric_${metric.metric_id}`} value={value} />
           <select
+            id={id}
             multiple
             value={selectedValues}
             onChange={(event) => {
@@ -250,6 +258,7 @@ function renderMetricInput(
 
     return (
       <select
+        id={id}
         name={`metric_${metric.metric_id}`}
         value={value}
         onChange={(event) => onChange(event.currentTarget.value)}
@@ -269,6 +278,7 @@ function renderMetricInput(
   if (metric.data_type === 'file') {
     return (
       <input
+        id={id}
         name={`metric_${metric.metric_id}`}
         type="url"
         value={value}
@@ -282,6 +292,7 @@ function renderMetricInput(
 
   return (
     <input
+      id={id}
       name={`metric_${metric.metric_id}`}
       type="number"
       inputMode="decimal"
@@ -461,17 +472,31 @@ export function DailyLogForm({
         ) : (
           <>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              {metrics.map((metric) => (
-                <div key={metric.metric_id} className="space-y-2">
-                  <label className="block text-sm font-medium text-foreground">{metric.name}</label>
-                  {renderMetricInput(metric, values[metric.metric_id] ?? '', disabledForm, (nextValue) => {
-                    setValues((current) => ({
-                      ...current,
-                      [metric.metric_id]: nextValue,
-                    }))
-                  })}
-                </div>
-              ))}
+              {metrics.map((metric) => {
+                const metricInputId = `metric-${metric.metric_id}`
+                return (
+                  <div key={metric.metric_id} className="space-y-2">
+                    <label
+                      htmlFor={metricInputId}
+                      className="block text-sm font-medium text-foreground"
+                    >
+                      {metric.name}
+                    </label>
+                    {renderMetricInput(
+                      metric,
+                      values[metric.metric_id] ?? '',
+                      disabledForm,
+                      (nextValue) => {
+                        setValues((current) => ({
+                          ...current,
+                          [metric.metric_id]: nextValue,
+                        }))
+                      },
+                      metricInputId,
+                    )}
+                  </div>
+                )
+              })}
             </div>
 
             <div className="space-y-2">
