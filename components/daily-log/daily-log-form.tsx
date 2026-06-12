@@ -237,7 +237,7 @@ function renderMetricInput(
 
     if (settings.selectionMode === 'radio') {
       return (
-        <div className="space-y-1">
+        <div className="space-y-1" role="radiogroup" aria-labelledby={id}>
           <input type="hidden" name={`metric_${metric.metric_id}`} value={value} />
           {options.map((option) => (
             <label key={option} className="flex items-center gap-2 text-sm">
@@ -474,9 +474,17 @@ export function DailyLogForm({
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               {metrics.map((metric) => {
                 const metricInputId = `metric-${metric.metric_id}`
+                const isRadio =
+                  metric.data_type === 'selection' &&
+                  normalizeMetricSettings(metric.data_type, metric.settings).selectionMode === 'radio'
+
                 return (
                   <div key={metric.metric_id} className="space-y-2">
-                    <label htmlFor={metricInputId} className="block text-sm font-medium text-foreground">
+                    <label
+                      id={isRadio ? metricInputId : undefined}
+                      htmlFor={isRadio ? undefined : metricInputId}
+                      className="block text-sm font-medium text-foreground"
+                    >
                       {metric.name}
                     </label>
                     {renderMetricInput(metric, values[metric.metric_id] ?? '', disabledForm, metricInputId, (nextValue) => {
