@@ -8,6 +8,7 @@ interface ConfirmDialogProps {
   description?: string
   confirmText?: string
   cancelText?: string
+  variant?: 'default' | 'destructive'
   isLoading?: boolean
   onConfirm: () => void
   onCancel: () => void
@@ -18,6 +19,7 @@ export function ConfirmDialog({
   description,
   confirmText = 'Confirm',
   cancelText = 'Cancel',
+  variant = 'destructive',
   isLoading = false,
   onConfirm,
   onCancel,
@@ -54,7 +56,7 @@ export function ConfirmDialog({
           <Button variant="ghost" onClick={onCancel} disabled={isLoading}>
             {cancelText}
           </Button>
-          <Button variant="destructive" onClick={onConfirm} disabled={isLoading} autoFocus>
+          <Button variant={variant} onClick={onConfirm} disabled={isLoading} autoFocus>
             {isLoading ? (
               <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
             ) : (
