@@ -1,7 +1,6 @@
 'use server'
 
 import { getActorContext } from '@/lib/supabase/actor-context'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { requireRole } from '@/lib/rbac/guards'
 import { type Role } from '@/lib/rbac/roles'
 import { getAccessibleDepartments } from '@/lib/rbac/department-access'
@@ -648,7 +647,7 @@ export async function getDashboardData(filters?: {
   }
 
   let kpis: DashboardKpi[] = []
-  let trend: DashboardTrendPoint[] = []
+  const trend: DashboardTrendPoint[] = []
   let series: DashboardSeries[] = []
   let primaryMetricLabel: string | null = null
 
@@ -758,18 +757,18 @@ export async function getDashboardData(filters?: {
       const dateFormatter = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' })
       const dateKeys: string[] = []
       {
-        let cursor = new Date(`${range.startDate}T00:00:00Z`)
+      let cursorTrend = new Date(`${range.startDate}T00:00:00Z`)
         const cutoffDateObj = new Date(`${range.cutoffDate}T00:00:00Z`)
-        while (cursor <= cutoffDateObj) {
-          const dateKey = dateKeyUtc(cursor)
+      while (cursorTrend <= cutoffDateObj) {
+        const dateKey = dateKeyUtc(cursorTrend)
           dateKeys.push(dateKey)
           trend.push({
             date: dateKey,
-            label: dateFormatter.format(cursor),
+          label: dateFormatter.format(cursorTrend),
             submitted_logs: trendLogsByDate.get(dateKey)?.size ?? 0,
             primary_metric_value: Number((trendMetricByDate.get(dateKey) ?? 0).toFixed(2)),
           })
-          cursor = addUtcDays(cursor, 1)
+        cursorTrend = addUtcDays(cursorTrend, 1)
         }
       }
 
