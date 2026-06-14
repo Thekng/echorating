@@ -27,7 +27,7 @@ type DepartmentOption = {
 }
 
 export type LeaderboardMetric = {
-  metric_id: string
+  id: string
   name: string
   code: string
   data_type: MetricDataType
@@ -192,62 +192,30 @@ function resolveDateRange(
   }
 }
 
-function isMissingProfileNameColumn(message: string) {
-  const normalized = message.toLowerCase()
-  return normalized.includes('column profiles_1.name does not exist')
-}
-
-function isMissingMetricsSortOrderColumn(message: string) {
-  return message.toLowerCase().includes('column metrics.sort_order does not exist')
-}
-
-
 async function getDepartmentMetrics(
   admin: ReturnType<typeof createAdminClient>,
-  companyId: string,
+  organizationId: string,
   departmentId: string,
 ) {
-  const withSort = await admin
+  const { data, error } = await admin
     .from('metrics')
-    .select('metric_id, name, code, data_type, unit, sort_order')
-    .eq('company_id', companyId)
+    .select('id, name, code, data_type, unit, sort_order')
+    .eq('organization_id', organizationId)
     .eq('department_id', departmentId)
     .eq('is_active', true)
     .in('data_type', RANKING_METRIC_TYPES)
-    .is('deleted_at', null)
     .order('sort_order', { ascending: true, nullsFirst: false })
     .order('name', { ascending: true })
 
-  let metrics: LeaderboardMetric[] = []
-  if (!withSort.error) {
-    metrics = (withSort.data ?? []) as LeaderboardMetric[]
-  } else if (isMissingMetricsSortOrderColumn(withSort.error.message)) {
-    const fallback = await admin
-      .from('metrics')
-      .select('metric_id, name, code, data_type, unit')
-      .eq('company_id', companyId)
-      .eq('department_id', departmentId)
-      .eq('is_active', true)
-      .in('data_type', RANKING_METRIC_TYPES)
-      .is('deleted_at', null)
-      .order('name', { ascending: true })
-
-    if (fallback.error) {
-      return {
-        ok: false as const,
-        message: formatDatabaseError(fallback.error.message),
-        metrics: [] as LeaderboardMetric[],
-      }
-    }
-
-    metrics = (fallback.data ?? []) as LeaderboardMetric[]
-  } else {
+  if (error) {
     return {
       ok: false as const,
-      message: formatDatabaseError(withSort.error.message),
+      message: formatDatabaseError(error.message),
       metrics: [] as LeaderboardMetric[],
     }
   }
+
+  const metrics = (data ?? []) as LeaderboardMetric[]
 
   if (metrics.length === 0) {
     return { ok: true as const, metrics: [] as LeaderboardMetric[] }
@@ -272,66 +240,46 @@ async function getActiveMembersForDepartment(
   admin: ReturnType<typeof createAdminClient>,
   departmentId: string,
 ) {
-  const withName = await admin
+  const { data, error } = await admin
     .from('department_members')
-    .select('user_id, profiles!inner(name)')
+    .select('user_id, profiles!inner(full_name)')
     .eq('department_id', departmentId)
-    .eq('is_active', true)
-    .is('deleted_at', null)
 
-  let rows: Array<{ user_id: string; profiles?: { name?: string; full_name?: string } }> = []
-  if (!withName.error) {
-    rows = (withName.data as typeof rows) ?? []
-  } else if (isMissingProfileNameColumn(withName.error.message)) {
-    const fallback = await admin
-      .from('department_members')
-      .select('user_id, profiles!inner(full_name)')
-      .eq('department_id', departmentId)
-      .eq('is_active', true)
-      .is('deleted_at', null)
-
-    if (fallback.error) {
-      return {
-        ok: false as const,
-        message: formatDatabaseError(fallback.error.message),
-        members: [] as Array<{ user_id: string; name: string }>,
-      }
-    }
-
-    rows = (fallback.data as typeof rows) ?? []
-  } else {
+  if (error) {
     return {
       ok: false as const,
-      message: formatDatabaseError(withName.error.message),
+      message: formatDatabaseError(error.message),
       members: [] as Array<{ user_id: string; name: string }>,
     }
   }
+
+  const rows = (data ?? []) as Array<{ user_id: string; profiles?: { full_name?: string } }>
 
   return {
     ok: true as const,
     members: rows.map((row) => ({
       user_id: row.user_id,
-      name: row.profiles?.name || row.profiles?.full_name || 'Unknown',
+      name: row.profiles?.full_name || 'Unknown',
     })),
   }
 }
 
 function parseMetricValue(
   dataType: MetricDataType,
-  row: { value_numeric: number | null; value_bool: boolean | null },
+  row: { value_number: number | null; value_boolean: boolean | null },
 ) {
   if (dataType === 'boolean') {
-    if (row.value_bool === null) {
+    if (row.value_boolean === null) {
       return null
     }
-    return row.value_bool ? 1 : 0
+    return row.value_boolean ? 1 : 0
   }
 
-  if (row.value_numeric === null || row.value_numeric === undefined) {
+  if (row.value_number === null || row.value_number === undefined) {
     return null
   }
 
-  return Number(row.value_numeric)
+  return Number(row.value_number)
 }
 
 export async function getLeaderboard(opts: {
@@ -363,7 +311,7 @@ export async function getLeaderboard(opts: {
 
   const accessibleDepartments = await getAccessibleDepartments(
     context.admin,
-    context.companyId,
+    context.organizationId,
     context.userId,
     context.role,
   )
@@ -395,16 +343,16 @@ export async function getLeaderboard(opts: {
       ? opts.departmentId
       : departments[0].department_id
 
-  const metricsResult = await getDepartmentMetrics(context.admin, context.companyId, selectedDepartmentId)
+  const metricsResult = await getDepartmentMetrics(context.admin, context.organizationId, selectedDepartmentId)
   if (!metricsResult.ok) {
     return { success: false, error: metricsResult.message, data: null }
   }
 
   const metrics = metricsResult.metrics
   const selectedMetricId =
-    opts.metricId && metrics.some((metric) => metric.metric_id === opts.metricId)
+    opts.metricId && metrics.some((metric) => metric.id === opts.metricId)
       ? opts.metricId
-      : (metrics[0]?.metric_id ?? '')
+      : (metrics[0]?.id ?? '')
 
   const activeMembersResult = await getActiveMembersForDepartment(context.admin, selectedDepartmentId)
   if (!activeMembersResult.ok) {
@@ -413,7 +361,7 @@ export async function getLeaderboard(opts: {
 
   const members = activeMembersResult.members
   const memberById = new Map(members.map((member) => [member.user_id, member.name]))
-  const metricById = new Map(metrics.map((metric) => [metric.metric_id, metric]))
+  const metricById = new Map(metrics.map((metric) => [metric.id, metric]))
 
   if (metrics.length === 0) {
     return {
@@ -440,34 +388,34 @@ export async function getLeaderboard(opts: {
   }
 
   const { data: entriesData, error: entriesError } = await context.admin
-    .from('daily_entries')
-    .select('entry_id, user_id')
-    .eq('company_id', context.companyId)
+    .from('daily_reports')
+    .select('id, user_id')
+    .eq('organization_id', context.organizationId)
     .eq('department_id', selectedDepartmentId)
     .eq('status', 'submitted')
-    .gte('entry_date', range.startDate)
-    .lte('entry_date', range.cutoffDate)
+    .gte('report_date', range.startDate)
+    .lte('report_date', range.cutoffDate)
 
   if (entriesError) {
     return { success: false, error: formatDatabaseError(entriesError.message), data: null }
   }
 
-  const entries = ((entriesData ?? []) as Array<{ entry_id: string; user_id: string }>).filter((entry) =>
+  const entries = ((entriesData ?? []) as Array<{ id: string; user_id: string }>).filter((entry) =>
     memberById.has(entry.user_id),
   )
 
-  const metricIds = metrics.map((metric) => metric.metric_id)
+  const metricIds = metrics.map((metric) => metric.id)
   const valueByUserMetric = new Map<string, Map<string, number>>()
   const filledByUserMetric = new Map<string, Set<string>>()
 
   if (entries.length > 0 && metricIds.length > 0) {
-    const entryIds = entries.map((entry) => entry.entry_id)
-    const entryUserById = new Map(entries.map((entry) => [entry.entry_id, entry.user_id]))
+    const entryIds = entries.map((entry) => entry.id)
+    const entryUserById = new Map(entries.map((entry) => [entry.id, entry.user_id]))
 
     const { data: valuesData, error: valuesError } = await context.admin
-      .from('entry_values')
-      .select('entry_id, metric_id, value_numeric, value_bool')
-      .in('entry_id', entryIds)
+      .from('daily_report_values')
+      .select('daily_report_id, metric_id, value_number, value_boolean')
+      .in('daily_report_id', entryIds)
       .in('metric_id', metricIds)
 
     if (valuesError) {
@@ -475,12 +423,12 @@ export async function getLeaderboard(opts: {
     }
 
     for (const row of (valuesData ?? []) as Array<{
-      entry_id: string
+      daily_report_id: string
       metric_id: string
-      value_numeric: number | null
-      value_bool: boolean | null
+      value_number: number | null
+      value_boolean: boolean | null
     }>) {
-      const userId = entryUserById.get(row.entry_id)
+      const userId = entryUserById.get(row.daily_report_id)
       const metric = metricById.get(row.metric_id)
       if (!userId || !metric) {
         continue
@@ -506,7 +454,7 @@ export async function getLeaderboard(opts: {
     const values: Record<string, number> = {}
 
     for (const metric of metrics) {
-      values[metric.metric_id] = Number((valuesByMetric.get(metric.metric_id) ?? 0).toFixed(2))
+      values[metric.id] = Number((valuesByMetric.get(metric.id) ?? 0).toFixed(2))
     }
 
     return {
@@ -532,7 +480,7 @@ export async function getLeaderboard(opts: {
     .slice(0, limit)
 
   const hasAnyValues = leaderboard.some((row) =>
-    metrics.some((metric) => (row.values[metric.metric_id] ?? 0) !== 0),
+    metrics.some((metric) => (row.values[metric.id] ?? 0) !== 0),
   )
 
   return {

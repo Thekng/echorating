@@ -14,7 +14,7 @@ type Department = {
 }
 
 type Metric = {
-  metric_id: string
+  id: string
   name: string
   code: string
   data_type: string
@@ -123,13 +123,13 @@ export default function LeaderboardClient() {
     ''
 
   const selectedMetricId =
-    (metricId && sortOptions.some((metric) => metric.metric_id === metricId)
+    (metricId && sortOptions.some((metric) => metric.id === metricId)
       ? metricId
       : null) ??
-    (data?.selectedMetricId && sortOptions.some((metric) => metric.metric_id === data.selectedMetricId)
+    (data?.selectedMetricId && sortOptions.some((metric) => metric.id === data.selectedMetricId)
       ? data.selectedMetricId
       : null) ??
-    sortOptions[0]?.metric_id ??
+    sortOptions[0]?.id ??
     ''
 
   const formatValue = (metric: Metric, value: number) => {
@@ -198,7 +198,7 @@ export default function LeaderboardClient() {
             >
               {sortOptions.length === 0 ? <option value="">No metrics</option> : null}
               {sortOptions.map((option) => (
-                <option key={option.metric_id} value={option.metric_id}>
+                <option key={option.id} value={option.id}>
                   {option.name}
                 </option>
               ))}
@@ -260,7 +260,7 @@ export default function LeaderboardClient() {
                   <th className="px-4 py-2 text-left font-medium">Rank</th>
                   <th className="px-4 py-2 text-left font-medium">Team Member</th>
                   {metrics.map((metric) => (
-                    <th key={metric.metric_id} className="px-4 py-2 text-left font-medium whitespace-nowrap">
+                    <th key={metric.id} className="px-4 py-2 text-left font-medium whitespace-nowrap">
                       {metric.name}
                     </th>
                   ))}
@@ -286,8 +286,8 @@ export default function LeaderboardClient() {
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">{row.name}</td>
                     {metrics.map((metric) => (
-                      <td key={`${row.user_id}:${metric.metric_id}`} className="px-4 py-3 whitespace-nowrap">
-                        {formatValue(metric, row.values[metric.metric_id] ?? 0)}
+                      <td key={`${row.user_id}:${metric.id}`} className="px-4 py-3 whitespace-nowrap">
+                        {formatValue(metric, row.values[metric.id] ?? 0)}
                       </td>
                     ))}
                     <td className="px-4 py-3 text-right">

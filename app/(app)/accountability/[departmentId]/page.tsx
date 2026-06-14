@@ -25,21 +25,21 @@ function formatDate(value: string | null) {
 }
 
 function formatEntryMetricValue(entryValue: {
-  value_numeric: number | null
+  value_number: number | null
   value_text: string | null
-  value_bool: boolean | null
+  value_boolean: boolean | null
 }, metric: { data_type: string; unit?: string | null; settings?: unknown }) {
   const metricDataType = metric.data_type
 
   if (metricDataType === 'boolean') {
-    if (entryValue.value_bool === null) {
+    if (entryValue.value_boolean === null) {
       return '-'
     }
-    return entryValue.value_bool ? 'Yes' : 'No'
+    return entryValue.value_boolean ? 'Yes' : 'No'
   }
 
-  if (entryValue.value_numeric !== null) {
-    return formatMetricNumber(entryValue.value_numeric, {
+  if (entryValue.value_number !== null) {
+    return formatMetricNumber(entryValue.value_number, {
       dataType: metricDataType,
       unit: metric.unit,
       settings: metric.settings,
@@ -163,7 +163,7 @@ export default async function DepartmentDetailPage({ params, searchParams }: Dep
                 <th className="px-4 py-2 text-left font-medium">Status</th>
                 <th className="px-4 py-2 text-left font-medium">Notes</th>
                 {metrics.slice(0, 5).map((metric) => (
-                  <th key={metric.metric_id} className="px-4 py-2 text-left font-medium">
+                  <th key={metric.id} className="px-4 py-2 text-left font-medium">
                     {metric.code}
                   </th>
                 ))}
@@ -178,8 +178,8 @@ export default async function DepartmentDetailPage({ params, searchParams }: Dep
                 </tr>
               ) : null}
               {recent_entries.map((entry) => (
-                <tr key={entry.entry_id} className="border-b last:border-b-0">
-                  <td className="px-4 py-3">{formatDate(entry.entry_date)}</td>
+                <tr key={entry.id} className="border-b last:border-b-0">
+                  <td className="px-4 py-3">{formatDate(entry.report_date)}</td>
                   <td className="px-4 py-3">
                     <span
                       className={
@@ -193,17 +193,17 @@ export default async function DepartmentDetailPage({ params, searchParams }: Dep
                   </td>
                   <td className="px-4 py-3 max-w-xs truncate text-muted-foreground">{entry.notes || '-'}</td>
                   {metrics.slice(0, 5).map((metric) => {
-                    const entryValue = entry.metric_values.find((item) => item.metric_id === metric.metric_id)
+                    const entryValue = entry.metric_values.find((item) => item.metric_id === metric.id)
                     if (!entryValue) {
                       return (
-                        <td key={metric.metric_id} className="px-4 py-3">
+                        <td key={metric.id} className="px-4 py-3">
                           -
                         </td>
                       )
                     }
 
                     return (
-                      <td key={metric.metric_id} className="px-4 py-3">
+                      <td key={metric.id} className="px-4 py-3">
                         {formatEntryMetricValue(entryValue, metric)}
                       </td>
                     )
@@ -229,7 +229,7 @@ export default async function DepartmentDetailPage({ params, searchParams }: Dep
                   <th className="px-4 py-2 text-left font-medium">Team Member</th>
                   <th className="px-4 py-2 text-left font-medium">Completion</th>
                   {metrics.slice(0, 5).map((metric) => (
-                    <th key={metric.metric_id} className="px-4 py-2 text-left font-medium text-xs">
+                    <th key={metric.id} className="px-4 py-2 text-left font-medium text-xs">
                       {metric.code}
                     </th>
                   ))}
@@ -247,7 +247,7 @@ export default async function DepartmentDetailPage({ params, searchParams }: Dep
                       <td className="px-4 py-3 font-medium">{agent.name}</td>
                       <td className="px-4 py-3">{formatPercent(agent.completion_rate, 1)}</td>
                       {metrics.slice(0, 5).map((metric) => {
-                        const value = agentMetrics[metric.metric_id]
+                        const value = agentMetrics[metric.id]
                         const displayValue = value !== undefined && value !== null
                           ? formatMetricNumber(value, {
                             dataType: metric.data_type,
@@ -258,7 +258,7 @@ export default async function DepartmentDetailPage({ params, searchParams }: Dep
                           : '-'
 
                         return (
-                          <td key={metric.metric_id} className="px-4 py-3 text-sm text-muted-foreground">
+                          <td key={metric.id} className="px-4 py-3 text-sm text-muted-foreground">
                             {displayValue}
                           </td>
                         )

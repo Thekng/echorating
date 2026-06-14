@@ -140,22 +140,22 @@ export async function getDepartmentProfile(
         last_entry_date: null as string | null,
       },
       metrics: [] as Array<{
-        metric_id: string
+        id: string
         code: string
         data_type: string
         unit: string | null
         settings: unknown
       }>,
       recent_entries: [] as Array<{
-        entry_id: string
-        entry_date: string
+        id: string
+        report_date: string
         status: string
         notes: string | null
         metric_values: Array<{
           metric_id: string
-          value_numeric: number | null
+          value_number: number | null
           value_text: string | null
-          value_bool: boolean | null
+          value_boolean: boolean | null
         }>
       }>,
       members_count: 0,

@@ -49,7 +49,7 @@ export function HistoryColumnsConfig({ departmentId, candidates, config }: Histo
             >
               <option value="">None</option>
               {candidates.map((metric) => (
-                <option key={metric.metric_id} value={metric.metric_id}>
+                <option key={metric.id} value={metric.id}>
                   {metric.name}
                 </option>
               ))}

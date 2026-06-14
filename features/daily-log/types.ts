@@ -3,7 +3,7 @@ import { type MetricDataType, type MetricSettings } from '@/lib/metrics/data-typ
 export type DailyLogMetricDataType = MetricDataType
 
 export type DailyLogMetric = {
-  metric_id: string
+  id: string
   name: string
   code: string
   data_type: DailyLogMetricDataType
@@ -15,7 +15,7 @@ export type DailyLogMetric = {
 export type DailyLogEntryStatus = 'draft' | 'submitted'
 
 export type DailyLogExistingEntry = {
-  entry_id: string
+  id: string
   status: DailyLogEntryStatus
   updated_at: string
   submitted_at: string | null
@@ -35,7 +35,7 @@ export type DailyLogKeyMetricSlot = {
 
 export type DailyLogKeyMetric = {
   slot: 1 | 2 | 3
-  metric_id: string
+  id: string
   name: string
   code: string
   data_type: DailyLogMetricDataType
@@ -45,17 +45,17 @@ export type DailyLogKeyMetric = {
 
 export type DailyLogRecentMetricValue = {
   metric_id: string
-  value_numeric: number | null
+  value_number: number | null
   value_text: string | null
-  value_bool: boolean | null
+  value_boolean: boolean | null
 }
 
 export type DailyLogRecentEntry = {
-  entry_id: string
+  id: string
   user_id: string
   user_name: string
   department_id: string
-  entry_date: string
+  report_date: string
   status: DailyLogEntryStatus
   notes: string | null
   updated_at: string

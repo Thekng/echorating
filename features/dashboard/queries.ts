@@ -41,7 +41,7 @@ type AgentOption = {
 }
 
 type DashboardMetric = {
-  metric_id: string
+  id: string
   name: string
   code: string
   data_type: MetricDataType
@@ -50,14 +50,14 @@ type DashboardMetric = {
 }
 
 type EntryRow = {
-  entry_id: string
-  entry_date: string
+  id: string
+  report_date: string
   status: 'draft' | 'submitted'
   user_id: string
 }
 
 export type DashboardKpi = {
-  metric_id: string
+  id: string
   name: string
   code: string
   data_type: MetricDataType
@@ -433,26 +433,17 @@ function calcChangePct(currentValue: number, previousValue: number) {
 
 function parseMetricValue(
   dataType: MetricDataType,
-  row: { value_numeric: number | null; value_bool: boolean | null },
+  row: { value_number: number | null; value_boolean: boolean | null },
 ) {
   if (dataType === 'boolean') {
-    return row.value_bool ? 1 : 0
+    return row.value_boolean ? 1 : 0
   }
 
-  if (row.value_numeric === null || row.value_numeric === undefined) {
+  if (row.value_number === null || row.value_number === undefined) {
     return 0
   }
 
-  return Number(row.value_numeric)
-}
-
-function isMissingProfileNameColumn(message: string) {
-  const normalized = message.toLowerCase()
-  return normalized.includes('column profiles_1.name does not exist')
-}
-
-function isMissingMetricsSortOrderColumn(message: string) {
-  return message.toLowerCase().includes('column metrics.sort_order does not exist')
+  return Number(row.value_number)
 }
 
 export async function getDashboardData(filters?: {
@@ -481,7 +472,7 @@ export async function getDashboardData(filters?: {
 
   const departmentsResult = await getAccessibleDepartments(
     context.admin,
-    context.companyId,
+    context.organizationId,
     context.userId,
     context.role,
   )
@@ -526,39 +517,22 @@ export async function getDashboardData(filters?: {
       ? filters.departmentId
       : departments[0].department_id
 
-  const metricsWithSort = await context.admin
+  const metricsResult = await context.admin
     .from('metrics')
-    .select('metric_id, name, code, data_type, unit, sort_order')
-    .eq('company_id', context.companyId)
+    .select('id, name, code, data_type, unit, sort_order')
+    .eq('organization_id', context.organizationId)
     .eq('department_id', selectedDepartmentId)
     .eq('is_active', true)
     .in('data_type', SUPPORTED_KPI_TYPES)
-    .is('deleted_at', null)
     .order('sort_order', { ascending: true, nullsFirst: false })
     .order('name', { ascending: true })
 
-  let metrics: DashboardMetric[] = []
-  if (!metricsWithSort.error) {
-    metrics = (metricsWithSort.data ?? []) as DashboardMetric[]
-  } else if (isMissingMetricsSortOrderColumn(metricsWithSort.error.message)) {
-    const metricsFallback = await context.admin
-      .from('metrics')
-      .select('metric_id, name, code, data_type, unit')
-      .eq('company_id', context.companyId)
-      .eq('department_id', selectedDepartmentId)
-      .eq('is_active', true)
-      .in('data_type', SUPPORTED_KPI_TYPES)
-      .is('deleted_at', null)
-      .order('name', { ascending: true })
-
-    if (metricsFallback.error) {
-      return { success: false as const, error: formatDatabaseError(metricsFallback.error.message), data: null }
-    }
-
-    metrics = (metricsFallback.data ?? []) as DashboardMetric[]
-  } else {
-    return { success: false as const, error: formatDatabaseError(metricsWithSort.error.message), data: null }
+  if (metricsResult.error) {
+    return { success: false as const, error: formatDatabaseError(metricsResult.error.message), data: null }
   }
+
+  const metrics = (metricsResult.data ?? []) as DashboardMetric[]
+
   const prioritizedMetrics = metrics
     .slice()
     .sort((left, right) => {
@@ -571,40 +545,24 @@ export async function getDashboardData(filters?: {
     })
     .slice(0, 8)
 
-  const selectedMetricIds = prioritizedMetrics.map((metric) => metric.metric_id)
-  const metricById = new Map(prioritizedMetrics.map((metric) => [metric.metric_id, metric]))
+  const selectedMetricIds = prioritizedMetrics.map((metric) => metric.id)
+  const metricById = new Map(prioritizedMetrics.map((metric) => [metric.id, metric]))
 
-  const activeMembersWithName = await context.admin
+  const activeMembersResult = await context.admin
     .from('department_members')
-    .select('user_id, profiles!inner(name)')
+    .select('user_id, profiles!inner(full_name)')
     .eq('department_id', selectedDepartmentId)
-    .eq('is_active', true)
-    .is('deleted_at', null)
 
-  let activeMembersData: unknown[] = []
-  if (!activeMembersWithName.error) {
-    activeMembersData = (activeMembersWithName.data as unknown[]) ?? []
-  } else if (isMissingProfileNameColumn(activeMembersWithName.error.message)) {
-    const fallbackMembers = await context.admin
-      .from('department_members')
-      .select('user_id, profiles!inner(full_name)')
-      .eq('department_id', selectedDepartmentId)
-      .eq('is_active', true)
-      .is('deleted_at', null)
-
-    if (fallbackMembers.error) {
-      return { success: false as const, error: formatDatabaseError(fallbackMembers.error.message), data: null }
-    }
-
-    activeMembersData = (fallbackMembers.data as unknown[]) ?? []
-  } else {
-    return { success: false as const, error: formatDatabaseError(activeMembersWithName.error.message), data: null }
+  if (activeMembersResult.error) {
+    return { success: false as const, error: formatDatabaseError(activeMembersResult.error.message), data: null }
   }
 
-  const agents: AgentOption[] = (activeMembersData as Array<{ user_id: string; profiles?: { name?: string; full_name?: string } }>)
+  const activeMembersData = (activeMembersResult.data as unknown[]) ?? []
+
+  const agents: AgentOption[] = (activeMembersData as Array<{ user_id: string; profiles?: { full_name?: string } }>)
     .map((row) => ({
       user_id: row.user_id,
-      name: row.profiles?.name || row.profiles?.full_name || 'Unknown',
+      name: row.profiles?.full_name || 'Unknown',
     }))
 
   const activeAgentIds = agents.map((agent) => agent.user_id)
@@ -615,12 +573,12 @@ export async function getDashboardData(filters?: {
   const effectiveUserId = isManagerOrOwner ? (requestedUserId || null) : context.userId
 
   let entriesCurrentQuery = context.admin
-    .from('daily_entries')
-    .select('entry_id, entry_date, status, user_id')
-    .eq('company_id', context.companyId)
+    .from('daily_reports')
+    .select('id, report_date, status, user_id')
+    .eq('organization_id', context.organizationId)
     .eq('department_id', selectedDepartmentId)
-    .gte('entry_date', range.startDate)
-    .lte('entry_date', range.cutoffDate)
+    .gte('report_date', range.startDate)
+    .lte('report_date', range.cutoffDate)
 
   if (effectiveUserId) {
     entriesCurrentQuery = entriesCurrentQuery.eq('user_id', effectiveUserId)
@@ -636,7 +594,7 @@ export async function getDashboardData(filters?: {
   const submittedCurrent = entriesCurrent.filter((entry) => entry.status === 'submitted')
   const draftCurrent = entriesCurrent.filter((entry) => entry.status === 'draft')
 
-  const consistencyRate = toPercent(new Set(submittedCurrent.map((entry) => entry.entry_date)).size, range.windowDays)
+  const consistencyRate = toPercent(new Set(submittedCurrent.map((entry) => entry.report_date)).size, range.windowDays)
   const submissionRate = toPercent(submittedCurrent.length, submittedCurrent.length + draftCurrent.length)
 
   const stats: DashboardStats = {
@@ -654,13 +612,13 @@ export async function getDashboardData(filters?: {
 
   if (selectedMetricIds.length > 0) {
     let entriesBothQuery = context.admin
-      .from('daily_entries')
-      .select('entry_id, entry_date')
-      .eq('company_id', context.companyId)
+      .from('daily_reports')
+      .select('id, report_date')
+      .eq('organization_id', context.organizationId)
       .eq('department_id', selectedDepartmentId)
       .eq('status', 'submitted')
-      .gte('entry_date', range.previousStartDate)
-      .lte('entry_date', range.cutoffDate)
+      .gte('report_date', range.previousStartDate)
+      .lte('report_date', range.cutoffDate)
 
     if (effectiveUserId) {
       entriesBothQuery = entriesBothQuery.eq('user_id', effectiveUserId)
@@ -672,15 +630,15 @@ export async function getDashboardData(filters?: {
       return { success: false as const, error: formatDatabaseError(entriesBothError.message), data: null }
     }
 
-    const entriesBoth = (entriesBothData ?? []) as Array<{ entry_id: string; entry_date: string }>
-    const entryIds = entriesBoth.map((entry) => entry.entry_id)
-    const entryDateById = new Map(entriesBoth.map((entry) => [entry.entry_id, entry.entry_date]))
+    const entriesBoth = (entriesBothData ?? []) as Array<{ id: string; report_date: string }>
+    const entryIds = entriesBoth.map((entry) => entry.id)
+    const entryDateById = new Map(entriesBoth.map((entry) => [entry.id, entry.report_date]))
 
     if (entryIds.length > 0) {
       const { data: valuesData, error: valuesError } = await context.admin
-        .from('entry_values')
-        .select('entry_id, metric_id, value_numeric, value_bool')
-        .in('entry_id', entryIds)
+        .from('daily_report_values')
+        .select('daily_report_id, metric_id, value_number, value_boolean')
+        .in('daily_report_id', entryIds)
         .in('metric_id', selectedMetricIds)
 
       if (valuesError) {
@@ -700,10 +658,10 @@ export async function getDashboardData(filters?: {
       const previousDailyByMetric = new Map<string, Map<string, number>>()
 
       for (const row of (valuesData ?? []) as Array<{
-        entry_id: string
+        daily_report_id: string
         metric_id: string
-        value_numeric: number | null
-        value_bool: boolean | null
+        value_number: number | null
+        value_boolean: boolean | null
       }>) {
         const metric = metricById.get(row.metric_id)
         if (!metric) {
@@ -711,7 +669,7 @@ export async function getDashboardData(filters?: {
         }
 
         const value = parseMetricValue(metric.data_type, row)
-        const entryDate = entryDateById.get(row.entry_id)
+        const entryDate = entryDateById.get(row.daily_report_id)
         if (!entryDate) {
           continue
         }
@@ -723,13 +681,13 @@ export async function getDashboardData(filters?: {
           perDay.set(entryDate, (perDay.get(entryDate) ?? 0) + value)
           currentDailyByMetric.set(row.metric_id, perDay)
 
-          if (primaryMetric && row.metric_id === primaryMetric.metric_id) {
+          if (primaryMetric && row.metric_id === primaryMetric.id) {
             trendMetricByDate.set(entryDate, (trendMetricByDate.get(entryDate) ?? 0) + value)
           }
           if (!trendLogsByDate.has(entryDate)) {
             trendLogsByDate.set(entryDate, new Set())
           }
-          trendLogsByDate.get(entryDate)?.add(row.entry_id)
+          trendLogsByDate.get(entryDate)?.add(row.daily_report_id)
         } else if (entryDate >= range.previousStartDate && entryDate <= range.previousCutoffDate) {
           previousTotals.set(row.metric_id, (previousTotals.get(row.metric_id) ?? 0) + value)
 
@@ -740,11 +698,11 @@ export async function getDashboardData(filters?: {
       }
 
       kpis = prioritizedMetrics.map((metric) => {
-        const currentValue = Number((currentTotals.get(metric.metric_id) ?? 0).toFixed(2))
-        const previousValue = Number((previousTotals.get(metric.metric_id) ?? 0).toFixed(2))
+        const currentValue = Number((currentTotals.get(metric.id) ?? 0).toFixed(2))
+        const previousValue = Number((previousTotals.get(metric.id) ?? 0).toFixed(2))
 
         return {
-          metric_id: metric.metric_id,
+          id: metric.id,
           name: metric.name,
           code: metric.code,
           data_type: metric.data_type,
@@ -754,7 +712,7 @@ export async function getDashboardData(filters?: {
           change_pct: calcChangePct(currentValue, previousValue),
         }
       })
-      
+
       const dateFormatter = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' })
       const dateKeys: string[] = []
       {
@@ -785,8 +743,8 @@ export async function getDashboardData(filters?: {
 
       const coverage = prioritizedMetrics
         .map((metric) => ({
-          metric_id: metric.metric_id,
-          days: currentDailyByMetric.get(metric.metric_id)?.size ?? 0,
+          metric_id: metric.id,
+          days: currentDailyByMetric.get(metric.id)?.size ?? 0,
         }))
         .sort((a, b) => b.days - a.days)
       const defaultVisibleIds = new Set(
@@ -794,8 +752,8 @@ export async function getDashboardData(filters?: {
       )
 
       series = prioritizedMetrics.map((metric) => {
-        const currentDaily = currentDailyByMetric.get(metric.metric_id)
-        const previousDaily = previousDailyByMetric.get(metric.metric_id)
+        const currentDaily = currentDailyByMetric.get(metric.id)
+        const previousDaily = previousDailyByMetric.get(metric.id)
 
         const points: DashboardSeriesPoint[] = dateKeys.map((dateKey, index) => {
           const prevKey = previousKeys[index]
@@ -810,12 +768,12 @@ export async function getDashboardData(filters?: {
         })
 
         return {
-          metric_id: metric.metric_id,
+          metric_id: metric.id,
           name: metric.name,
           code: metric.code,
           data_type: metric.data_type,
           unit: metric.unit,
-          default_visible: defaultVisibleIds.has(metric.metric_id),
+          default_visible: defaultVisibleIds.has(metric.id),
           points,
         }
       })
@@ -839,7 +797,7 @@ export async function getDashboardData(filters?: {
         }
 
         series = prioritizedMetrics.slice(0, 4).map((metric, index) => ({
-          metric_id: metric.metric_id,
+          metric_id: metric.id,
           name: metric.name,
           code: metric.code,
           data_type: metric.data_type,

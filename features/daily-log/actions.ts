@@ -46,11 +46,6 @@ const deleteDailyLogSchema = z.object({
   entryId: z.string().uuid('Invalid log entry.'),
 })
 
-function isMissingMetricsSettingsColumn(message: string) {
-  const normalized = message.toLowerCase()
-  return normalized.includes('column metrics.settings does not exist')
-}
-
 function field(formData: FormData, key: string) {
   const value = formData.get(key)
   return typeof value === 'string' ? value : ''
@@ -82,7 +77,7 @@ function zodMessage(error: z.ZodError) {
 
 async function isUserInDepartment(
   admin: ReturnType<typeof createAdminClient>,
-  companyId: string,
+  organizationId: string,
   departmentId: string,
   userId: string,
 ) {
@@ -90,7 +85,7 @@ async function isUserInDepartment(
     .from('organization_members')
     .select('user_id')
     .eq('user_id', userId)
-    .eq('organization_id', companyId)
+    .eq('organization_id', organizationId)
     .maybeSingle()
 
   if (membershipError) {
@@ -106,8 +101,6 @@ async function isUserInDepartment(
     .select('department_id')
     .eq('department_id', departmentId)
     .eq('user_id', userId)
-    .eq('is_active', true)
-    .is('deleted_at', null)
     .maybeSingle()
 
   if (departmentMembershipError) {
@@ -128,11 +121,9 @@ async function getViewerDepartmentRole(
 ) {
   const { data, error } = await admin
     .from('department_members')
-    .select('member_role')
+    .select('role')
     .eq('department_id', departmentId)
     .eq('user_id', userId)
-    .eq('is_active', true)
-    .is('deleted_at', null)
     .maybeSingle()
 
   if (error) {
@@ -147,15 +138,15 @@ async function getViewerDepartmentRole(
     ok: true as const,
     message: '',
     memberRole:
-      data?.member_role === 'lead' || data?.member_role === 'member'
-        ? data.member_role
+      data?.role === 'lead' || data?.role === 'member'
+        ? data.role
         : null,
   }
 }
 
 async function resolveDailyLogTarget(
   admin: ReturnType<typeof createAdminClient>,
-  companyId: string,
+  organizationId: string,
   departmentId: string,
   viewerUserId: string,
   viewerRole: Role,
@@ -170,7 +161,7 @@ async function resolveDailyLogTarget(
   }
 
   if (viewerRole === 'owner' || viewerRole === 'admin' || viewerRole === 'manager') {
-    const targetValidation = await isUserInDepartment(admin, companyId, departmentId, targetUserId)
+    const targetValidation = await isUserInDepartment(admin, organizationId, departmentId, targetUserId)
     if (!targetValidation.ok) {
       return {
         ok: false as const,
@@ -199,7 +190,7 @@ async function resolveDailyLogTarget(
     }
   }
 
-  const targetValidation = await isUserInDepartment(admin, companyId, departmentId, targetUserId)
+  const targetValidation = await isUserInDepartment(admin, organizationId, departmentId, targetUserId)
   if (!targetValidation.ok) {
     return {
       ok: false as const,
@@ -213,60 +204,28 @@ async function resolveDailyLogTarget(
 
 async function getManualMetricsForDepartment(
   admin: ReturnType<typeof createAdminClient>,
-  companyId: string,
+  organizationId: string,
   departmentId: string,
 ) {
-  const withSettings = await admin
+  const { data, error } = await admin
     .from('metrics')
-    .select('metric_id, data_type, settings')
-    .eq('company_id', companyId)
+    .select('id, data_type, settings')
+    .eq('organization_id', organizationId)
     .eq('department_id', departmentId)
     .eq('is_active', true)
     .eq('input_mode', 'manual')
-    .is('deleted_at', null)
 
-  if (!withSettings.error) {
-    return {
-      ok: true as const,
-      metrics: (withSettings.data ?? []) as Array<{ metric_id: string; data_type: DailyLogMetricDataType; settings: unknown }>,
-    }
-  }
-
-  if (!isMissingMetricsSettingsColumn(withSettings.error.message)) {
+  if (error) {
     return {
       ok: false as const,
-      message: formatDatabaseError(withSettings.error.message),
-      metrics: [] as Array<{ metric_id: string; data_type: DailyLogMetricDataType; settings: unknown }>,
+      message: formatDatabaseError(error.message),
+      metrics: [] as Array<{ id: string; data_type: DailyLogMetricDataType; settings: unknown }>,
     }
   }
-
-  const fallback = await admin
-    .from('metrics')
-    .select('metric_id, data_type')
-    .eq('company_id', companyId)
-    .eq('department_id', departmentId)
-    .eq('is_active', true)
-    .eq('input_mode', 'manual')
-    .is('deleted_at', null)
-
-  if (fallback.error) {
-    return {
-      ok: false as const,
-      message: formatDatabaseError(fallback.error.message),
-      metrics: [] as Array<{ metric_id: string; data_type: DailyLogMetricDataType; settings: unknown }>,
-    }
-  }
-
-  const metrics = ((fallback.data ?? []) as Array<{ metric_id: string; data_type: DailyLogMetricDataType }>).map(
-    (metric) => ({
-      ...metric,
-      settings: null,
-    }),
-  )
 
   return {
     ok: true as const,
-    metrics,
+    metrics: (data ?? []) as Array<{ id: string; data_type: DailyLogMetricDataType; settings: unknown }>,
   }
 }
 
@@ -295,7 +254,7 @@ function parseMetricValue(
   rawValue: string,
 ):
   | { ok: true; hasValue: false }
-  | { ok: true; hasValue: true; value_numeric: number | null; value_text: string | null; value_bool: boolean | null }
+  | { ok: true; hasValue: true; value_number: number | null; value_text: string | null; value_boolean: boolean | null }
   | { ok: false; message: string } {
   const settings = normalizeMetricSettings(metricType, metricSettings)
 
@@ -314,9 +273,9 @@ function parseMetricValue(
     return {
       ok: true,
       hasValue: true,
-      value_numeric: null,
+      value_number: null,
       value_text: null,
-      value_bool: parsedBool,
+      value_boolean: parsedBool,
     }
   }
 
@@ -333,9 +292,9 @@ function parseMetricValue(
     return {
       ok: true,
       hasValue: true,
-      value_numeric: durationResult.value,
+      value_number: durationResult.value,
       value_text: null,
-      value_bool: null,
+      value_boolean: null,
     }
   }
 
@@ -402,9 +361,9 @@ function parseMetricValue(
         return {
           ok: true,
           hasValue: true,
-          value_numeric: null,
+          value_number: null,
           value_text: JSON.stringify(selected),
-          value_bool: null,
+          value_boolean: null,
         }
       }
 
@@ -424,9 +383,9 @@ function parseMetricValue(
     return {
       ok: true,
       hasValue: true,
-      value_numeric: null,
+      value_number: null,
       value_text: value,
-      value_bool: null,
+      value_boolean: null,
     }
   }
 
@@ -446,9 +405,9 @@ function parseMetricValue(
   return {
     ok: true,
     hasValue: true,
-    value_numeric: parsedNumber.value,
+    value_number: parsedNumber.value,
     value_text: null,
-    value_bool: null,
+    value_boolean: null,
   }
 }
 
@@ -458,7 +417,7 @@ export async function saveDailyLogAction(
   formData: FormData,
 ): Promise<DailyLogActionState> {
   const t0 = Date.now()
-  let telemetryCompanyId: string | null = null
+  let telemetryOrganizationId: string | null = null
   let telemetryDepartmentId: string | null = null
   let telemetryEntryId: string | null = null
   let telemetryManualCount = 0
@@ -493,7 +452,7 @@ export async function saveDailyLogAction(
     }
   }
 
-  telemetryCompanyId = context.companyId
+  telemetryOrganizationId = context.organizationId
 
   try {
     requireRole(context.role, 'member')
@@ -507,7 +466,7 @@ export async function saveDailyLogAction(
 
   const accessibleDepartments = await getAccessibleDepartmentIds(
     context.admin,
-    context.companyId,
+    context.organizationId,
     context.userId,
     context.role,
   )
@@ -530,7 +489,7 @@ export async function saveDailyLogAction(
 
   const targetResolution = await resolveDailyLogTarget(
     context.admin,
-    context.companyId,
+    context.organizationId,
     parsed.data.departmentId,
     context.userId,
     context.role,
@@ -549,7 +508,7 @@ export async function saveDailyLogAction(
 
   const metricsResult = await getManualMetricsForDepartment(
     context.admin,
-    context.companyId,
+    context.organizationId,
     parsed.data.departmentId,
   )
 
@@ -563,13 +522,13 @@ export async function saveDailyLogAction(
 
   const valueRows: Array<{
     metric_id: string
-    value_numeric: number | null
+    value_number: number | null
     value_text: string | null
-    value_bool: boolean | null
+    value_boolean: boolean | null
   }> = []
 
   for (const metric of metricsResult.metrics) {
-    const raw = field(formData, `metric_${metric.metric_id}`)
+    const raw = field(formData, `metric_${metric.id}`)
     const parsedValue = parseMetricValue(metric.data_type, metric.settings, raw)
 
     if (!parsedValue.ok) {
@@ -585,10 +544,10 @@ export async function saveDailyLogAction(
     }
 
     valueRows.push({
-      metric_id: metric.metric_id,
-      value_numeric: parsedValue.value_numeric,
+      metric_id: metric.id,
+      value_number: parsedValue.value_number,
       value_text: parsedValue.value_text,
-      value_bool: parsedValue.value_bool,
+      value_boolean: parsedValue.value_boolean,
     })
   }
 
@@ -599,12 +558,12 @@ export async function saveDailyLogAction(
   const submitting = parsed.data.intent === 'submit'
 
   const { data: existingEntryForDate, error: existingEntryError } = await context.admin
-    .from('daily_entries')
-    .select('entry_id, status, submitted_at')
-    .eq('company_id', context.companyId)
+    .from('daily_reports')
+    .select('id, status, submitted_at')
+    .eq('organization_id', context.organizationId)
     .eq('department_id', parsed.data.departmentId)
     .eq('user_id', targetUserId)
-    .eq('entry_date', parsed.data.date)
+    .eq('report_date', parsed.data.date)
     .maybeSingle()
 
   if (existingEntryError) {
@@ -619,9 +578,9 @@ export async function saveDailyLogAction(
 
   if (parsed.data.entryId) {
     const { data: existingEntryById, error: existingEntryByIdError } = await context.admin
-      .from('daily_entries')
-      .select('entry_id, status, submitted_at, company_id, department_id, user_id')
-      .eq('entry_id', parsed.data.entryId)
+      .from('daily_reports')
+      .select('id, status, submitted_at, organization_id, department_id, user_id')
+      .eq('id', parsed.data.entryId)
       .maybeSingle()
 
     if (existingEntryByIdError) {
@@ -634,7 +593,7 @@ export async function saveDailyLogAction(
 
     if (
       !existingEntryById ||
-      existingEntryById.company_id !== context.companyId ||
+      existingEntryById.organization_id !== context.organizationId ||
       existingEntryById.department_id !== parsed.data.departmentId ||
       existingEntryById.user_id !== targetUserId
     ) {
@@ -645,17 +604,17 @@ export async function saveDailyLogAction(
       }
     }
 
-    if (existingEntryForDate && existingEntryForDate.entry_id !== existingEntryById.entry_id) {
+    if (existingEntryForDate && existingEntryForDate.id !== existingEntryById.id) {
       return {
         ...INITIAL_ERROR_STATE,
         message: 'A log already exists for that date.',
         intent: parsed.data.intent,
-        entryId: existingEntryById.entry_id,
+        entryId: existingEntryById.id,
       }
     }
 
     sourceEntry = {
-      entry_id: existingEntryById.entry_id as string,
+      id: existingEntryById.id as string,
       status: existingEntryById.status as 'draft' | 'submitted',
       submitted_at: existingEntryById.submitted_at as string | null,
     }
@@ -668,11 +627,11 @@ export async function saveDailyLogAction(
   const { data: entryId, error: rpcError } = await context.admin.rpc(
     'save_daily_log_entry',
     {
-      p_entry_id: sourceEntry?.entry_id ?? null,
-      p_company_id: context.companyId,
+      p_report_id: sourceEntry?.id ?? null,
+      p_organization_id: context.organizationId,
       p_department_id: parsed.data.departmentId,
       p_user_id: targetUserId,
-      p_entry_date: parsed.data.date,
+      p_report_date: parsed.data.date,
       p_status: nextEntryStatus,
       p_submitted_at: nextSubmittedAt,
       p_notes: notes,
@@ -691,12 +650,9 @@ export async function saveDailyLogAction(
   const savedEntryId = typeof entryId === 'string' ? entryId : String(entryId)
   telemetryEntryId = savedEntryId
 
-  // Enqueue recompute as a fast-path only. The cron sweep is the durable
-  // path, so a failure here must NOT fail the save — the entry is already
-  // committed above.
   const enqueueResult = await enqueueCalculatedRecomputeJob(
     context.admin,
-    context.companyId,
+    context.organizationId,
     parsed.data.departmentId,
     savedEntryId,
   )
@@ -722,7 +678,7 @@ export async function saveDailyLogAction(
     entryId: savedEntryId,
   }
   } finally {
-    const companyId = telemetryCompanyId
+    const organizationId = telemetryOrganizationId
     const departmentId = telemetryDepartmentId
     const entryId = telemetryEntryId
     const manualCount = telemetryManualCount
@@ -730,21 +686,20 @@ export async function saveDailyLogAction(
     const outcome = telemetryOutcome
     const durationMs = Date.now() - t0
 
-    if (companyId && departmentId) {
+    if (organizationId && departmentId) {
       after(async () => {
         try {
           const admin = createAdminClient()
           const { count: calculatedCount } = await admin
             .from('metrics')
-            .select('metric_id', { count: 'exact', head: true })
-            .eq('company_id', companyId)
+            .select('id', { count: 'exact', head: true })
+            .eq('organization_id', organizationId)
             .eq('department_id', departmentId)
             .eq('is_active', true)
             .eq('input_mode', 'calculated')
-            .is('deleted_at', null)
 
           await admin.from('daily_log_save_metrics').insert({
-            company_id: companyId,
+            company_id: organizationId,
             department_id: departmentId,
             entry_id: entryId,
             duration_ms: durationMs,
@@ -777,18 +732,18 @@ export async function deleteDailyLogAction(formData: FormData): Promise<void> {
   }
 
   const { data: entry, error: entryError } = await context.admin
-    .from('daily_entries')
-    .select('entry_id, company_id, department_id, user_id')
-    .eq('entry_id', parsed.data.entryId)
+    .from('daily_reports')
+    .select('id, organization_id, department_id, user_id')
+    .eq('id', parsed.data.entryId)
     .maybeSingle()
 
-  if (entryError || !entry || entry.company_id !== context.companyId) {
+  if (entryError || !entry || entry.organization_id !== context.organizationId) {
     return
   }
 
   const targetResolution = await resolveDailyLogTarget(
     context.admin,
-    context.companyId,
+    context.organizationId,
     entry.department_id as string,
     context.userId,
     context.role,
@@ -800,10 +755,10 @@ export async function deleteDailyLogAction(formData: FormData): Promise<void> {
   }
 
   const { error: deleteError } = await context.admin
-    .from('daily_entries')
+    .from('daily_reports')
     .delete()
-    .eq('entry_id', parsed.data.entryId)
-    .eq('company_id', context.companyId)
+    .eq('id', parsed.data.entryId)
+    .eq('organization_id', context.organizationId)
 
   if (deleteError) {
     return
@@ -872,11 +827,10 @@ export async function updateDepartmentLogKeyMetricsAction(
 
   const { data: department, error: departmentError } = await context.admin
     .from('departments')
-    .select('department_id')
-    .eq('department_id', parsed.data.departmentId)
-    .eq('company_id', context.companyId)
+    .select('id')
+    .eq('id', parsed.data.departmentId)
+    .eq('organization_id', context.organizationId)
     .eq('is_active', true)
-    .is('deleted_at', null)
     .maybeSingle()
 
   if (departmentError || !department) {
@@ -889,13 +843,12 @@ export async function updateDepartmentLogKeyMetricsAction(
   if (slotValues.length > 0) {
     const { data: metrics, error: metricsError } = await context.admin
       .from('metrics')
-      .select('metric_id')
-      .eq('company_id', context.companyId)
+      .select('id')
+      .eq('organization_id', context.organizationId)
       .eq('department_id', parsed.data.departmentId)
       .eq('is_active', true)
       .eq('input_mode', 'manual')
-      .in('metric_id', slotValues)
-      .is('deleted_at', null)
+      .in('id', slotValues)
 
     if (metricsError) {
       return {
@@ -919,7 +872,7 @@ export async function updateDepartmentLogKeyMetricsAction(
   ]
 
   const { error: saveError } = await context.admin.rpc('save_department_key_metrics', {
-    p_company_id: context.companyId,
+    p_organization_id: context.organizationId,
     p_department_id: parsed.data.departmentId,
     p_slots: slots,
   })

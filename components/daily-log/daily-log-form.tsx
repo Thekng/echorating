@@ -36,7 +36,7 @@ function serializeState(
   date: string,
 ) {
   const metricsPart = metrics
-    .map((metric) => `${metric.metric_id}:${values[metric.metric_id] ?? ''}`)
+    .map((metric) => `${metric.id}:${values[metric.id] ?? ''}`)
     .join('|')
 
   return `${userId}::${date}::${notes}::${metricsPart}`
@@ -92,7 +92,7 @@ function renderMetricInput(
 
     return (
       <select
-        name={`metric_${metric.metric_id}`}
+        name={`metric_${metric.id}`}
         value={value}
         onChange={(event) => onChange(event.currentTarget.value)}
         disabled={pending}
@@ -109,7 +109,7 @@ function renderMetricInput(
     if (settings.durationFormat && settings.durationFormat !== 'hh_mm_ss') {
       return (
         <input
-          name={`metric_${metric.metric_id}`}
+          name={`metric_${metric.id}`}
           type="number"
           step={settings.durationFormat === 'days' ? '0.01' : '1'}
           min="0"
@@ -125,7 +125,7 @@ function renderMetricInput(
 
     return (
       <DurationSelector
-        name={`metric_${metric.metric_id}`}
+        name={`metric_${metric.id}`}
         value={value}
         onChange={onChange}
         disabled={pending}
@@ -138,7 +138,7 @@ function renderMetricInput(
     if (settings.textFormat === 'long_text') {
       return (
         <textarea
-          name={`metric_${metric.metric_id}`}
+          name={`metric_${metric.id}`}
           rows={3}
           value={value}
           onChange={(event) => onChange(event.currentTarget.value)}
@@ -160,7 +160,7 @@ function renderMetricInput(
 
     return (
       <input
-        name={`metric_${metric.metric_id}`}
+        name={`metric_${metric.id}`}
         type={inputType}
         inputMode={settings.textFormat === 'phone' ? 'tel' : 'text'}
         value={value}
@@ -182,7 +182,7 @@ function renderMetricInput(
 
     return (
       <input
-        name={`metric_${metric.metric_id}`}
+        name={`metric_${metric.id}`}
         type={inputType}
         value={value}
         onChange={(event) => onChange(event.currentTarget.value)}
@@ -206,7 +206,7 @@ function renderMetricInput(
       const selectedValues = decodeMultiSelection(value)
       return (
         <>
-          <input type="hidden" name={`metric_${metric.metric_id}`} value={value} />
+          <input type="hidden" name={`metric_${metric.id}`} value={value} />
           <select
             multiple
             value={selectedValues}
@@ -230,12 +230,12 @@ function renderMetricInput(
     if (settings.selectionMode === 'radio') {
       return (
         <div className="space-y-1">
-          <input type="hidden" name={`metric_${metric.metric_id}`} value={value} />
+          <input type="hidden" name={`metric_${metric.id}`} value={value} />
           {options.map((option) => (
             <label key={option} className="flex items-center gap-2 text-sm">
               <input
                 type="radio"
-                name={`metric_${metric.metric_id}_radio`}
+                name={`metric_${metric.id}_radio`}
                 value={option}
                 checked={value === option}
                 onChange={(event) => onChange(event.currentTarget.value)}
@@ -250,7 +250,7 @@ function renderMetricInput(
 
     return (
       <select
-        name={`metric_${metric.metric_id}`}
+        name={`metric_${metric.id}`}
         value={value}
         onChange={(event) => onChange(event.currentTarget.value)}
         disabled={pending}
@@ -269,7 +269,7 @@ function renderMetricInput(
   if (metric.data_type === 'file') {
     return (
       <input
-        name={`metric_${metric.metric_id}`}
+        name={`metric_${metric.id}`}
         type="url"
         value={value}
         onChange={(event) => onChange(event.currentTarget.value)}
@@ -282,7 +282,7 @@ function renderMetricInput(
 
   return (
     <input
-      name={`metric_${metric.metric_id}`}
+      name={`metric_${metric.id}`}
       type="number"
       inputMode="decimal"
       step={metric.data_type === 'number' && settings.numberKind === 'integer' ? '1' : '0.01'}
@@ -338,7 +338,7 @@ export function DailyLogForm({
     setPendingIntent(null)
     setLastSubmitKind(null)
     /* eslint-enable react-hooks/set-state-in-effect */
-  }, [date, existingEntry?.entry_id, existingEntry?.status, existingEntry?.updated_at, initialValues, initialNotes, savedSnapshot])
+  }, [date, existingEntry?.id, existingEntry?.status, existingEntry?.updated_at, initialValues, initialNotes, savedSnapshot])
 
   const currentSnapshot = useMemo(
     () => serializeState(metrics, values, notes, userId, logDate),
@@ -450,7 +450,7 @@ export function DailyLogForm({
         }}
       >
         <input type="hidden" name="date" value={logDate} />
-        <input type="hidden" name="entryId" value={existingEntry?.entry_id ?? ''} />
+        <input type="hidden" name="entryId" value={existingEntry?.id ?? ''} />
         <input type="hidden" name="departmentId" value={departmentId} />
         <input type="hidden" name="userId" value={userId} />
 
@@ -462,12 +462,12 @@ export function DailyLogForm({
           <>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               {metrics.map((metric) => (
-                <div key={metric.metric_id} className="space-y-2">
+                <div key={metric.id} className="space-y-2">
                   <label className="block text-sm font-medium text-foreground">{metric.name}</label>
-                  {renderMetricInput(metric, values[metric.metric_id] ?? '', disabledForm, (nextValue) => {
+                  {renderMetricInput(metric, values[metric.id] ?? '', disabledForm, (nextValue) => {
                     setValues((current) => ({
                       ...current,
-                      [metric.metric_id]: nextValue,
+                      [metric.id]: nextValue,
                     }))
                   })}
                 </div>

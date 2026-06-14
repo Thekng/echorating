@@ -38,38 +38,37 @@ type CompanyMemberProfileRelation = {
 type MembershipRow = {
   user_id: string
   department_id: string
-  member_role: 'lead' | 'member'
-  is_active: boolean
+  role: 'lead' | 'member'
 }
 
 type EntryRow = {
-  entry_id: string
+  id: string
   user_id: string
-  entry_date: string
+  report_date: string
   status: 'draft' | 'submitted'
   department_id: string
 }
 
 type RecentAgentEntry = {
-  entry_id: string
-  entry_date: string
+  id: string
+  report_date: string
   status: 'draft' | 'submitted'
   notes: string | null
   metric_values: Array<{
     metric_id: string
-    value_numeric: number | null
+    value_number: number | null
     value_text: string | null
-    value_bool: boolean | null
+    value_boolean: boolean | null
   }>
 }
 
 type ScoreMetric = {
-  metric_id: string
+  id: string
   data_type: MetricDataType
 }
 
 type DepartmentMetric = {
-  metric_id: string
+  id: string
   name: string
   code: string
   data_type: MetricDataType
@@ -230,13 +229,13 @@ function toStatsMap(entries: EntryRow[]) {
 
     if (entry.status === 'submitted') {
       current.submittedCount += 1
-      current.submittedDays.add(entry.entry_date)
+      current.submittedDays.add(entry.report_date)
     } else {
       current.draftCount += 1
     }
 
-    if (!current.lastEntryDate || entry.entry_date > current.lastEntryDate) {
-      current.lastEntryDate = entry.entry_date
+    if (!current.lastEntryDate || entry.report_date > current.lastEntryDate) {
+      current.lastEntryDate = entry.report_date
     }
 
     map.set(entry.user_id, current)
@@ -248,17 +247,16 @@ function toStatsMap(entries: EntryRow[]) {
 
 async function resolveScoreMetrics(
   admin: ReturnType<typeof createAdminClient>,
-  companyId: string,
+  organizationId: string,
   departmentId: string,
 ) {
   const { data, error } = await admin
     .from('metrics')
-    .select('metric_id, data_type')
-    .eq('company_id', companyId)
+    .select('id, data_type')
+    .eq('organization_id', organizationId)
     .eq('department_id', departmentId)
     .eq('is_active', true)
     .in('data_type', RANKING_METRIC_TYPES)
-    .is('deleted_at', null)
 
   if (error) {
     return { ok: false as const, message: formatDatabaseError(error.message), metrics: [] as ScoreMetric[] }
@@ -267,134 +265,47 @@ async function resolveScoreMetrics(
   return { ok: true as const, metrics: (data ?? []) as ScoreMetric[] }
 }
 
-function isMissingMetricsSettingsColumn(message: string) {
-  return message.toLowerCase().includes('column metrics.settings does not exist')
-}
-
-function isMissingMetricsSortOrderColumn(message: string) {
-  return message.toLowerCase().includes('column metrics.sort_order does not exist')
-}
-
 async function resolveDepartmentMetrics(
   admin: ReturnType<typeof createAdminClient>,
-  companyId: string,
+  organizationId: string,
   departmentId: string,
 ) {
-  const withSettings = await admin
+  const { data, error } = await admin
     .from('metrics')
-    .select('metric_id, name, code, data_type, unit, settings, sort_order')
-    .eq('company_id', companyId)
+    .select('id, name, code, data_type, unit, settings, sort_order')
+    .eq('organization_id', organizationId)
     .eq('department_id', departmentId)
     .eq('is_active', true)
-    .is('deleted_at', null)
     .order('sort_order', { ascending: true, nullsFirst: false })
     .order('name', { ascending: true })
 
-  if (!withSettings.error) {
-    return { ok: true as const, metrics: (withSettings.data ?? []) as DepartmentMetric[] }
-  }
-
-  if (isMissingMetricsSortOrderColumn(withSettings.error.message)) {
-    const sortFallback = await admin
-      .from('metrics')
-      .select('metric_id, name, code, data_type, unit, settings')
-      .eq('company_id', companyId)
-      .eq('department_id', departmentId)
-      .eq('is_active', true)
-      .is('deleted_at', null)
-      .order('name', { ascending: true })
-
-    if (!sortFallback.error) {
-      return { ok: true as const, metrics: (sortFallback.data ?? []) as DepartmentMetric[] }
-    }
-
-    if (!isMissingMetricsSettingsColumn(sortFallback.error.message)) {
-      return {
-        ok: false as const,
-        message: formatDatabaseError(sortFallback.error.message),
-        metrics: [] as DepartmentMetric[],
-      }
-    }
-  }
-
-  if (!isMissingMetricsSettingsColumn(withSettings.error.message)) {
+  if (error) {
     return {
       ok: false as const,
-      message: formatDatabaseError(withSettings.error.message),
+      message: formatDatabaseError(error.message),
       metrics: [] as DepartmentMetric[],
     }
   }
 
-  const fallback = await admin
-    .from('metrics')
-    .select('metric_id, name, code, data_type, unit, sort_order')
-    .eq('company_id', companyId)
-    .eq('department_id', departmentId)
-    .eq('is_active', true)
-    .is('deleted_at', null)
-    .order('sort_order', { ascending: true, nullsFirst: false })
-    .order('name', { ascending: true })
-
-  if (fallback.error && !isMissingMetricsSortOrderColumn(fallback.error.message)) {
-    return {
-      ok: false as const,
-      message: formatDatabaseError(fallback.error.message),
-      metrics: [] as DepartmentMetric[],
-    }
-  }
-
-  if (fallback.error && isMissingMetricsSortOrderColumn(fallback.error.message)) {
-    const noSortFallback = await admin
-      .from('metrics')
-      .select('metric_id, name, code, data_type, unit')
-      .eq('company_id', companyId)
-      .eq('department_id', departmentId)
-      .eq('is_active', true)
-      .is('deleted_at', null)
-      .order('name', { ascending: true })
-
-    if (noSortFallback.error) {
-      return {
-        ok: false as const,
-        message: formatDatabaseError(noSortFallback.error.message),
-        metrics: [] as DepartmentMetric[],
-      }
-    }
-
-    return {
-      ok: true as const,
-      metrics: ((noSortFallback.data ?? []) as Array<Omit<DepartmentMetric, 'settings'>>).map((metric) => ({
-        ...metric,
-        settings: null,
-      })),
-    }
-  }
-
-  return {
-    ok: true as const,
-    metrics: ((fallback.data ?? []) as Array<Omit<DepartmentMetric, 'settings'>>).map((metric) => ({
-      ...metric,
-      settings: null,
-    })),
-  }
+  return { ok: true as const, metrics: (data ?? []) as DepartmentMetric[] }
 }
 
 function parseComparableMetricValue(
   dataType: MetricDataType,
-  row: { value_numeric: number | null; value_bool: boolean | null },
+  row: { value_number: number | null; value_boolean: boolean | null },
 ) {
   if (dataType === 'boolean') {
-    if (row.value_bool === null) {
+    if (row.value_boolean === null) {
       return null
     }
-    return row.value_bool ? 1 : 0
+    return row.value_boolean ? 1 : 0
   }
 
-  if (row.value_numeric === null || row.value_numeric === undefined) {
+  if (row.value_number === null || row.value_number === undefined) {
     return null
   }
 
-  return Number(row.value_numeric)
+  return Number(row.value_number)
 }
 
 function monthBounds(dateKey: string) {
@@ -409,13 +320,13 @@ function monthBounds(dateKey: string) {
 
 async function computeDepartmentScores(
   admin: ReturnType<typeof createAdminClient>,
-  companyId: string,
+  organizationId: string,
   departmentId: string,
   startDate: string,
   endDate: string,
   scopedUserIds?: string[],
 ): Promise<ScoreResult> {
-  const metricsResult = await resolveScoreMetrics(admin, companyId, departmentId)
+  const metricsResult = await resolveScoreMetrics(admin, organizationId, departmentId)
   if (!metricsResult.ok || metricsResult.metrics.length === 0) {
     return {
       scoreByUserId: new Map<string, number>(),
@@ -425,17 +336,17 @@ async function computeDepartmentScores(
   }
 
   const scoreMetrics = metricsResult.metrics
-  const scoreMetricIds = scoreMetrics.map((metric) => metric.metric_id)
-  const metricById = new Map(scoreMetrics.map((metric) => [metric.metric_id, metric]))
+  const scoreMetricIds = scoreMetrics.map((metric) => metric.id)
+  const metricById = new Map(scoreMetrics.map((metric) => [metric.id, metric]))
 
   let entriesQuery = admin
-    .from('daily_entries')
-    .select('entry_id, user_id')
-    .eq('company_id', companyId)
+    .from('daily_reports')
+    .select('id, user_id')
+    .eq('organization_id', organizationId)
     .eq('department_id', departmentId)
     .eq('status', 'submitted')
-    .gte('entry_date', startDate)
-    .lte('entry_date', endDate)
+    .gte('report_date', startDate)
+    .lte('report_date', endDate)
 
   if (scopedUserIds && scopedUserIds.length > 0) {
     entriesQuery = entriesQuery.in('user_id', scopedUserIds)
@@ -459,7 +370,7 @@ async function computeDepartmentScores(
     }
   }
 
-  const entries = (entriesData ?? []) as Array<{ entry_id: string; user_id: string }>
+  const entries = (entriesData ?? []) as Array<{ id: string; user_id: string }>
   if (entries.length === 0) {
     return {
       scoreByUserId: new Map<string, number>(),
@@ -468,11 +379,11 @@ async function computeDepartmentScores(
     }
   }
 
-  const entryIds = entries.map((entry) => entry.entry_id)
+  const entryIds = entries.map((entry) => entry.id)
   const { data: valuesData, error: valuesError } = await admin
-    .from('entry_values')
-    .select('entry_id, metric_id, value_numeric, value_bool')
-    .in('entry_id', entryIds)
+    .from('daily_report_values')
+    .select('daily_report_id, metric_id, value_number, value_boolean')
+    .in('daily_report_id', entryIds)
     .in('metric_id', scoreMetricIds)
 
   if (valuesError) {
@@ -485,10 +396,10 @@ async function computeDepartmentScores(
 
   const valueByEntryMetric = new Map<string, number>()
   for (const row of (valuesData ?? []) as Array<{
-    entry_id: string
+    daily_report_id: string
     metric_id: string
-    value_numeric: number | null
-    value_bool: boolean | null
+    value_number: number | null
+    value_boolean: boolean | null
   }>) {
     const metric = metricById.get(row.metric_id)
     if (!metric) {
@@ -496,24 +407,24 @@ async function computeDepartmentScores(
     }
 
     if (metric.data_type === 'boolean') {
-      if (row.value_bool === null) {
+      if (row.value_boolean === null) {
         continue
       }
-      valueByEntryMetric.set(`${row.entry_id}:${row.metric_id}`, row.value_bool ? 1 : 0)
+      valueByEntryMetric.set(`${row.daily_report_id}:${row.metric_id}`, row.value_boolean ? 1 : 0)
       continue
     }
 
-    if (row.value_numeric === null || row.value_numeric === undefined) {
+    if (row.value_number === null || row.value_number === undefined) {
       continue
     }
 
-    valueByEntryMetric.set(`${row.entry_id}:${row.metric_id}`, Number(row.value_numeric))
+    valueByEntryMetric.set(`${row.daily_report_id}:${row.metric_id}`, Number(row.value_number))
   }
 
   const valueByUserMetric = new Map<string, Map<string, number>>()
   for (const entry of entries) {
     for (const metricId of scoreMetricIds) {
-      const value = valueByEntryMetric.get(`${entry.entry_id}:${metricId}`)
+      const value = valueByEntryMetric.get(`${entry.id}:${metricId}`)
       if (value === undefined) {
         continue
       }
@@ -669,7 +580,7 @@ export async function getAgentsList(filters?: {
 
   const departmentsResult = await getAccessibleDepartments(
     context.admin,
-    context.companyId,
+    context.organizationId,
     context.userId,
     context.role,
   )
@@ -754,10 +665,8 @@ export async function getAgentsList(filters?: {
   const userIds = profiles.map((profile) => profile.user_id)
   let membershipsQuery = context.admin
     .from('department_members')
-    .select('user_id, department_id, member_role, is_active')
+    .select('user_id, department_id, role')
     .in('user_id', userIds)
-    .eq('is_active', true)
-    .is('deleted_at', null)
 
   if (selectedDepartmentId !== 'all') {
     membershipsQuery = membershipsQuery.eq('department_id', selectedDepartmentId)
@@ -813,12 +722,12 @@ export async function getAgentsList(filters?: {
 
   const filteredUserIds = profiles.map((profile) => profile.user_id)
   let entriesQuery = context.admin
-    .from('daily_entries')
-    .select('entry_id, user_id, entry_date, status, department_id')
-    .eq('company_id', context.companyId)
+    .from('daily_reports')
+    .select('id, user_id, report_date, status, department_id')
+    .eq('organization_id', context.organizationId)
     .in('user_id', filteredUserIds)
-    .gte('entry_date', range.startDate)
-    .lte('entry_date', range.endDate)
+    .gte('report_date', range.startDate)
+    .lte('report_date', range.endDate)
 
   if (selectedDepartmentId !== 'all') {
     entriesQuery = entriesQuery.eq('department_id', selectedDepartmentId)
@@ -838,7 +747,7 @@ export async function getAgentsList(filters?: {
   if (selectedDepartmentId !== 'all') {
     const scoreResult = await computeDepartmentScores(
       context.admin,
-      context.companyId,
+      context.organizationId,
       selectedDepartmentId,
       range.startDate,
       range.endDate,
@@ -961,7 +870,7 @@ export async function getAgentProfile(
 
   const departmentsResult = await getAccessibleDepartments(
     context.admin,
-    context.companyId,
+    context.organizationId,
     context.userId,
     context.role,
   )
@@ -975,9 +884,8 @@ export async function getAgentProfile(
 
   const { data: membershipsData, error: membershipsError } = await context.admin
     .from('department_members')
-    .select('user_id, department_id, member_role, is_active')
+    .select('user_id, department_id, role')
     .eq('user_id', userId)
-    .is('deleted_at', null)
 
   if (membershipsError) {
     return { success: false as const, error: formatDatabaseError(membershipsError.message), data: null }
@@ -988,8 +896,7 @@ export async function getAgentProfile(
     .map((membership) => ({
       department_id: membership.department_id,
       name: departmentNameById.get(membership.department_id) ?? 'Unknown department',
-      member_role: membership.member_role,
-      is_active: membership.is_active,
+      role: membership.role,
     }))
     .sort((a, b) => a.name.localeCompare(b.name))
 
@@ -1007,12 +914,12 @@ export async function getAgentProfile(
   const selectedDepartmentId = normalizeProfileDepartmentFilter(filters?.departmentId, departmentsForFilter)
 
   let entriesQuery = context.admin
-    .from('daily_entries')
-    .select('entry_id, user_id, entry_date, status, department_id')
-    .eq('company_id', context.companyId)
+    .from('daily_reports')
+    .select('id, user_id, report_date, status, department_id')
+    .eq('organization_id', context.organizationId)
     .eq('user_id', userId)
-    .gte('entry_date', range.startDate)
-    .lte('entry_date', range.endDate)
+    .gte('report_date', range.startDate)
+    .lte('report_date', range.endDate)
 
   if (selectedDepartmentId) {
     entriesQuery = entriesQuery.eq('department_id', selectedDepartmentId)
@@ -1039,7 +946,7 @@ export async function getAgentProfile(
   if (selectedDepartmentId) {
     const scoreResult = await computeDepartmentScores(
       context.admin,
-      context.companyId,
+      context.organizationId,
       selectedDepartmentId,
       range.startDate,
       range.endDate,
@@ -1051,22 +958,22 @@ export async function getAgentProfile(
 
   let departmentMetrics: DepartmentMetric[] = []
   if (selectedDepartmentId) {
-    const metricsResult = await resolveDepartmentMetrics(context.admin, context.companyId, selectedDepartmentId)
+    const metricsResult = await resolveDepartmentMetrics(context.admin, context.organizationId, selectedDepartmentId)
     if (!metricsResult.ok) {
       return { success: false as const, error: metricsResult.message, data: null }
     }
     departmentMetrics = metricsResult.metrics
   }
 
-  const metricIds = departmentMetrics.map((metric) => metric.metric_id)
-  const metricById = new Map(departmentMetrics.map((metric) => [metric.metric_id, metric]))
+  const metricIds = departmentMetrics.map((metric) => metric.id)
+  const metricById = new Map(departmentMetrics.map((metric) => [metric.id, metric]))
 
   let targetByMetricId = new Map<string, number>()
   if (selectedDepartmentId && metricIds.length > 0) {
     const { data: targetsData, error: targetsError } = await context.admin
       .from('targets')
       .select('metric_id, value')
-      .eq('company_id', context.companyId)
+      .eq('company_id', context.organizationId)
       .eq('department_id', selectedDepartmentId)
       .eq('scope', 'department')
       .eq('period', 'daily')
@@ -1092,7 +999,7 @@ export async function getAgentProfile(
       .from('department_rules')
       .select('daily_pass_threshold')
       .eq('department_id', selectedDepartmentId)
-      .eq('company_id', context.companyId)
+      .eq('company_id', context.organizationId)
       .maybeSingle()
 
     if (ruleError) {
@@ -1105,13 +1012,13 @@ export async function getAgentProfile(
   }
 
   let recentLogsQuery = context.admin
-    .from('daily_entries')
-    .select('entry_id, entry_date, status, notes')
-    .eq('company_id', context.companyId)
+    .from('daily_reports')
+    .select('id, report_date, status, notes')
+    .eq('organization_id', context.organizationId)
     .eq('user_id', userId)
-    .gte('entry_date', range.startDate)
-    .lte('entry_date', range.endDate)
-    .order('entry_date', { ascending: false })
+    .gte('report_date', range.startDate)
+    .lte('report_date', range.endDate)
+    .order('report_date', { ascending: false })
     .limit(20)
 
   if (selectedDepartmentId) {
@@ -1124,8 +1031,8 @@ export async function getAgentProfile(
   }
 
   const recentLogEntries = (recentLogsData ?? []) as Array<{
-    entry_id: string
-    entry_date: string
+    id: string
+    report_date: string
     status: 'draft' | 'submitted'
     notes: string | null
   }>
@@ -1136,31 +1043,31 @@ export async function getAgentProfile(
     year: 'numeric',
   }).format(new Date(`${monthStart}T00:00:00`))
 
-  let monthSubmittedEntries: Array<{ entry_id: string; entry_date: string }> = []
+  let monthSubmittedEntries: Array<{ id: string; report_date: string }> = []
   if (selectedDepartmentId) {
     const { data: monthData, error: monthError } = await context.admin
-      .from('daily_entries')
-      .select('entry_id, entry_date')
-      .eq('company_id', context.companyId)
+      .from('daily_reports')
+      .select('id, report_date')
+      .eq('organization_id', context.organizationId)
       .eq('department_id', selectedDepartmentId)
       .eq('user_id', userId)
       .eq('status', 'submitted')
-      .gte('entry_date', monthStart)
-      .lte('entry_date', monthEnd)
+      .gte('report_date', monthStart)
+      .lte('report_date', monthEnd)
 
     if (monthError) {
       return { success: false as const, error: formatDatabaseError(monthError.message), data: null }
     }
 
-    monthSubmittedEntries = (monthData ?? []) as Array<{ entry_id: string; entry_date: string }>
+    monthSubmittedEntries = (monthData ?? []) as Array<{ id: string; report_date: string }>
   }
 
   const submittedEntriesInRange = entries.filter((entry) => entry.status === 'submitted')
   const neededEntryIds = Array.from(
     new Set([
-      ...submittedEntriesInRange.map((entry) => entry.entry_id),
-      ...recentLogEntries.map((entry) => entry.entry_id),
-      ...monthSubmittedEntries.map((entry) => entry.entry_id),
+      ...submittedEntriesInRange.map((entry) => entry.id),
+      ...recentLogEntries.map((entry) => entry.id),
+      ...monthSubmittedEntries.map((entry) => entry.id),
     ]),
   )
 
@@ -1168,17 +1075,17 @@ export async function getAgentProfile(
     string,
     {
       metric_id: string
-      value_numeric: number | null
+      value_number: number | null
       value_text: string | null
-      value_bool: boolean | null
+      value_boolean: boolean | null
     }
   >()
 
   if (neededEntryIds.length > 0 && metricIds.length > 0) {
     const { data: valuesData, error: valuesError } = await context.admin
-      .from('entry_values')
-      .select('entry_id, metric_id, value_numeric, value_text, value_bool')
-      .in('entry_id', neededEntryIds)
+      .from('daily_report_values')
+      .select('daily_report_id, metric_id, value_number, value_text, value_boolean')
+      .in('daily_report_id', neededEntryIds)
       .in('metric_id', metricIds)
 
     if (valuesError) {
@@ -1186,17 +1093,17 @@ export async function getAgentProfile(
     }
 
     for (const row of (valuesData ?? []) as Array<{
-      entry_id: string
+      daily_report_id: string
       metric_id: string
-      value_numeric: number | null
+      value_number: number | null
       value_text: string | null
-      value_bool: boolean | null
+      value_boolean: boolean | null
     }>) {
-      valueByEntryMetric.set(`${row.entry_id}:${row.metric_id}`, {
+      valueByEntryMetric.set(`${row.daily_report_id}:${row.metric_id}`, {
         metric_id: row.metric_id,
-        value_numeric: row.value_numeric,
+        value_number: row.value_number,
         value_text: row.value_text,
-        value_bool: row.value_bool,
+        value_boolean: row.value_boolean,
       })
     }
   }
@@ -1205,7 +1112,7 @@ export async function getAgentProfile(
   const kpiTotals = new Map<string, number>()
   for (const entry of submittedEntriesInRange) {
     for (const metric of kpiMetrics) {
-      const value = valueByEntryMetric.get(`${entry.entry_id}:${metric.metric_id}`)
+      const value = valueByEntryMetric.get(`${entry.id}:${metric.id}`)
       if (!value) {
         continue
       }
@@ -1215,20 +1122,20 @@ export async function getAgentProfile(
         continue
       }
 
-      kpiTotals.set(metric.metric_id, (kpiTotals.get(metric.metric_id) ?? 0) + comparable)
+      kpiTotals.set(metric.id, (kpiTotals.get(metric.id) ?? 0) + comparable)
     }
   }
 
   const metricKpis: AgentMetricKpi[] = kpiMetrics.map((metric) => ({
     ...metric,
-    current_value: Number((kpiTotals.get(metric.metric_id) ?? 0).toFixed(2)),
-    target_value: targetByMetricId.get(metric.metric_id) ?? null,
+    current_value: Number((kpiTotals.get(metric.id) ?? 0).toFixed(2)),
+    target_value: targetByMetricId.get(metric.id) ?? null,
   }))
 
   const totalTargetMetrics = targetByMetricId.size
   const minimumRequired =
     totalTargetMetrics > 0 ? Math.min(totalTargetMetrics, Math.max(1, dailyPassThreshold)) : 0
-  const monthEntryByDate = new Map(monthSubmittedEntries.map((entry) => [entry.entry_date, entry.entry_id]))
+  const monthEntryByDate = new Map(monthSubmittedEntries.map((entry) => [entry.report_date, entry.id]))
   const todayKey = dateKeyUtc(new Date())
 
   const calendarDays: AgentCalendarDay[] = []
@@ -1300,17 +1207,17 @@ export async function getAgentProfile(
   }
 
   const recentLogs = recentLogEntries.map((entry) => ({
-    entry_id: entry.entry_id,
-    entry_date: entry.entry_date,
+    id: entry.id,
+    report_date: entry.report_date,
     status: entry.status,
     notes: entry.notes,
     metric_values: departmentMetrics.map((metric) => {
-      const value = valueByEntryMetric.get(`${entry.entry_id}:${metric.metric_id}`)
+      const value = valueByEntryMetric.get(`${entry.id}:${metric.id}`)
       return {
-        metric_id: metric.metric_id,
-        value_numeric: value?.value_numeric ?? null,
+        metric_id: metric.id,
+        value_number: value?.value_number ?? null,
         value_text: value?.value_text ?? null,
-        value_bool: value?.value_bool ?? null,
+        value_boolean: value?.value_boolean ?? null,
       }
     }),
   })) as RecentAgentEntry[]

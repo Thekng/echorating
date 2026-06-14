@@ -18,134 +18,32 @@ import type {
   DailyLogRecentMetricValue,
 } from './types'
 
-function isMissingMetricsSettingsColumn(message: string) {
-  const normalized = message.toLowerCase()
-  return normalized.includes('column metrics.settings does not exist')
-}
-
-function isMissingMetricsSortOrderColumn(message: string) {
-  const normalized = message.toLowerCase()
-  return normalized.includes('column metrics.sort_order does not exist')
-}
-
 async function getManualMetricsForDailyLog(
   admin: ReturnType<typeof createAdminClient>,
-  companyId: string,
+  organizationId: string,
   departmentId: string,
 ) {
-  const withSettingsQuery = admin
+  const { data, error } = await admin
     .from('metrics')
-    .select('metric_id, name, code, data_type, unit, settings, description, sort_order')
-    .eq('company_id', companyId)
+    .select('id, name, code, data_type, unit, settings, description, sort_order')
+    .eq('organization_id', organizationId)
     .eq('department_id', departmentId)
     .eq('is_active', true)
     .eq('input_mode', 'manual')
-    .is('deleted_at', null)
     .order('sort_order', { ascending: true, nullsFirst: false })
     .order('name', { ascending: true })
 
-  const withSettings = await withSettingsQuery
-  if (!withSettings.error) {
-    return {
-      ok: true as const,
-      metrics: (withSettings.data ?? []) as DailyLogMetric[],
-    }
-  }
-
-  if (isMissingMetricsSortOrderColumn(withSettings.error.message)) {
-    const sortFallback = await admin
-      .from('metrics')
-      .select('metric_id, name, code, data_type, unit, settings, description')
-      .eq('company_id', companyId)
-      .eq('department_id', departmentId)
-      .eq('is_active', true)
-      .eq('input_mode', 'manual')
-      .is('deleted_at', null)
-      .order('name', { ascending: true })
-
-    if (!sortFallback.error) {
-      return {
-        ok: true as const,
-        metrics: (sortFallback.data ?? []) as DailyLogMetric[],
-      }
-    }
-
-    if (!isMissingMetricsSettingsColumn(sortFallback.error.message)) {
-      return {
-        ok: false as const,
-        message: formatDatabaseError(sortFallback.error.message),
-        metrics: [] as DailyLogMetric[],
-      }
-    }
-  } else if (!isMissingMetricsSettingsColumn(withSettings.error.message)) {
+  if (error) {
     return {
       ok: false as const,
-      message: formatDatabaseError(withSettings.error.message),
+      message: formatDatabaseError(error.message),
       metrics: [] as DailyLogMetric[],
     }
   }
-
-  const fallback = await admin
-    .from('metrics')
-    .select('metric_id, name, code, data_type, unit, description, sort_order')
-    .eq('company_id', companyId)
-    .eq('department_id', departmentId)
-    .eq('is_active', true)
-    .eq('input_mode', 'manual')
-    .is('deleted_at', null)
-    .order('sort_order', { ascending: true, nullsFirst: false })
-    .order('name', { ascending: true })
-
-  if (fallback.error && !isMissingMetricsSortOrderColumn(fallback.error.message)) {
-    return {
-      ok: false as const,
-      message: formatDatabaseError(fallback.error.message),
-      metrics: [] as DailyLogMetric[],
-    }
-  }
-
-  if (fallback.error && isMissingMetricsSortOrderColumn(fallback.error.message)) {
-    const noSortFallback = await admin
-      .from('metrics')
-      .select('metric_id, name, code, data_type, unit, description')
-      .eq('company_id', companyId)
-      .eq('department_id', departmentId)
-      .eq('is_active', true)
-      .eq('input_mode', 'manual')
-      .is('deleted_at', null)
-      .order('name', { ascending: true })
-
-    if (noSortFallback.error) {
-      return {
-        ok: false as const,
-        message: formatDatabaseError(noSortFallback.error.message),
-        metrics: [] as DailyLogMetric[],
-      }
-    }
-
-    const metrics = ((noSortFallback.data ?? []) as Array<Omit<DailyLogMetric, 'settings'> & { settings?: unknown }>).map(
-      (metric) => ({
-        ...metric,
-        settings: null,
-      }),
-    )
-
-    return {
-      ok: true as const,
-      metrics,
-    }
-  }
-
-  const metrics = ((fallback.data ?? []) as Array<Omit<DailyLogMetric, 'settings'> & { settings?: unknown }>).map(
-    (metric) => ({
-      ...metric,
-      settings: null,
-    }),
-  )
 
   return {
     ok: true as const,
-    metrics,
+    metrics: (data ?? []) as DailyLogMetric[],
   }
 }
 
@@ -160,7 +58,7 @@ function todayKey() {
 
 async function getDepartmentAgents(
   admin: ReturnType<typeof createAdminClient>,
-  companyId: string,
+  organizationId: string,
   departmentId: string,
   includeViewerUserId?: string,
 ) {
@@ -168,8 +66,6 @@ async function getDepartmentAgents(
     .from('department_members')
     .select('user_id')
     .eq('department_id', departmentId)
-    .eq('is_active', true)
-    .is('deleted_at', null)
 
   if (membershipsError) {
     return {
@@ -193,7 +89,7 @@ async function getDepartmentAgents(
   const { data: membershipsData, error: companyMembershipsError } = await admin
     .from('organization_members')
     .select('user_id, role, profiles!inner(full_name)')
-    .eq('organization_id', companyId)
+    .eq('organization_id', organizationId)
     .in('user_id', userIds)
 
   if (companyMembershipsError) {
@@ -240,36 +136,36 @@ function durationFromSeconds(value: number | null, format: DurationFormat) {
 
 function toDailyLogValue(
   metric: DailyLogMetric,
-  row: { value_numeric: number | null; value_text: string | null; value_bool: boolean | null },
+  row: { value_number: number | null; value_text: string | null; value_boolean: boolean | null },
 ) {
   const settings = normalizeMetricSettings(metric.data_type, metric.settings)
 
   if (metric.data_type === 'boolean') {
-    if (row.value_bool === null) {
+    if (row.value_boolean === null) {
       return ''
     }
 
-    return row.value_bool ? 'true' : 'false'
+    return row.value_boolean ? 'true' : 'false'
   }
 
   if (metric.data_type === 'duration') {
-    return durationFromSeconds(row.value_numeric, settings.durationFormat ?? 'hh_mm_ss')
+    return durationFromSeconds(row.value_number, settings.durationFormat ?? 'hh_mm_ss')
   }
 
   if (metric.data_type === 'text' || metric.data_type === 'datetime' || metric.data_type === 'selection' || metric.data_type === 'file') {
     return row.value_text ?? ''
   }
 
-  if (row.value_numeric === null || row.value_numeric === undefined) {
+  if (row.value_number === null || row.value_number === undefined) {
     return ''
   }
 
-  return String(row.value_numeric)
+  return String(row.value_number)
 }
 
 async function getKeyMetrics(
   admin: ReturnType<typeof createAdminClient>,
-  companyId: string,
+  organizationId: string,
   departmentId: string,
   metrics: DailyLogMetric[],
 ) {
@@ -290,7 +186,7 @@ async function getKeyMetrics(
     }
   }
 
-  const candidateById = new Map(candidates.map((metric) => [metric.metric_id, metric]))
+  const candidateById = new Map(candidates.map((metric) => [metric.id, metric]))
   const keyMetricsConfig: DailyLogKeyMetricSlot[] = [
     { slot: 1, metric_id: null },
     { slot: 2, metric_id: null },
@@ -319,11 +215,11 @@ async function getKeyMetrics(
     const configured = keyMetricsConfig[slot - 1]
     const configuredMetric = configured.metric_id ? candidateById.get(configured.metric_id) : null
 
-    if (configuredMetric && !usedMetricIds.has(configuredMetric.metric_id)) {
-      usedMetricIds.add(configuredMetric.metric_id)
+    if (configuredMetric && !usedMetricIds.has(configuredMetric.id)) {
+      usedMetricIds.add(configuredMetric.id)
       keyMetrics.push({
         slot,
-        metric_id: configuredMetric.metric_id,
+        id: configuredMetric.id,
         name: configuredMetric.name,
         code: configuredMetric.code,
         data_type: configuredMetric.data_type,
@@ -333,15 +229,15 @@ async function getKeyMetrics(
       continue
     }
 
-    const fallback = candidates.find((item) => !usedMetricIds.has(item.metric_id))
+    const fallback = candidates.find((item) => !usedMetricIds.has(item.id))
     if (!fallback) {
       continue
     }
 
-    usedMetricIds.add(fallback.metric_id)
+    usedMetricIds.add(fallback.id)
     keyMetrics.push({
       slot,
-      metric_id: fallback.metric_id,
+      id: fallback.id,
       name: fallback.name,
       code: fallback.code,
       data_type: fallback.data_type,
@@ -360,7 +256,7 @@ async function getKeyMetrics(
 
 async function getRecentLogs(
   admin: ReturnType<typeof createAdminClient>,
-  companyId: string,
+  organizationId: string,
   departmentId: string,
   canManageDepartment: boolean,
   viewerUserId: string,
@@ -373,13 +269,13 @@ async function getRecentLogs(
   const to = from + pageSize - 1
 
   let recentQuery = admin
-    .from('daily_entries')
-    .select('entry_id, user_id, department_id, entry_date, status, notes, updated_at', {
+    .from('daily_reports')
+    .select('id, user_id, department_id, report_date, status, notes, updated_at', {
       count: 'exact',
     })
-    .eq('company_id', companyId)
+    .eq('organization_id', organizationId)
     .eq('department_id', departmentId)
-    .order('entry_date', { ascending: false })
+    .order('report_date', { ascending: false })
     .order('updated_at', { ascending: false })
     .range(from, to)
 
@@ -401,10 +297,10 @@ async function getRecentLogs(
 
   const entries =
     ((entriesData ?? []) as Array<{
-      entry_id: string
+      id: string
       user_id: string
       department_id: string
-      entry_date: string
+      report_date: string
       status: 'draft' | 'submitted'
       notes: string | null
       updated_at: string
@@ -414,14 +310,14 @@ async function getRecentLogs(
     return { ok: true as const, recentLogs: [] as DailyLogRecentEntry[], totalCount: count ?? 0 }
   }
 
-  const entryIds = entries.map((entry) => entry.entry_id)
+  const entryIds = entries.map((entry) => entry.id)
   const userIds = Array.from(new Set(entries.map((entry) => entry.user_id)))
-  const keyMetricIds = keyMetrics.map((metric) => metric.metric_id)
+  const keyMetricIds = keyMetrics.map((metric) => metric.id)
 
   const { data: profilesData, error: profilesError } = await admin
     .from('organization_members')
     .select('user_id, profiles!inner(full_name)')
-    .eq('organization_id', companyId)
+    .eq('organization_id', organizationId)
     .in('user_id', userIds)
 
   if (profilesError) {
@@ -446,9 +342,9 @@ async function getRecentLogs(
   let valuesByEntry = new Map<string, DailyLogRecentMetricValue[]>()
   if (keyMetricIds.length > 0) {
     const { data: valuesData, error: valuesError } = await admin
-      .from('entry_values')
-      .select('entry_id, metric_id, value_numeric, value_text, value_bool, value_source')
-      .in('entry_id', entryIds)
+      .from('daily_report_values')
+      .select('daily_report_id, metric_id, value_number, value_text, value_boolean')
+      .in('daily_report_id', entryIds)
       .in('metric_id', keyMetricIds)
 
     if (valuesError) {
@@ -461,14 +357,14 @@ async function getRecentLogs(
     }
 
     valuesByEntry = (valuesData ?? []).reduce((acc, item) => {
-      const existing = acc.get(item.entry_id as string) ?? []
+      const existing = acc.get(item.daily_report_id as string) ?? []
       existing.push({
         metric_id: item.metric_id as string,
-        value_numeric: item.value_numeric === null ? null : Number(item.value_numeric),
+        value_number: item.value_number === null ? null : Number(item.value_number),
         value_text: item.value_text as string | null,
-        value_bool: item.value_bool as boolean | null,
+        value_boolean: item.value_boolean as boolean | null,
       })
-      acc.set(item.entry_id as string, existing)
+      acc.set(item.daily_report_id as string, existing)
       return acc
     }, new Map<string, DailyLogRecentMetricValue[]>())
   }
@@ -476,15 +372,15 @@ async function getRecentLogs(
   return {
     ok: true as const,
     recentLogs: entries.map((entry) => ({
-      entry_id: entry.entry_id,
+      id: entry.id,
       user_id: entry.user_id,
       user_name: nameByUserId.get(entry.user_id) ?? 'Unknown agent',
       department_id: entry.department_id,
-      entry_date: entry.entry_date,
+      report_date: entry.report_date,
       status: entry.status,
       notes: entry.notes,
       updated_at: entry.updated_at,
-      key_metric_values: valuesByEntry.get(entry.entry_id) ?? [],
+      key_metric_values: valuesByEntry.get(entry.id) ?? [],
     })),
     totalCount: count ?? entries.length,
   }
@@ -524,7 +420,7 @@ export async function getDailyLogFormData(rawFilters?: {
 
   const departmentsResult = await getAccessibleDepartments(
     context.admin,
-    context.companyId,
+    context.organizationId,
     context.userId,
     context.role,
   )
@@ -566,7 +462,7 @@ export async function getDailyLogFormData(rawFilters?: {
 
   const metricsResult = await getManualMetricsForDailyLog(
     context.admin,
-    context.companyId,
+    context.organizationId,
     selectedDepartmentId,
   )
   if (!metricsResult.ok) {
@@ -575,7 +471,7 @@ export async function getDailyLogFormData(rawFilters?: {
 
   const metrics = metricsResult.metrics
 
-  const keyMetricsResult = await getKeyMetrics(context.admin, context.companyId, selectedDepartmentId, metrics)
+  const keyMetricsResult = await getKeyMetrics(context.admin, context.organizationId, selectedDepartmentId, metrics)
   if (!keyMetricsResult.ok) {
     return { success: false as const, error: keyMetricsResult.message, data: null }
   }
@@ -587,20 +483,18 @@ export async function getDailyLogFormData(rawFilters?: {
   if (!canManageSelectedDepartment) {
     const { data: viewerDepartmentMembership } = await context.admin
       .from('department_members')
-      .select('member_role')
+      .select('role')
       .eq('department_id', selectedDepartmentId)
       .eq('user_id', context.userId)
-      .eq('is_active', true)
-      .is('deleted_at', null)
       .maybeSingle()
 
-    canManageSelectedDepartment = viewerDepartmentMembership?.member_role === 'lead'
+    canManageSelectedDepartment = viewerDepartmentMembership?.role === 'lead'
   }
 
   if (canManageSelectedDepartment) {
     const agentsResult = await getDepartmentAgents(
       context.admin,
-      context.companyId,
+      context.organizationId,
       selectedDepartmentId,
       context.userId,
     )
@@ -617,7 +511,7 @@ export async function getDailyLogFormData(rawFilters?: {
   }
 
   let entry: {
-    entry_id: string
+    id: string
     status: 'draft' | 'submitted'
     updated_at: string
     submitted_at: string | null
@@ -626,12 +520,12 @@ export async function getDailyLogFormData(rawFilters?: {
 
   if (selectedUserId) {
     const { data: entryData, error: entryError } = await context.admin
-      .from('daily_entries')
-      .select('entry_id, status, updated_at, submitted_at, notes')
-      .eq('company_id', context.companyId)
+      .from('daily_reports')
+      .select('id, status, updated_at, submitted_at, notes')
+      .eq('organization_id', context.organizationId)
       .eq('department_id', selectedDepartmentId)
       .eq('user_id', selectedUserId)
-      .eq('entry_date', selectedDate)
+      .eq('report_date', selectedDate)
       .maybeSingle()
 
     if (entryError) {
@@ -640,7 +534,7 @@ export async function getDailyLogFormData(rawFilters?: {
 
     entry = entryData
       ? {
-          entry_id: entryData.entry_id as string,
+          id: entryData.id as string,
           status: entryData.status as 'draft' | 'submitted',
           updated_at: entryData.updated_at as string,
           submitted_at: entryData.submitted_at as string | null,
@@ -651,15 +545,14 @@ export async function getDailyLogFormData(rawFilters?: {
 
   const values: Record<string, string> = {}
 
-  if (entry?.entry_id && metrics.length > 0) {
-    const metricIds = metrics.map((metric) => metric.metric_id)
-    const metricById = new Map(metrics.map((metric) => [metric.metric_id, metric]))
+  if (entry?.id && metrics.length > 0) {
+    const metricIds = metrics.map((metric) => metric.id)
+    const metricById = new Map(metrics.map((metric) => [metric.id, metric]))
 
     const { data: entryValuesData, error: entryValuesError } = await context.admin
-      .from('entry_values')
-      .select('metric_id, value_numeric, value_text, value_bool, value_source')
-      .eq('entry_id', entry.entry_id)
-      .eq('value_source', 'manual')
+      .from('daily_report_values')
+      .select('metric_id, value_number, value_text, value_boolean')
+      .eq('daily_report_id', entry.id)
       .in('metric_id', metricIds)
 
     if (entryValuesError) {
@@ -673,16 +566,16 @@ export async function getDailyLogFormData(rawFilters?: {
       }
 
       values[item.metric_id as string] = toDailyLogValue(metric, {
-        value_numeric: item.value_numeric === null ? null : Number(item.value_numeric),
+        value_number: item.value_number === null ? null : Number(item.value_number),
         value_text: item.value_text as string | null,
-        value_bool: item.value_bool as boolean | null,
+        value_boolean: item.value_boolean as boolean | null,
       })
     }
   }
 
   const recentLogsResult = await getRecentLogs(
     context.admin,
-    context.companyId,
+    context.organizationId,
     selectedDepartmentId,
     canManageSelectedDepartment,
     context.userId,

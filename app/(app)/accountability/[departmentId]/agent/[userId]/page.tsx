@@ -44,37 +44,37 @@ function formatLogMetricValue(
   log: {
     metric_values: Array<{
       metric_id: string
-      value_numeric: number | null
+      value_number: number | null
       value_text: string | null
-      value_bool: boolean | null
+      value_boolean: boolean | null
     }>
   },
   metric: {
-    metric_id: string
+    id: string
     data_type: string
     unit: string
     settings: unknown
   },
 ) {
-  const raw = log.metric_values.find((item) => item.metric_id === metric.metric_id)
+  const raw = log.metric_values.find((item) => item.metric_id === metric.id)
   if (!raw) {
     return '-'
   }
 
   const settings = normalizeMetricSettings(metric.data_type as MetricDataTypeInput, metric.settings)
   if (metric.data_type === 'boolean') {
-    if (raw.value_bool === null) {
+    if (raw.value_boolean === null) {
       return '-'
     }
     const labels = booleanLabels(settings)
-    return raw.value_bool ? labels.trueLabel : labels.falseLabel
+    return raw.value_boolean ? labels.trueLabel : labels.falseLabel
   }
 
   if (metric.data_type === 'duration') {
-    if (raw.value_numeric === null || raw.value_numeric === undefined) {
+    if (raw.value_number === null || raw.value_number === undefined) {
       return '-'
     }
-    return formatMetricNumber(Number(raw.value_numeric), {
+    return formatMetricNumber(Number(raw.value_number), {
       dataType: metric.data_type as MetricDataTypeInput,
       unit: metric.unit,
       settings: metric.settings,
@@ -102,11 +102,11 @@ function formatLogMetricValue(
     return raw.value_text
   }
 
-  if (raw.value_numeric === null || raw.value_numeric === undefined) {
+  if (raw.value_number === null || raw.value_number === undefined) {
     return '-'
   }
 
-  return formatMetricValue(metric, Number(raw.value_numeric))
+  return formatMetricValue(metric, Number(raw.value_number))
 }
 
 function kpiRingTone(index: number) {
@@ -210,7 +210,7 @@ export default async function Agent1To1Page({ params, searchParams }: Agent1To1P
         <h2 className="text-sm font-semibold">Key Stats</h2>
         <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
           {metric_kpis.map((metric, idx) => (
-            <div key={metric.metric_id} className="rounded-md border p-3">
+            <div key={metric.id} className="rounded-md border p-3">
               <div className={`inline-flex items-center justify-center h-10 w-10 rounded-full ${kpiRingTone(idx)} border-2`} />
               <p className="mt-2 text-sm font-medium">{metric.name}</p>
               <p className="text-2xl font-semibold">{formatMetricValue(metric, metric.current_value)}</p>
@@ -257,7 +257,7 @@ export default async function Agent1To1Page({ params, searchParams }: Agent1To1P
                 <th className="px-4 py-2 text-left font-medium">Status</th>
                 <th className="px-4 py-2 text-left font-medium">Notes</th>
                 {department_metrics.map((m) => (
-                  <th key={m.metric_id} className="px-4 py-2 text-left font-medium">{m.code}</th>
+                  <th key={m.id} className="px-4 py-2 text-left font-medium">{m.code}</th>
                 ))}
               </tr>
             </thead>
@@ -266,12 +266,12 @@ export default async function Agent1To1Page({ params, searchParams }: Agent1To1P
                 <tr><td colSpan={3 + department_metrics.length} className="px-4 py-8 text-center text-muted-foreground">No logs found.</td></tr>
               ) : null}
               {recent_logs.map((log) => (
-                <tr key={log.entry_id} className="border-b last:border-b-0">
-                  <td className="px-4 py-3">{formatDate(log.entry_date)}</td>
+                <tr key={log.id} className="border-b last:border-b-0">
+                  <td className="px-4 py-3">{formatDate(log.report_date)}</td>
                   <td className="px-4 py-3">{log.status}</td>
                   <td className="px-4 py-3 max-w-xs truncate text-muted-foreground">{log.notes || '-'}</td>
                   {department_metrics.map((metric) => (
-                    <td key={metric.metric_id} className="px-4 py-3">{formatLogMetricValue(log, metric)}</td>
+                    <td key={metric.id} className="px-4 py-3">{formatLogMetricValue(log, metric)}</td>
                   ))}
                 </tr>
               ))}

@@ -76,7 +76,7 @@ function getMetricAverage(logs: DailyLogRecentEntry[], metric: DailyLogKeyMetric
   }
 
   const values = logs
-    .map((log) => log.key_metric_values.find((item) => item.metric_id === metric.metric_id)?.value_numeric ?? null)
+    .map((log) => log.key_metric_values.find((item) => item.metric_id === metric.id)?.value_number ?? null)
     .filter((value): value is number => value !== null && value !== undefined && Number.isFinite(value))
 
   if (values.length === 0) {
@@ -88,36 +88,36 @@ function getMetricAverage(logs: DailyLogRecentEntry[], metric: DailyLogKeyMetric
 }
 
 function metricValue(values: DailyLogRecentMetricValue[], metric: DailyLogKeyMetric) {
-  const value = values.find((item) => item.metric_id === metric.metric_id)
+  const value = values.find((item) => item.metric_id === metric.id)
   if (!value) {
     return '-'
   }
   const settings = normalizeMetricSettings(metric.data_type, metric.settings)
 
   if (metric.data_type === 'boolean') {
-    if (value.value_bool === null) {
+    if (value.value_boolean === null) {
       return '-'
     }
 
     const labels = booleanLabels(settings)
-    return value.value_bool ? labels.trueLabel : labels.falseLabel
+    return value.value_boolean ? labels.trueLabel : labels.falseLabel
   }
 
   if (metric.data_type === 'duration') {
-    if (value.value_numeric === null || value.value_numeric === undefined) {
+    if (value.value_number === null || value.value_number === undefined) {
       return '-'
     }
 
     if (settings.durationFormat === 'minutes') {
-      return `${Number((value.value_numeric / 60).toFixed(2))}`
+      return `${Number((value.value_number / 60).toFixed(2))}`
     }
     if (settings.durationFormat === 'hours') {
-      return `${Number((value.value_numeric / 3600).toFixed(2))}`
+      return `${Number((value.value_number / 3600).toFixed(2))}`
     }
     if (settings.durationFormat === 'days') {
-      return `${Number((value.value_numeric / 86400).toFixed(2))}`
+      return `${Number((value.value_number / 86400).toFixed(2))}`
     }
-    return formatSecondsToDuration(value.value_numeric) || '-'
+    return formatSecondsToDuration(value.value_number) || '-'
   }
 
   if (metric.data_type === 'text' || metric.data_type === 'datetime' || metric.data_type === 'file') {
@@ -142,7 +142,7 @@ function metricValue(values: DailyLogRecentMetricValue[], metric: DailyLogKeyMet
     return value.value_text
   }
 
-  if (value.value_numeric === null || value.value_numeric === undefined) {
+  if (value.value_number === null || value.value_number === undefined) {
     return '-'
   }
 
@@ -152,14 +152,14 @@ function metricValue(values: DailyLogRecentMetricValue[], metric: DailyLogKeyMet
       style: 'currency',
       currency: currencyCode,
       maximumFractionDigits: 2,
-    }).format(value.value_numeric)
+    }).format(value.value_number)
   }
 
   if (metric.data_type === 'percent') {
-    return `${value.value_numeric}%`
+    return `${value.value_number}%`
   }
 
-  return String(value.value_numeric)
+  return String(value.value_number)
 }
 
 export function RecentLogsTable({
@@ -301,7 +301,7 @@ export function RecentLogsTable({
             <th className="px-3 py-2 text-left font-medium">Date</th>
             <th className="px-3 py-2 text-left font-medium">Agent</th>
             {keyMetrics.map((metric) => (
-              <th key={metric.metric_id} className="px-3 py-2 text-left font-medium">
+              <th key={metric.id} className="px-3 py-2 text-left font-medium">
                 {metric.name}
               </th>
             ))}
@@ -312,11 +312,11 @@ export function RecentLogsTable({
         </thead>
         <tbody>
           {logs.map((log) => (
-            <tr key={log.entry_id} className="border-b last:border-b-0">
-              <td className="px-3 py-2">{formatDateShort(log.entry_date)}</td>
+            <tr key={log.id} className="border-b last:border-b-0">
+              <td className="px-3 py-2">{formatDateShort(log.report_date)}</td>
               <td className="px-3 py-2">{log.user_name}</td>
               {keyMetrics.map((metric) => (
-                <td key={metric.metric_id} className="px-3 py-2">
+                <td key={metric.id} className="px-3 py-2">
                   {metricValue(log.key_metric_values, metric)}
                 </td>
               ))}
@@ -337,7 +337,7 @@ export function RecentLogsTable({
               <td className="px-3 py-2">
                 <div className="flex items-center justify-end gap-2">
                   <Link
-                    href={`/daily-log?departmentId=${departmentId}&userId=${log.user_id}&date=${log.entry_date}`}
+                    href={`/daily-log?departmentId=${departmentId}&userId=${log.user_id}&date=${log.report_date}`}
                     className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-input hover:bg-muted/40"
                     title="Edit"
                     aria-label="Edit"
@@ -354,7 +354,7 @@ export function RecentLogsTable({
                         }
                       }}
                     >
-                      <input type="hidden" name="entryId" value={log.entry_id} />
+                      <input type="hidden" name="entryId" value={log.id} />
                       <button
                         type="submit"
                         className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-destructive/30 text-destructive hover:bg-destructive/10"
@@ -375,7 +375,7 @@ export function RecentLogsTable({
             <td className="px-3 py-2 font-semibold">Avg</td>
             <td className="px-3 py-2 text-muted-foreground">Visible logs</td>
             {keyMetrics.map((metric) => (
-              <td key={metric.metric_id} className="px-3 py-2 font-medium">
+              <td key={metric.id} className="px-3 py-2 font-medium">
                 {formatAverageValue(metric, getMetricAverage(logs, metric))}
               </td>
             ))}

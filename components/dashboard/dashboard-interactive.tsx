@@ -35,18 +35,18 @@ export function DashboardInteractive({
     router.push(`/dashboard?${params.toString()}`)
   }
 
-  const activeMetricId = selectedMetricId || kpis[0]?.metric_id
+  const activeMetricId = selectedMetricId || kpis[0]?.id
 
   return (
     <section className="space-y-2">
       <div className="flex gap-2 overflow-x-auto pb-1">
         {kpis.map((kpi) => (
           <button
-            key={kpi.metric_id}
+            key={kpi.id}
             type="button"
-            onClick={() => handleKpiClick(kpi.metric_id)}
+            onClick={() => handleKpiClick(kpi.id)}
             className={`min-w-[180px] shrink-0 rounded-lg border p-3 text-left transition-all ${
-              activeMetricId === kpi.metric_id
+              activeMetricId === kpi.id
                 ? 'border-primary ring-1 ring-primary bg-primary/5'
                 : 'bg-card hover:bg-muted/50'
             }`}

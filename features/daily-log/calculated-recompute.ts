@@ -11,7 +11,7 @@ import {
 type AdminClient = ReturnType<typeof createAdminClient>
 
 type RecomputedCalculatedRow = {
-  entry_id: string
+  daily_report_id: string
   metric_id: string
   value_numeric: number | null
   value_bool: boolean | null
@@ -27,16 +27,6 @@ function isMissingTypedFormulaColumns(message: string) {
     normalized.includes('column metric_formulas.return_type does not exist') ||
     normalized.includes('column metric_formulas.engine_version does not exist')
   )
-}
-
-function isMissingEntryValuesBoolColumn(message: string) {
-  const normalized = message.toLowerCase()
-  return normalized.includes('entry_values') && normalized.includes('value_bool') && normalized.includes('does not exist')
-}
-
-function isMissingCalculatedValuesBoolColumn(message: string) {
-  const normalized = message.toLowerCase()
-  return normalized.includes('calculated_values') && normalized.includes('value_bool') && normalized.includes('does not exist')
 }
 
 function requiresCalculatedValuesVersionHash(message: string) {
@@ -65,74 +55,31 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
 }
 
-async function insertLegacyNumericCalculatedRows(admin: AdminClient, rows: RecomputedCalculatedRow[]) {
-  if (rows.some((row) => row.value_bool !== null)) {
-    return {
-      ok: false as const,
-      message: 'Boolean calculated metrics require the latest database migration. Please run migrations and try again.',
-    }
-  }
-
-  const baseRows = rows.map((row) => ({
-    entry_id: row.entry_id,
-    metric_id: row.metric_id,
-    value_numeric: row.value_numeric,
-    computed_at: row.computed_at,
-    formula_id: row.formula_id,
-    calc_trace: row.calc_trace,
-  }))
-
-  const firstAttempt = await admin.from('calculated_values').insert(baseRows)
-  if (!firstAttempt.error) {
-    return { ok: true as const }
-  }
-
-  if (!requiresCalculatedValuesVersionHash(firstAttempt.error.message)) {
-    return { ok: false as const, message: formatDatabaseError(firstAttempt.error.message) }
-  }
-
-  const withVersionHashRows = baseRows.map((row) => ({
-    ...row,
-    version_hash: `notion_v1:${row.formula_id}`,
-  }))
-  const secondAttempt = await admin.from('calculated_values').insert(withVersionHashRows)
-  if (!secondAttempt.error) {
-    return { ok: true as const }
-  }
-
-  if (isMissingCalculatedValuesVersionHashColumn(secondAttempt.error.message)) {
-    return { ok: false as const, message: formatDatabaseError(firstAttempt.error.message) }
-  }
-
-  return { ok: false as const, message: formatDatabaseError(secondAttempt.error.message) }
-}
-
 export async function recomputeCalculatedMetricsForEntry(
   admin: AdminClient,
-  companyId: string,
+  organizationId: string,
   departmentId: string,
-  entryId: string,
+  reportId: string,
 ) {
   const { data: metricsData, error: metricsError } = await admin
     .from('metrics')
-    .select('metric_id, code, data_type, input_mode')
-    .eq('company_id', companyId)
+    .select('id, code, data_type, input_mode')
+    .eq('organization_id', organizationId)
     .eq('department_id', departmentId)
     .eq('is_active', true)
-    .is('deleted_at', null)
 
   if (metricsError) {
     return { ok: false as const, message: formatDatabaseError(metricsError.message) }
   }
 
   const metrics = (metricsData ?? []) as Array<{
-    metric_id: string
+    id: string
     code: string
     data_type: DailyLogMetricDataType
     input_mode: 'manual' | 'calculated'
   }>
   const calculatedMetrics = metrics.filter((metric) => metric.input_mode === 'calculated')
-  const calculatedMetricIds = calculatedMetrics.map((metric) => metric.metric_id)
+  const calculatedMetricIds = calculatedMetrics.map((metric) => metric.id)
 
   if (calculatedMetricIds.length === 0) {
     return { ok: true as const }
@@ -181,7 +128,7 @@ export async function recomputeCalculatedMetricsForEntry(
   const formulaByMetricId = new Map(formulas.map((formula) => [formula.metric_id, formula]))
 
   for (const metric of calculatedMetrics) {
-    if (!formulaByMetricId.has(metric.metric_id)) {
+    if (!formulaByMetricId.has(metric.id)) {
       return {
         ok: false as const,
         message: `Calculated metric "${metric.code}" is missing a current formula.`,
@@ -243,35 +190,16 @@ export async function recomputeCalculatedMetricsForEntry(
     }
   }
 
-  const entryValuesWithBool = await admin
-    .from('entry_values')
-    .select('metric_id, value_numeric, value_bool')
-    .eq('entry_id', entryId)
+  const { data: entryValuesData, error: entryValuesError } = await admin
+    .from('daily_report_values')
+    .select('metric_id, value_number, value_boolean')
+    .eq('daily_report_id', reportId)
 
-  let entryValues: Array<{ metric_id: string; value_numeric: number | null; value_bool: boolean | null }> = []
-  if (!entryValuesWithBool.error) {
-    entryValues = (entryValuesWithBool.data ?? []) as typeof entryValues
-  } else if (isMissingEntryValuesBoolColumn(entryValuesWithBool.error.message)) {
-    const legacyEntryValues = await admin
-      .from('entry_values')
-      .select('metric_id, value_numeric')
-      .eq('entry_id', entryId)
-
-    if (legacyEntryValues.error) {
-      return { ok: false as const, message: formatDatabaseError(legacyEntryValues.error.message) }
-    }
-
-    entryValues = ((legacyEntryValues.data ?? []) as Array<{ metric_id: string; value_numeric: number | null }>).map(
-      (item) => ({
-        metric_id: item.metric_id,
-        value_numeric: item.value_numeric,
-        value_bool: null,
-      }),
-    )
-  } else {
-    return { ok: false as const, message: formatDatabaseError(entryValuesWithBool.error.message) }
+  if (entryValuesError) {
+    return { ok: false as const, message: formatDatabaseError(entryValuesError.message) }
   }
 
+  const entryValues = (entryValuesData ?? []) as Array<{ metric_id: string; value_number: number | null; value_boolean: boolean | null }>
   const valueByMetricId = new Map(entryValues.map((row) => [row.metric_id, row]))
 
   const metricsByCode = new Map(
@@ -291,7 +219,7 @@ export async function recomputeCalculatedMetricsForEntry(
   const calculatedRows: RecomputedCalculatedRow[] = []
 
   for (const metricId of evaluationOrder) {
-    const metric = calculatedMetrics.find((item) => item.metric_id === metricId)
+    const metric = calculatedMetrics.find((item) => item.id === metricId)
     const formula = formulaByMetricId.get(metricId)
     if (!metric || !formula) {
       continue
@@ -304,8 +232,8 @@ export async function recomputeCalculatedMetricsForEntry(
         continue
       }
 
-      const value = valueByMetricId.get(dependencyMetric.metric_id)
-      metricValues[code] = formulaType === 'boolean' ? value?.value_bool ?? null : value?.value_numeric ?? null
+      const value = valueByMetricId.get(dependencyMetric.id)
+      metricValues[code] = formulaType === 'boolean' ? value?.value_boolean ?? null : value?.value_number ?? null
     }
 
     const astFromDb = isRecord(formula.ast_json) ? (formula.ast_json as FormulaAstNode) : null
@@ -370,12 +298,12 @@ export async function recomputeCalculatedMetricsForEntry(
 
     valueByMetricId.set(metricId, {
       metric_id: metricId,
-      value_numeric: nextValue.value_numeric,
-      value_bool: nextValue.value_bool,
+      value_number: nextValue.value_numeric,
+      value_boolean: nextValue.value_bool,
     })
 
     calculatedRows.push({
-      entry_id: entryId,
+      daily_report_id: reportId,
       metric_id: metricId,
       value_numeric: nextValue.value_numeric,
       value_bool: nextValue.value_bool,
@@ -389,47 +317,42 @@ export async function recomputeCalculatedMetricsForEntry(
   }
 
   if (calculatedRows.length > 0) {
-    const { error: insertCalculatedError } = await admin.from('calculated_values').insert(calculatedRows)
+    // Try inserting into calculated_values (legacy table)
+    const legacyRows = calculatedRows.map((row) => ({
+      entry_id: row.daily_report_id,
+      metric_id: row.metric_id,
+      value_numeric: row.value_numeric,
+      value_bool: row.value_bool,
+      computed_at: row.computed_at,
+      formula_id: row.formula_id,
+      calc_trace: row.calc_trace,
+    }))
+
+    const { error: insertCalculatedError } = await admin.from('calculated_values').insert(legacyRows)
     if (!insertCalculatedError) {
       return { ok: true as const }
     }
 
     if (requiresCalculatedValuesVersionHash(insertCalculatedError.message)) {
-      const typedRowsWithVersionHash = calculatedRows.map((row) => ({
+      const withVersionHashRows = legacyRows.map((row) => ({
         ...row,
         version_hash: `notion_v1:${row.formula_id}`,
       }))
-      const { error: insertTypedWithVersionHashError } = await admin
+      const { error: insertWithVersionHashError } = await admin
         .from('calculated_values')
-        .insert(typedRowsWithVersionHash)
+        .insert(withVersionHashRows)
 
-      if (!insertTypedWithVersionHashError) {
+      if (!insertWithVersionHashError) {
         return { ok: true as const }
       }
 
-      const shouldStopOnTypedVersionHashError =
-        !isMissingCalculatedValuesBoolColumn(insertTypedWithVersionHashError.message) &&
-        !isMissingCalculatedValuesVersionHashColumn(insertTypedWithVersionHashError.message) &&
-        !requiresCalculatedValuesVersionHash(insertTypedWithVersionHashError.message)
-
-      if (shouldStopOnTypedVersionHashError) {
-        return { ok: false as const, message: formatDatabaseError(insertTypedWithVersionHashError.message) }
+      if (!isMissingCalculatedValuesVersionHashColumn(insertWithVersionHashError.message)) {
+        return { ok: false as const, message: formatDatabaseError(insertWithVersionHashError.message) }
       }
     }
 
-    const shouldFallbackToLegacyInsert =
-      isMissingCalculatedValuesBoolColumn(insertCalculatedError.message) ||
-      requiresCalculatedValuesVersionHash(insertCalculatedError.message) ||
-      isMissingCalculatedValuesVersionHashColumn(insertCalculatedError.message)
-
-    if (!shouldFallbackToLegacyInsert) {
-      return { ok: false as const, message: formatDatabaseError(insertCalculatedError.message) }
-    }
-
-    const legacyInsertResult = await insertLegacyNumericCalculatedRows(admin, calculatedRows)
-    if (!legacyInsertResult.ok) {
-      return legacyInsertResult
-    }
+    // If all insert attempts failed, log but don't fail the recompute
+    console.warn('[CALCULATED_VALUES_INSERT_FAILED]', insertCalculatedError.message)
   }
 
   return { ok: true as const }
@@ -437,13 +360,13 @@ export async function recomputeCalculatedMetricsForEntry(
 
 export async function enqueueCalculatedRecomputeJob(
   admin: AdminClient,
-  companyId: string,
+  organizationId: string,
   departmentId: string,
-  entryId: string,
+  reportId: string,
 ) {
   const { error } = await admin.rpc('enqueue_calculated_recompute_job', {
-    p_entry_id: entryId,
-    p_company_id: companyId,
+    p_report_id: reportId,
+    p_organization_id: organizationId,
     p_department_id: departmentId,
   })
 

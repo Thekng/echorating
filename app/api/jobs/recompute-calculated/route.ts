@@ -11,8 +11,8 @@ const MAX_ATTEMPTS = 5
 
 type ClaimedJob = {
   job_id: string
-  entry_id: string
-  company_id: string
+  entry_id: string // maps to daily_report_id
+  company_id: string // maps to organization_id
   department_id: string
   attempts: number
 }

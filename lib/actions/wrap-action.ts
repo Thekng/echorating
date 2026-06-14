@@ -110,7 +110,7 @@ async function scheduleActionEvent(event: {
   outcome: 'success' | ActionErrorKind
   durationMs: number
   userId?: string | null
-  companyId?: string | null
+  organizationId?: string | null
   errorMessage?: string | null
 }) {
   const requestId = await getRequestId()
@@ -118,12 +118,12 @@ async function scheduleActionEvent(event: {
   after(async () => {
     try {
       const admin = createAdminClient()
-      await admin.from('action_events').insert({
+      await admin.from('audit_logs').insert({
         action_name: event.name,
         outcome: event.outcome,
         duration_ms: event.durationMs,
         user_id: event.userId ?? null,
-        company_id: event.companyId ?? null,
+        organization_id: event.organizationId ?? null,
         error_message: event.errorMessage ?? null,
         commit_sha: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
       })
@@ -145,7 +145,7 @@ async function scheduleActionEvent(event: {
     durationMs: event.durationMs,
     requestId,
     userId: event.userId ?? null,
-    companyId: event.companyId ?? null,
+    organizationId: event.organizationId ?? null,
     errorMessage: event.errorMessage ?? null,
   })
 }
@@ -195,7 +195,7 @@ export function wrapAction<TInput, TData>(
         outcome: 'permission',
         durationMs: Date.now() - t0,
         userId: context.userId,
-        companyId: context.companyId,
+        organizationId: context.organizationId,
         errorMessage: `required=${role} actual=${context.role}`,
       })
       return { ok: false, kind: 'permission', message: 'Insufficient permissions.' }
@@ -208,7 +208,7 @@ export function wrapAction<TInput, TData>(
         outcome: result.ok ? 'success' : result.kind,
         durationMs: Date.now() - t0,
         userId: context.userId,
-        companyId: context.companyId,
+        organizationId: context.organizationId,
         errorMessage: result.ok ? null : result.message,
       })
       return result
@@ -220,7 +220,7 @@ export function wrapAction<TInput, TData>(
         outcome: 'unknown',
         durationMs: Date.now() - t0,
         userId: context.userId,
-        companyId: context.companyId,
+        organizationId: context.organizationId,
         errorMessage: message,
       })
       return {
