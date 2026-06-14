@@ -12,6 +12,7 @@ import { SettingsError } from '@/components/settings/settings-error'
 import { Button } from '@/components/ui/button'
 import { formatMemberDepartments } from '@/features/settings/helpers'
 import { Trash2, Users } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 
 type MemberDepartment = {
   departmentId: string
@@ -172,8 +173,8 @@ export default function MembersSettingsPage() {
         <SettingsSurface
           className={
             feedback.tone === 'success'
-              ? 'border-green-300 bg-green-50 text-green-900'
-              : 'border-red-300 bg-red-50 text-red-900'
+              ? 'border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
+              : 'border-red-300 bg-red-50 text-red-900 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400'
           }
         >
           <p className="text-sm">{feedback.message}</p>
@@ -265,19 +266,20 @@ export default function MembersSettingsPage() {
                         <p className="text-xs text-muted-foreground">{row.email || '-'}</p>
                       </td>
                       <td className="px-3 py-3">
-                        <span
+                        <Badge
+                          variant="outline"
                           className={
                             row.role === 'owner'
-                              ? 'inline-block rounded-md bg-green-100 px-2 py-1 text-xs font-medium text-green-700'
+                              ? 'border-emerald-200 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
                               : row.role === 'admin'
-                                ? 'inline-block rounded-md bg-purple-100 px-2 py-1 text-xs font-medium text-purple-700'
+                                ? 'border-purple-200 bg-purple-100 text-purple-700 dark:border-purple-800 dark:bg-purple-900/30 dark:text-purple-400'
                                 : row.role === 'manager'
-                                  ? 'inline-block rounded-md bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700'
-                                  : 'inline-block rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700'
+                                  ? 'border-blue-200 bg-blue-100 text-blue-700 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
+                                  : ''
                           }
                         >
                           {ROLE_LABELS[row.role]}
-                        </span>
+                        </Badge>
                       </td>
                       <td className="px-3 py-3">{departmentsText}</td>
                       <td className="px-3 py-3">

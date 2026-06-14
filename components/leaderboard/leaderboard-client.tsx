@@ -3,10 +3,12 @@
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
-import { Trophy, CalendarDays } from 'lucide-react'
+import { Trophy, Medal, CalendarDays } from 'lucide-react'
 import { ROUTES } from '@/lib/constants/routes'
 import { formatMetricNumber } from '@/lib/metrics/format'
 import { formatDateShort } from '@/lib/utils/date-formatter'
+import { Badge } from '@/components/ui/badge'
+import { SectionHeader } from '@/components/shared/section-header'
 
 type Department = {
   department_id: string
@@ -237,17 +239,17 @@ export default function LeaderboardClient() {
       </section>
 
       <section className="rounded-xl border bg-card">
-        <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
-          <div>
-            <p className="text-sm font-semibold">Team Metrics Table</p>
-            <p className="text-xs text-muted-foreground">
-              All active metrics for the selected team and period.
-            </p>
-          </div>
-          <div className="inline-flex items-center gap-2 rounded-full border bg-muted/30 px-3 py-1 text-xs text-muted-foreground">
-            <CalendarDays className="size-3.5" />
-            <span>{activePeriodLabel || 'Date range'}</span>
-          </div>
+        <header className="border-b px-4 py-3">
+          <SectionHeader
+            title="Team Metrics Table"
+            description="All active metrics for the selected team and period."
+            action={
+              <Badge variant="outline" className="gap-1.5">
+                <CalendarDays className="size-3.5" />
+                {activePeriodLabel || 'Date range'}
+              </Badge>
+            }
+          />
         </header>
 
         {error ? (
@@ -281,6 +283,8 @@ export default function LeaderboardClient() {
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center gap-1 font-medium">
                         {index === 0 ? <Trophy className="size-4 text-amber-500" /> : null}
+                        {index === 1 ? <Medal className="size-4 text-slate-400" /> : null}
+                        {index === 2 ? <Medal className="size-4 text-amber-700 dark:text-amber-600" /> : null}
                         {index + 1}
                       </span>
                     </td>

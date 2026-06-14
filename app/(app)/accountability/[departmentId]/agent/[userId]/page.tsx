@@ -5,6 +5,9 @@ import { getAgentProfile } from '@/features/agents/queries'
 import { formatDateMedium } from '@/lib/utils'
 import { booleanLabels, normalizeMetricSettings } from '@/lib/metrics/data-types'
 import { formatMetricNumber, formatPercent } from '@/lib/metrics/format'
+import { Badge } from '@/components/ui/badge'
+import { StatCard } from '@/components/shared/stat-card'
+import { SectionHeader } from '@/components/shared/section-header'
 
 type MetricDataTypeInput = Parameters<typeof normalizeMetricSettings>[0]
 
@@ -184,30 +187,14 @@ export default async function Agent1To1Page({ params, searchParams }: Agent1To1P
       />
 
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <article className="rounded-xl border bg-card p-4">
-          <p className="text-xs uppercase text-muted-foreground">Team Rank</p>
-          <p className="mt-2 text-2xl font-semibold">{stats.department_rank ? `#${stats.department_rank}` : '-'}</p>
-          <p className="text-xs text-muted-foreground">Based on team score.</p>
-        </article>
-
-        <article className="rounded-xl border bg-card p-4">
-          <p className="text-xs uppercase text-muted-foreground">Team Score</p>
-          <p className="mt-2 text-2xl font-semibold">{stats.department_score === null ? '-' : formatPercent(stats.department_score, 1)}</p>
-        </article>
-
-        <article className="rounded-xl border bg-card p-4">
-          <p className="text-xs uppercase text-muted-foreground">Submitted Logs</p>
-          <p className="mt-2 text-2xl font-semibold">{stats.submitted_count}</p>
-        </article>
-
-        <article className="rounded-xl border bg-card p-4">
-          <p className="text-xs uppercase text-muted-foreground">Completion</p>
-          <p className="mt-2 text-2xl font-semibold">{formatPercent(stats.completion_rate, 1)}</p>
-        </article>
+        <StatCard title="Team Rank" value={stats.department_rank ? `#${stats.department_rank}` : '-'} />
+        <StatCard title="Team Score" value={stats.department_score === null ? '-' : formatPercent(stats.department_score, 1)} />
+        <StatCard title="Submitted Logs" value={stats.submitted_count} />
+        <StatCard title="Completion" value={formatPercent(stats.completion_rate, 1)} />
       </section>
 
       <section className="rounded-xl border bg-card p-4">
-        <h2 className="text-sm font-semibold">Key Stats</h2>
+        <SectionHeader title="Key Stats" />
         <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
           {metric_kpis.map((metric, idx) => (
             <div key={metric.id} className="rounded-md border p-3">
@@ -224,8 +211,7 @@ export default async function Agent1To1Page({ params, searchParams }: Agent1To1P
 
       <section className="rounded-xl border bg-card">
         <header className="border-b px-4 py-3">
-          <p className="text-sm font-semibold">Daily Performance Calendar</p>
-          <p className="text-xs text-muted-foreground">{calendar.month_label}</p>
+          <SectionHeader title="Daily Performance Calendar" description={calendar.month_label} />
         </header>
         <div className="p-4">
           <div className="grid grid-cols-7 gap-2">
@@ -236,7 +222,7 @@ export default async function Agent1To1Page({ params, searchParams }: Agent1To1P
               <div key={k} className="h-12 rounded-md bg-muted/10" />
             ))}
             {calendar.days.map((day) => (
-              <div key={day.date} className={`h-12 rounded-md p-2 text-center ${day.status === 'on_track' ? 'bg-emerald-50' : day.status === 'off_track' ? 'bg-rose-50' : 'bg-muted/10'}`}>
+              <div key={day.date} className={`h-12 rounded-md p-2 text-center ${day.status === 'on_track' ? 'bg-emerald-50 dark:bg-emerald-900/30' : day.status === 'off_track' ? 'bg-rose-50 dark:bg-rose-900/30' : 'bg-muted/10'}`}>
                 <div className="text-sm font-medium">{day.day}</div>
                 <div className="text-xs text-muted-foreground">{day.met_targets_count}/{day.total_targets_count}</div>
               </div>
@@ -247,7 +233,7 @@ export default async function Agent1To1Page({ params, searchParams }: Agent1To1P
 
       <section className="rounded-xl border bg-card">
         <header className="border-b px-4 py-3">
-          <p className="text-sm font-semibold">Recent Logs</p>
+          <SectionHeader title="Recent Logs" />
         </header>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -268,7 +254,18 @@ export default async function Agent1To1Page({ params, searchParams }: Agent1To1P
               {recent_logs.map((log) => (
                 <tr key={log.id} className="border-b last:border-b-0">
                   <td className="px-4 py-3">{formatDate(log.report_date)}</td>
-                  <td className="px-4 py-3">{log.status}</td>
+                  <td className="px-4 py-3">
+                    <Badge
+                      variant="outline"
+                      className={
+                        log.status === 'submitted'
+                          ? 'border-emerald-200 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
+                          : 'border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-400'
+                      }
+                    >
+                      {log.status === 'submitted' ? 'Submitted' : 'Draft'}
+                    </Badge>
+                  </td>
                   <td className="px-4 py-3 max-w-xs truncate text-muted-foreground">{log.notes || '-'}</td>
                   {department_metrics.map((metric) => (
                     <td key={metric.id} className="px-4 py-3">{formatLogMetricValue(log, metric)}</td>

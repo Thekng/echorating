@@ -1,10 +1,21 @@
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
-import { getSessionClaims } from '@/lib/supabase/session-claims'
 import { redirect } from 'next/navigation'
 import { ROUTES } from '@/lib/constants/routes'
+import { getDashboardData } from '@/features/dashboard/queries'
+import { DashboardView } from '@/components/dashboard/dashboard-view'
 
-export default async function DashboardPage() {
+type DashboardPageProps = {
+  searchParams: Promise<{
+    departmentId?: string
+    userId?: string
+    period?: string
+    startDate?: string
+    endDate?: string
+    metricId?: string
+  }>
+}
+
+export default async function DashboardPage({ searchParams }: DashboardPageProps) {
   const supabase = await createClient()
   const {
     data: { user },
@@ -14,56 +25,32 @@ export default async function DashboardPage() {
     redirect(ROUTES.LOGIN)
   }
 
-  const claims = getSessionClaims(user)
+  const params = await searchParams
 
-  if (!claims.active_organization_id) {
-    redirect(ROUTES.ONBOARDING_COMPANY)
+  const result = await getDashboardData({
+    departmentId: params.departmentId,
+    userId: params.userId,
+    period: params.period as Parameters<typeof getDashboardData>[0] extends infer T
+      ? T extends { period?: infer P } ? P : never
+      : never,
+    startDate: params.startDate,
+    endDate: params.endDate,
+    metricId: params.metricId,
+  })
+
+  if (!result.success || !result.data) {
+    return (
+      <div className="space-y-5">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+          <p className="text-sm text-muted-foreground">Performance overview</p>
+        </div>
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+          {result.error ?? 'Failed to load dashboard data.'}
+        </div>
+      </div>
+    )
   }
 
-  const admin = createAdminClient()
-
-  const [{ data: profile }, { data: organization }] = await Promise.all([
-    admin.from('profiles').select('full_name').eq('id', user.id).maybeSingle(),
-    admin
-      .from('organizations')
-      .select('name')
-      .eq('id', claims.active_organization_id)
-      .maybeSingle(),
-  ])
-
-  const userName = profile?.full_name ?? user.email ?? 'User'
-  const orgName = organization?.name ?? 'Unknown'
-  const role = claims.active_role ?? 'member'
-
-  return (
-    <main className="mx-auto w-full max-w-2xl p-6 md:p-10">
-      <section className="rounded-xl border bg-card p-6 text-card-foreground shadow-sm">
-        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Welcome back, {userName}.
-        </p>
-
-        <dl className="mt-6 space-y-4">
-          <div>
-            <dt className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Organization
-            </dt>
-            <dd className="mt-1 text-sm">{orgName}</dd>
-          </div>
-          <div>
-            <dt className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Your Role
-            </dt>
-            <dd className="mt-1 text-sm capitalize">{role}</dd>
-          </div>
-          <div>
-            <dt className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Email
-            </dt>
-            <dd className="mt-1 text-sm">{user.email}</dd>
-          </div>
-        </dl>
-      </section>
-    </main>
-  )
+  return <DashboardView data={result.data} selectedMetricId={params.metricId} />
 }

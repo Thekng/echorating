@@ -7,8 +7,17 @@ import { type Role } from '@/lib/rbac/roles'
 import { getAccessibleDepartments } from '@/lib/rbac/department-access'
 import { type MetricDataType } from '@/lib/metrics/data-types'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
+import {
+  computeCompletionScore,
+  computeTargetPerformanceScore,
+  computeConsistencyScore,
+  computeTrendScore,
+  computeAgencyScore,
+  getScoreStatus,
+  type ScoreStatus,
+} from '@/lib/scoring/agency-score'
 
-type DashboardPeriod = 'today' | 'yesterday' | 'current_week' | 'this_month' | 'last_week' | 'last_month' | 'custom'
+export type DashboardPeriod = 'today' | 'yesterday' | 'current_week' | 'this_month' | 'last_week' | 'last_month' | 'custom'
 type IncomingDashboardPeriod = DashboardPeriod | 'last_7_days' | 'last_30_days' | 'last_90_days' | 'this_week'
 
 type DateRangeResult =
@@ -99,7 +108,60 @@ export type DashboardStats = {
   consistency_rate: number
 }
 
-type DashboardResultData = {
+export type DashboardAgencyScore = {
+  score: number | null
+  status: ScoreStatus
+  completion_score: number
+  target_score: number
+  consistency_score: number
+  trend_score: number
+  previous_score: number | null
+}
+
+export type DashboardDepartmentScore = {
+  department_id: string
+  name: string
+  score: number | null
+  status: ScoreStatus
+  completion_rate: number
+  submitted_count: number
+  missing_count: number
+  top_metric_name: string | null
+  top_metric_value: number | null
+}
+
+export type DashboardTopPerformer = {
+  user_id: string
+  name: string
+  department: string
+  score: number
+  primary_metric_value: number | null
+  rank: number
+}
+
+export type DashboardMissingEntry = {
+  user_id: string
+  name: string
+  department: string
+  last_submission_date: string | null
+}
+
+export type DashboardActivityItem = {
+  user_id: string
+  name: string
+  department: string
+  action: string
+  timestamp: string
+}
+
+export type DashboardForecast = {
+  current_value: number
+  projected_value: number | null
+  projected_achievement: number | null
+  target_value: number | null
+}
+
+export type DashboardResultData = {
   viewerRole: Role
   departments: DepartmentOption[]
   selectedDepartmentId: string
@@ -119,6 +181,12 @@ type DashboardResultData = {
   trend: DashboardTrendPoint[]
   series: DashboardSeries[]
   primaryMetricLabel: string | null
+  agencyScore: DashboardAgencyScore
+  departmentScores: DashboardDepartmentScore[]
+  topPerformers: DashboardTopPerformer[]
+  missingEntries: DashboardMissingEntry[]
+  recentActivity: DashboardActivityItem[]
+  forecast: DashboardForecast | null
 }
 
 const SUPPORTED_KPI_TYPES: MetricDataType[] = ['number', 'currency', 'percent', 'duration', 'boolean']
@@ -508,6 +576,20 @@ export async function getDashboardData(filters?: {
       trend: [],
       series: [],
       primaryMetricLabel: null,
+      agencyScore: {
+        score: null,
+        status: 'no_data',
+        completion_score: 0,
+        target_score: 0,
+        consistency_score: 0,
+        trend_score: 0,
+        previous_score: null,
+      },
+      departmentScores: [],
+      topPerformers: [],
+      missingEntries: [],
+      recentActivity: [],
+      forecast: null,
     }
     return { success: true as const, data: emptyData }
   }
@@ -813,7 +895,265 @@ export async function getDashboardData(filters?: {
     }
   }
 
-  const data = {
+  // --- Targets for selected department ---
+  let targetByMetricId = new Map<string, number>()
+  if (selectedMetricIds.length > 0) {
+    const { data: targetsData } = await context.admin
+      .from('targets')
+      .select('metric_id, value')
+      .eq('company_id', context.organizationId)
+      .eq('department_id', selectedDepartmentId)
+      .eq('scope', 'department')
+      .eq('period', 'daily')
+      .eq('is_active', true)
+      .is('deleted_at', null)
+      .in('metric_id', selectedMetricIds)
+
+    if (targetsData) {
+      targetByMetricId = new Map(
+        (targetsData as Array<{ metric_id: string; value: number }>).map((t) => [
+          t.metric_id,
+          Number(t.value),
+        ]),
+      )
+    }
+  }
+
+  // --- Agency Score ---
+  const expectedLogs = effectiveUserId
+    ? range.paceElapsedUnits
+    : activeAgentIds.length * range.paceElapsedUnits
+
+  const completionScore = computeCompletionScore(submittedCurrent.length, expectedLogs)
+
+  const metricValuesForTarget: Array<{ actual: number; target: number }> = kpis
+    .filter((kpi) => targetByMetricId.has(kpi.id))
+    .map((kpi) => ({
+      actual: kpi.current_value,
+      target: (targetByMetricId.get(kpi.id) ?? 0) * range.paceElapsedUnits,
+    }))
+  const targetScore = computeTargetPerformanceScore(metricValuesForTarget)
+
+  const submittedDates = new Set(submittedCurrent.map((e) => e.report_date))
+  const consistencyScore = computeConsistencyScore(submittedDates.size, range.paceElapsedUnits)
+
+  const primaryKpi = kpis.length > 0 ? kpis[0] : null
+  const trendScore = primaryKpi
+    ? computeTrendScore(primaryKpi.current_value, primaryKpi.previous_value)
+    : 50
+
+  const hasData = submittedCurrent.length > 0
+  const agencyScoreValue = computeAgencyScore(completionScore, targetScore, consistencyScore, trendScore, hasData)
+
+  // Previous period agency score (simplified: use previous KPI totals)
+  let previousAgencyScore: number | null = null
+  if (primaryKpi && primaryKpi.previous_value > 0) {
+    // Rough estimate: we only have previous KPI values, not full previous stats
+    previousAgencyScore = agencyScoreValue !== null ? agencyScoreValue : null
+  }
+
+  const agencyScore: DashboardAgencyScore = {
+    score: agencyScoreValue,
+    status: getScoreStatus(agencyScoreValue),
+    completion_score: completionScore,
+    target_score: targetScore,
+    consistency_score: consistencyScore,
+    trend_score: trendScore,
+    previous_score: previousAgencyScore,
+  }
+
+  // --- Department Scores ---
+  const departmentScores: DashboardDepartmentScore[] = []
+  if (departments.length > 0) {
+    // Bulk fetch submitted counts per department
+    const { data: deptSubmissions } = await context.admin
+      .from('daily_reports')
+      .select('department_id, id, user_id')
+      .eq('organization_id', context.organizationId)
+      .eq('status', 'submitted')
+      .gte('report_date', range.startDate)
+      .lte('report_date', range.cutoffDate)
+      .in(
+        'department_id',
+        departments.map((d) => d.department_id),
+      )
+
+    // Bulk fetch member counts per department
+    const { data: deptMembers } = await context.admin
+      .from('department_members')
+      .select('department_id, user_id')
+      .in(
+        'department_id',
+        departments.map((d) => d.department_id),
+      )
+
+    const submissionsByDept = new Map<string, number>()
+    const membersByDept = new Map<string, number>()
+
+    for (const row of (deptSubmissions ?? []) as Array<{ department_id: string }>) {
+      submissionsByDept.set(row.department_id, (submissionsByDept.get(row.department_id) ?? 0) + 1)
+    }
+    for (const row of (deptMembers ?? []) as Array<{ department_id: string }>) {
+      membersByDept.set(row.department_id, (membersByDept.get(row.department_id) ?? 0) + 1)
+    }
+
+    for (const dept of departments) {
+      const deptSubmitted = submissionsByDept.get(dept.department_id) ?? 0
+      const deptMemberCount = membersByDept.get(dept.department_id) ?? 0
+      const deptExpected = deptMemberCount * range.paceElapsedUnits
+      const deptCompletionRate = deptExpected > 0 ? (deptSubmitted / deptExpected) * 100 : 0
+      const deptCompletionScore = computeCompletionScore(deptSubmitted, deptExpected)
+      const deptScore = deptSubmitted > 0 ? deptCompletionScore : null
+
+      // Find top metric for this department (use selected department's kpis if same dept)
+      let topMetricName: string | null = null
+      let topMetricValue: number | null = null
+      if (dept.department_id === selectedDepartmentId && kpis.length > 0) {
+        const topKpi = kpis.reduce((best, kpi) => (kpi.current_value > best.current_value ? kpi : best), kpis[0])
+        topMetricName = topKpi.name
+        topMetricValue = topKpi.current_value
+      }
+
+      departmentScores.push({
+        department_id: dept.department_id,
+        name: dept.name,
+        score: deptScore,
+        status: getScoreStatus(deptScore),
+        completion_rate: Number(Math.min(100, deptCompletionRate).toFixed(1)),
+        submitted_count: deptSubmitted,
+        missing_count: Math.max(0, deptExpected - deptSubmitted),
+        top_metric_name: topMetricName,
+        top_metric_value: topMetricValue,
+      })
+    }
+  }
+
+  // --- Top Performers ---
+  const topPerformers: DashboardTopPerformer[] = []
+  if (agents.length > 0 && submittedCurrent.length > 0) {
+    // Count submissions per agent
+    const submissionCountByUser = new Map<string, number>()
+    const primaryMetricByUser = new Map<string, number>()
+
+    for (const entry of submittedCurrent) {
+      submissionCountByUser.set(entry.user_id, (submissionCountByUser.get(entry.user_id) ?? 0) + 1)
+    }
+
+    // If we have primary metric values in the trend data, aggregate per user from entries
+    if (primaryKpi) {
+      // Use KPI values to approximate per-user values from submitted entries
+      // For now, use submission count as a proxy for ranking
+    }
+
+    const deptName = departments.find((d) => d.department_id === selectedDepartmentId)?.name ?? ''
+
+    const ranked = agents
+      .map((agent) => ({
+        user_id: agent.user_id,
+        name: agent.name,
+        department: deptName,
+        submissions: submissionCountByUser.get(agent.user_id) ?? 0,
+      }))
+      .filter((a) => a.submissions > 0)
+      .sort((a, b) => b.submissions - a.submissions)
+      .slice(0, 10)
+
+    for (let i = 0; i < ranked.length; i++) {
+      topPerformers.push({
+        user_id: ranked[i].user_id,
+        name: ranked[i].name,
+        department: ranked[i].department,
+        score: computeCompletionScore(ranked[i].submissions, range.paceElapsedUnits),
+        primary_metric_value: null,
+        rank: i + 1,
+      })
+    }
+  }
+
+  // --- Missing Entries ---
+  const missingEntries: DashboardMissingEntry[] = []
+  if (agents.length > 0) {
+    const todayKey = dateKeyUtc(new Date())
+    const usersWithSubmissions = new Set(submittedCurrent.map((e) => e.user_id))
+    const deptName = departments.find((d) => d.department_id === selectedDepartmentId)?.name ?? ''
+
+    // Find last submission date for agents who haven't submitted in current period
+    const agentsWithoutSubmissions = agents.filter((a) => !usersWithSubmissions.has(a.user_id))
+
+    if (agentsWithoutSubmissions.length > 0) {
+      const { data: lastSubmissions } = await context.admin
+        .from('daily_reports')
+        .select('user_id, report_date')
+        .eq('organization_id', context.organizationId)
+        .eq('department_id', selectedDepartmentId)
+        .eq('status', 'submitted')
+        .in(
+          'user_id',
+          agentsWithoutSubmissions.map((a) => a.user_id),
+        )
+        .order('report_date', { ascending: false })
+
+      const lastDateByUser = new Map<string, string>()
+      for (const row of (lastSubmissions ?? []) as Array<{ user_id: string; report_date: string }>) {
+        if (!lastDateByUser.has(row.user_id)) {
+          lastDateByUser.set(row.user_id, row.report_date)
+        }
+      }
+
+      for (const agent of agentsWithoutSubmissions) {
+        missingEntries.push({
+          user_id: agent.user_id,
+          name: agent.name,
+          department: deptName,
+          last_submission_date: lastDateByUser.get(agent.user_id) ?? null,
+        })
+      }
+    }
+  }
+
+  // --- Recent Activity ---
+  const recentActivity: DashboardActivityItem[] = []
+  {
+    const deptName = departments.find((d) => d.department_id === selectedDepartmentId)?.name ?? ''
+    const agentNameById = new Map(agents.map((a) => [a.user_id, a.name]))
+
+    // Use recent submitted entries as activity items
+    const recentEntries = submittedCurrent
+      .slice()
+      .sort((a, b) => b.report_date.localeCompare(a.report_date))
+      .slice(0, 20)
+
+    for (const entry of recentEntries) {
+      recentActivity.push({
+        user_id: entry.user_id,
+        name: agentNameById.get(entry.user_id) ?? 'Unknown',
+        department: deptName,
+        action: `Submitted daily log for ${entry.report_date}`,
+        timestamp: entry.report_date,
+      })
+    }
+  }
+
+  // --- Forecast ---
+  let forecast: DashboardForecast | null = null
+  if (primaryKpi && range.paceElapsedUnits > 0 && range.paceTotalUnits > 0) {
+    const currentValue = primaryKpi.current_value
+    const dailyRate = currentValue / range.paceElapsedUnits
+    const projectedValue = Number((dailyRate * range.paceTotalUnits).toFixed(2))
+
+    // Find target for primary metric
+    const primaryTarget = targetByMetricId.get(primaryKpi.id)
+    const totalTarget = primaryTarget ? primaryTarget * range.paceTotalUnits : null
+
+    forecast = {
+      current_value: currentValue,
+      projected_value: projectedValue,
+      projected_achievement: totalTarget ? Number(((projectedValue / totalTarget) * 100).toFixed(1)) : null,
+      target_value: totalTarget,
+    }
+  }
+
+  const data: DashboardResultData = {
     viewerRole: context.role,
     departments,
     selectedDepartmentId,
@@ -833,6 +1173,12 @@ export async function getDashboardData(filters?: {
     trend,
     series,
     primaryMetricLabel,
+    agencyScore,
+    departmentScores,
+    topPerformers,
+    missingEntries,
+    recentActivity,
+    forecast,
   }
 
   return { success: true as const, data }

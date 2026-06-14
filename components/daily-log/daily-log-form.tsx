@@ -1,8 +1,11 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { FormEvent, useActionState, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
+import { CheckCircle2, FileEdit, Circle } from 'lucide-react'
 import { saveDailyLogAction } from '@/features/daily-log/actions'
 import { DurationSelector } from '@/components/daily-log/duration-selector'
 import { booleanLabels, normalizeMetricSettings } from '@/lib/metrics/data-types'
@@ -435,14 +438,47 @@ export function DailyLogForm({
   })()
 
   const disabledForm = pending || !departmentId || !userId
+
+  const filledCount = metrics.filter((m) => {
+    const v = values[m.id]
+    return v !== undefined && v !== ''
+  }).length
+  const totalCount = metrics.length
+  const progressPct = totalCount > 0 ? (filledCount / totalCount) * 100 : 0
+
+  const statusBadge = (() => {
+    if (entryStatus === 'submitted') {
+      return (
+        <Badge variant="outline" className="border-emerald-200 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400">
+          <CheckCircle2 className="mr-1 h-3 w-3" />
+          Submitted
+        </Badge>
+      )
+    }
+    if (entryStatus === 'draft') {
+      return (
+        <Badge variant="outline" className="border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
+          <FileEdit className="mr-1 h-3 w-3" />
+          Draft
+        </Badge>
+      )
+    }
+    return (
+      <Badge variant="outline">
+        <Circle className="mr-1 h-3 w-3" />
+        New Entry
+      </Badge>
+    )
+  })()
+
   return (
     <>
       <form
         ref={formRef}
         action={formAction}
-        className="space-y-6"
-        onSubmit={(event) => {
-          const submitter = event.nativeEvent.submitter as HTMLButtonElement | null
+        className="space-y-5"
+        onSubmit={(event: FormEvent<HTMLFormElement>) => {
+          const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null
           const submitKind = submitter?.dataset.submitKind as 'manual-draft' | 'submit' | undefined
           const intent = submitter?.value === 'submit' ? 'submit' : 'draft'
           setLastSubmitKind(submitKind ?? null)
@@ -460,49 +496,78 @@ export function DailyLogForm({
           </p>
         ) : (
           <>
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              {metrics.map((metric) => (
-                <div key={metric.id} className="space-y-2">
-                  <label className="block text-sm font-medium text-foreground">{metric.name}</label>
-                  {renderMetricInput(metric, values[metric.id] ?? '', disabledForm, (nextValue) => {
-                    setValues((current) => ({
-                      ...current,
-                      [metric.id]: nextValue,
-                    }))
-                  })}
+            {/* Form header: status + progress */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                {statusBadge}
+                {dirty && (
+                  <span className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                    Unsaved changes
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {filledCount} / {totalCount} metrics
+                </span>
+                <div className="w-24">
+                  <Progress value={progressPct} className="h-1.5" />
                 </div>
-              ))}
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <label htmlFor="daily-log-notes" className="text-sm font-medium">
-                Notes
+            {/* Metric inputs */}
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {metrics.map((metric) => {
+                const isFilled = values[metric.id] !== undefined && values[metric.id] !== ''
+                return (
+                  <div
+                    key={metric.id}
+                    className={`space-y-1.5 rounded-lg border p-3 transition-colors ${
+                      isFilled
+                        ? 'border-emerald-200/60 bg-emerald-50/30 dark:border-emerald-800/40 dark:bg-emerald-900/10'
+                        : 'border-border bg-background'
+                    }`}
+                  >
+                    <label className="block text-xs font-medium text-muted-foreground">{metric.name}</label>
+                    {renderMetricInput(metric, values[metric.id] ?? '', disabledForm, (nextValue) => {
+                      setValues((current) => ({
+                        ...current,
+                        [metric.id]: nextValue,
+                      }))
+                    })}
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Notes */}
+            <div className="space-y-1.5">
+              <label htmlFor="daily-log-notes" className="text-xs font-medium text-muted-foreground">
+                Notes (optional)
               </label>
               <textarea
                 id="daily-log-notes"
                 name="notes"
-                rows={5}
+                rows={2}
                 value={notes}
                 onChange={(event) => setNotes(event.currentTarget.value)}
+                onFocus={(event) => {
+                  if (event.currentTarget.rows < 4) event.currentTarget.rows = 4
+                }}
+                onBlur={(event) => {
+                  if (!event.currentTarget.value.trim()) event.currentTarget.rows = 2
+                }}
                 disabled={disabledForm}
                 placeholder="Add any notes about today's performance..."
-                className="w-full rounded-md border border-input bg-background px-3 py-3 text-sm"
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm transition-all"
               />
             </div>
 
-            <div className="space-y-2">
-              <p
-                className={
-                  state.status === 'error'
-                    ? 'text-xs text-destructive'
-                    : dirty
-                      ? 'text-xs text-amber-600'
-                      : 'text-xs text-muted-foreground'
-                }
-              >
-                {statusText}
-              </p>
-              <div className="flex gap-3">
+            {/* Actions */}
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-1 gap-3">
                 <Button
                   ref={draftSubmitterRef}
                   type="submit"
@@ -511,7 +576,7 @@ export function DailyLogForm({
                   disabled={disabledForm || !dirty}
                   data-submit-kind="manual-draft"
                   variant="outline"
-                  className="h-12 flex-1 text-base font-semibold"
+                  className="h-11 flex-1 text-sm font-semibold"
                 >
                   Save Draft
                 </Button>
@@ -521,24 +586,47 @@ export function DailyLogForm({
                   value="submit"
                   disabled={disabledForm}
                   data-submit-kind="submit"
-                  className="h-12 flex-1 text-base font-semibold"
+                  className="h-11 flex-1 gap-2 text-sm font-semibold"
                 >
+                  <CheckCircle2 className="h-4 w-4" />
                   Submit Daily Log
                 </Button>
               </div>
+              <p
+                className={`shrink-0 text-xs ${
+                  state.status === 'error'
+                    ? 'text-destructive'
+                    : pending
+                      ? 'text-muted-foreground'
+                      : 'text-muted-foreground'
+                }`}
+              >
+                {pending
+                  ? pendingIntent === 'submit'
+                    ? 'Submitting...'
+                    : 'Saving...'
+                  : state.status === 'error'
+                    ? state.message
+                    : entryStatus === 'submitted'
+                      ? `Submitted${formatTime(lastSavedAt) ? ` at ${formatTime(lastSavedAt)}` : ''}`
+                      : lastSavedAt
+                        ? `Draft saved at ${formatTime(lastSavedAt) ?? '-'}`
+                        : ''}
+              </p>
             </div>
           </>
         )}
       </form>
 
+      {/* Toasts */}
       <div className="pointer-events-none fixed right-4 top-20 z-50 flex w-[320px] flex-col gap-2">
         {toasts.map((toast) => (
           <div
             key={toast.id}
             className={
               toast.tone === 'error'
-                ? 'rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive shadow-sm'
-                : 'rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 shadow-sm'
+                ? 'pointer-events-auto rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive shadow-sm'
+                : 'pointer-events-auto rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 shadow-sm dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
             }
           >
             {toast.message}

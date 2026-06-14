@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useContext, useState, useEffect, ReactNode, useMemo } from 'react'
-import Joyride, { CallBackProps, STATUS, Step } from 'react-joyride'
+import { Joyride, STATUS, type EventData } from 'react-joyride'
 import { getTourStepsForRole } from './tour-steps'
 
 type TourContextType = {
@@ -26,18 +26,16 @@ type TourProviderProps = {
 
 export function TourProvider({ children, userRole = 'member' }: TourProviderProps) {
     const [run, setRun] = useState(false)
-    const [hasSeenTour, setHasSeenTour] = useState(true) // Default true to prevent flash
+    const [hasSeenTour, setHasSeenTour] = useState(true)
     const [isMounted, setIsMounted] = useState(false)
 
     const steps = useMemo(() => getTourStepsForRole(userRole), [userRole])
 
     useEffect(() => {
         setIsMounted(true)
-        // Check local storage on mount
         const seen = localStorage.getItem('echorating_tour_seen')
         if (!seen) {
             setHasSeenTour(false)
-            // Small delay to ensure DOM is fully painted including any Suspense boundaries
             const timer = setTimeout(() => {
                 setRun(true)
             }, 1000)
@@ -49,10 +47,8 @@ export function TourProvider({ children, userRole = 'member' }: TourProviderProp
         setRun(true)
     }
 
-    const handleJoyrideCallback = (data: CallBackProps) => {
-        const { status } = data
-        if (([STATUS.FINISHED, STATUS.SKIPPED] as string[]).includes(status)) {
-            // Tour completed or skipped
+    const handleEvent = (data: EventData) => {
+        if (data.status === STATUS.FINISHED || data.status === STATUS.SKIPPED) {
             setRun(false)
             setHasSeenTour(true)
             localStorage.setItem('echorating_tour_seen', 'true')
@@ -67,20 +63,16 @@ export function TourProvider({ children, userRole = 'member' }: TourProviderProp
                     steps={steps}
                     run={run}
                     continuous
-                    showProgress
-                    showSkipButton
-                    callback={handleJoyrideCallback}
-                    disableOverlayClose
-                    spotlightPadding={4}
+                    onEvent={handleEvent}
                     styles={{
-                        options: {
-                            primaryColor: 'hsl(var(--primary))',
-                            textColor: 'hsl(var(--foreground))',
+                        tooltip: {
                             backgroundColor: 'hsl(var(--card))',
-                            arrowColor: 'hsl(var(--card))',
-                            overlayColor: 'rgba(0, 0, 0, 0.5)',
+                            color: 'hsl(var(--foreground))',
                         },
-                        buttonNext: {
+                        tooltipContainer: {
+                            textAlign: 'left',
+                        },
+                        buttonPrimary: {
                             backgroundColor: 'hsl(var(--primary))',
                             color: 'hsl(var(--primary-foreground))',
                             borderRadius: 'var(--radius)',
@@ -94,7 +86,10 @@ export function TourProvider({ children, userRole = 'member' }: TourProviderProp
                         },
                         buttonSkip: {
                             color: 'hsl(var(--muted-foreground))',
-                        }
+                        },
+                        overlay: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                        },
                     }}
                 />
             ) : null}

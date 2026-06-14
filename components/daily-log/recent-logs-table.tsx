@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Trash2, Pencil } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 import { deleteDailyLogAction } from '@/features/daily-log/actions'
 import type {
   DailyLogKeyMetric,
@@ -324,15 +325,16 @@ export function RecentLogsTable({
                 <span className="block max-w-[280px] truncate">{log.notes?.trim() || '-'}</span>
               </td>
               <td className="px-3 py-2">
-                <span
+                <Badge
+                  variant="outline"
                   className={
                     log.status === 'submitted'
-                      ? 'rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700'
-                      : 'rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs text-amber-700'
+                      ? 'border-emerald-200 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
+                      : 'border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-400'
                   }
                 >
                   {log.status}
-                </span>
+                </Badge>
               </td>
               <td className="px-3 py-2">
                 <div className="flex items-center justify-end gap-2">

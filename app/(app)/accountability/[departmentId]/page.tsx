@@ -5,6 +5,9 @@ import { getAgentsList } from '@/features/agents/queries'
 import { formatMetricNumber, formatPercent } from '@/lib/metrics/format'
 import { formatDateShort } from '@/lib/utils/date-formatter'
 import { AgentsFilters } from '@/components/agents/agents-filters'
+import { Badge } from '@/components/ui/badge'
+import { StatCard } from '@/components/shared/stat-card'
+import { SectionHeader } from '@/components/shared/section-header'
 
 type DepartmentDetailPageProps = {
   params: Promise<{ departmentId: string }>
@@ -130,30 +133,17 @@ export default async function DepartmentDetailPage({ params, searchParams }: Dep
       />
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-4 gap-4">
-        <div className="rounded-lg border bg-card p-4">
-          <p className="text-xs font-medium text-muted-foreground">Members</p>
-          <p className="mt-1 text-2xl font-bold">{members_count}</p>
-        </div>
-        <div className="rounded-lg border bg-card p-4">
-          <p className="text-xs font-medium text-muted-foreground">Submitted</p>
-          <p className="mt-1 text-2xl font-bold">{stats.submitted_count}</p>
-        </div>
-        <div className="rounded-lg border bg-card p-4">
-          <p className="text-xs font-medium text-muted-foreground">Completion</p>
-          <p className="mt-1 text-2xl font-bold">{formatPercent(stats.completion_rate, 1)}</p>
-        </div>
-        <div className="rounded-lg border bg-card p-4">
-          <p className="text-xs font-medium text-muted-foreground">Last Entry</p>
-          <p className="mt-1 text-sm font-semibold">{formatDate(stats.last_entry_date)}</p>
-        </div>
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <StatCard title="Members" value={members_count} />
+        <StatCard title="Submitted" value={stats.submitted_count} />
+        <StatCard title="Completion" value={formatPercent(stats.completion_rate, 1)} />
+        <StatCard title="Last Entry" value={formatDate(stats.last_entry_date)} />
       </div>
 
       {/* Recent Logs */}
       <section className="rounded-xl border bg-card">
         <header className="border-b px-4 py-3">
-          <p className="text-sm font-semibold">Recent Team Logs</p>
-          <p className="text-xs text-muted-foreground">Last 20 submitted entries</p>
+          <SectionHeader title="Recent Team Logs" description="Last 20 submitted entries" />
         </header>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -181,15 +171,16 @@ export default async function DepartmentDetailPage({ params, searchParams }: Dep
                 <tr key={entry.id} className="border-b last:border-b-0">
                   <td className="px-4 py-3">{formatDate(entry.report_date)}</td>
                   <td className="px-4 py-3">
-                    <span
+                    <Badge
+                      variant="outline"
                       className={
                         entry.status === 'submitted'
-                          ? 'rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700'
-                          : 'rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs text-amber-700'
+                          ? 'border-emerald-200 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
+                          : 'border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-400'
                       }
                     >
                       {entry.status === 'submitted' ? 'Submitted' : 'Draft'}
-                    </span>
+                    </Badge>
                   </td>
                   <td className="px-4 py-3 max-w-xs truncate text-muted-foreground">{entry.notes || '-'}</td>
                   {metrics.slice(0, 5).map((metric) => {
@@ -219,8 +210,7 @@ export default async function DepartmentDetailPage({ params, searchParams }: Dep
       {agentsResult.success && agentsResult.data && agentsResult.data.rows.length > 0 ? (
         <section className="rounded-xl border bg-card">
           <header className="border-b px-4 py-3">
-            <p className="text-sm font-semibold">Team Members Performance</p>
-            <p className="text-xs text-muted-foreground">Stats aggregated for selected period</p>
+            <SectionHeader title="Team Members Performance" description="Stats aggregated for selected period" />
           </header>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

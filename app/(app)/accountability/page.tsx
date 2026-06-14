@@ -6,6 +6,7 @@ import { listDepartments } from '@/features/departments/queries'
 import { getAgentsList } from '@/features/agents/queries'
 import Link from 'next/link'
 import { Trophy } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 
 type AccountabilityPageProps = {
   searchParams: Promise<{
@@ -152,15 +153,16 @@ export default async function AccountabilityPage({ searchParams }: Accountabilit
                   <td className="px-4 py-3 font-medium">{row.name}</td>
                   <td className="px-4 py-3 capitalize">{row.role}</td>
                   <td className="px-4 py-3">
-                    <span
+                    <Badge
+                      variant="outline"
                       className={
                         row.is_active
-                          ? 'rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700'
-                          : 'rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs text-slate-700'
+                          ? 'border-emerald-200 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
+                          : 'border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800/30 dark:text-slate-400'
                       }
                     >
                       {row.is_active ? 'Active' : 'Inactive'}
-                    </span>
+                    </Badge>
                   </td>
                   <td className="px-4 py-3">{row.submitted_count}</td>
                   <td className="px-4 py-3">{row.draft_count}</td>
