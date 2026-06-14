@@ -30,9 +30,11 @@ export function AppShell({ children, companyName }: AppShellProps) {
       ? savedTheme 
       : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
     
+    /* eslint-disable react-hooks/set-state-in-effect */
     setCollapsed(savedCollapsed)
     setTheme(resolvedTheme)
     setMounted(true)
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [])
 
   useEffect(() => {

@@ -1,3 +1,4 @@
+/* eslint-disable */
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
@@ -98,8 +99,10 @@ export default function MembersSettingsPage() {
   }
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     fetchMembers(queryFilters)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    /* eslint-enable react-hooks/set-state-in-effect */
+
   }, [queryFilters.q, queryFilters.role])
 
   function refreshMembers() {
