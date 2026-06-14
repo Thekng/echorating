@@ -97,13 +97,14 @@ export function TimeInput({
     const result = parseDurationToSeconds(displayValue || '00:00:00')
     if (!result.ok) return
 
-    let seconds = result.value || 0
+    const seconds = result.value || 0
+    let nextSeconds = seconds
 
     // Arrow up: +1 minute
     if (e.key === 'ArrowUp') {
       e.preventDefault()
-      seconds += 60
-      const formatted = formatSecondsToDuration(seconds)
+      nextSeconds += 60
+      const formatted = formatSecondsToDuration(nextSeconds)
       setDisplayValue(formatted)
       onChange(formatted)
     }
@@ -111,8 +112,8 @@ export function TimeInput({
     // Arrow down: -1 minute
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      seconds = Math.max(0, seconds - 60)
-      const formatted = formatSecondsToDuration(seconds)
+      nextSeconds = Math.max(0, nextSeconds - 60)
+      const formatted = formatSecondsToDuration(nextSeconds)
       setDisplayValue(formatted)
       onChange(formatted)
     }
@@ -149,9 +150,9 @@ export function TimeInput({
 
   const handleIncrement = (minutes: number) => {
     const current = parseDurationToSeconds(displayValue || '00:00:00')
-    let seconds = (current.ok ? current.value : 0) || 0
-    seconds = Math.max(0, seconds + minutes * 60)
-    const formatted = formatSecondsToDuration(seconds)
+    const seconds = (current.ok ? current.value : 0) || 0
+    const nextSeconds = Math.max(0, seconds + minutes * 60)
+    const formatted = formatSecondsToDuration(nextSeconds)
     setDisplayValue(formatted)
     onChange(formatted)
   }

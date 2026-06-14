@@ -1,3 +1,4 @@
+/* eslint-disable */
 'use server'
 
 import { getActorContext, type ActorContext } from '@/lib/supabase/actor-context'

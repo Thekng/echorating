@@ -4,7 +4,7 @@ import {
   areMemberFiltersEqual,
   areMetricFiltersEqual,
   formatMemberDepartments,
-} from '../../features/settings/helpers'
+} from '../../features/settings/helpers.ts'
 
 test('areMetricFiltersEqual matches all filter fields', () => {
   assert.equal(
