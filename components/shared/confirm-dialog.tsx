@@ -55,6 +55,7 @@ export function ConfirmDialog({
             variant="outline"
             onClick={onCancel}
             disabled={isLoading}
+            autoFocus
             className="flex-1 sm:flex-none"
           >
             {cancelText}
@@ -63,7 +64,6 @@ export function ConfirmDialog({
             variant="destructive"
             onClick={onConfirm}
             disabled={isLoading}
-            autoFocus
             className="flex-1 sm:flex-none gap-2"
           >
             {isLoading && <RefreshCw className="size-4 animate-pulse" />}

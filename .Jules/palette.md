@@ -1,3 +1,3 @@
-## 2025-05-22 - [ConfirmDialog Accessibility & Loading State]
-**Learning:** Using browser-native `window.confirm` is jarring and lacks accessibility features. A custom `ConfirmDialog` with `alertdialog` role, `Escape` key support, and `autoFocus` on the primary action provides a much smoother and more inclusive experience. Adding an `isLoading` state with visual feedback (like a pulsing icon) inside the button prevents double-submissions and keeps the user informed during async operations.
-**Action:** Always prefer accessible custom dialogs for destructive actions and ensure they handle loading states gracefully with transitions.
+## 2025-05-22 - [ConfirmDialog Accessibility & Focus Management]
+**Learning:** For destructive actions in custom dialogs, it is best practice to focus the non-destructive action (e.g., "Cancel") by default to prevent accidental data loss from rapid keyboard interactions.
+**Action:** Use `autoFocus` on the cancel button in `ConfirmDialog` and ensure the dialog implements the `alertdialog` role for proper screen reader communication.
