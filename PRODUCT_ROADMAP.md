@@ -105,30 +105,14 @@ Everything in the platform should help answer:
 
 The key product concept is:
 
-## Agency Performance Score™
+## Metric Trends
 
-This is the central score of the app.
+For any date range selected, show whether each metric is trending up or down compared to the previous equivalent period. This is the core insight the owner/manager needs — are numbers going in the right direction?
 
-It should combine:
-
-* Submission completion
-* Performance versus targets
-* Consistency / streaks
-* Trend direction
-
-Initial formula can be simple and implemented client-side/server-side depending on existing architecture.
-
-Suggested basic formula:
-
-```ts
-agencyScore =
-  completionScore * 0.35 +
-  targetPerformanceScore * 0.40 +
-  consistencyScore * 0.15 +
-  trendScore * 0.10
-```
-
-If data is missing, degrade gracefully and show `Not enough data`.
+* Compare selected period vs previous period of same length (e.g., this week vs last week)
+* Show a simple up/down arrow + percentage change per metric
+* Apply to dashboard KPI cards, leaderboard, member profiles, and department views
+* If not enough data for comparison, show "No trend data" gracefully
 
 ---
 
@@ -191,24 +175,7 @@ Content:
 * Subtitle: `Track agency performance, accountability, and team momentum.`
 * Period selector: Today / Yesterday /This Week / This Month / Last Month / Custom
 
-### 2.2 Agency Performance Score™
-
-Hero card.
-
-Display:
-
-* Agency Performance Score, e.g. `87 / 100`
-* Trend badge, e.g. `+5 this week`
-* Status: Healthy / Watch / At Risk
-* Department breakdown:
-
-  * Sales Score
-  * Service Score
-  * SDR or other department score
-
-If exact data does not exist yet, calculate using available logs, targets, and completion rates. If impossible, show placeholder state with explanation.
-
-### 2.3 KPI Snapshot
+### 2.2 KPI Snapshot
 
 Four cards:
 

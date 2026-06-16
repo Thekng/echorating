@@ -19,8 +19,9 @@ type MetricListItem = {
   name: string
   code: string | null
   description: string | null
-  data_type: 'number' | 'currency' | 'percentage' | 'boolean' | 'text'
+  data_type: string
   is_required: boolean
+  settings: unknown
   sort_order: number | null
   is_active: boolean
   created_at: string
@@ -42,12 +43,16 @@ type Feedback = {
   message: string
 }
 
-const DATA_TYPE_LABELS: Record<MetricListItem['data_type'], string> = {
+const DATA_TYPE_LABELS: Record<string, string> = {
   number: 'Number',
   currency: 'Currency',
   percentage: 'Percentage',
   boolean: 'Yes / No',
   text: 'Text',
+  duration: 'Duration',
+  datetime: 'Date / Time',
+  selection: 'Selection',
+  file: 'File / Link',
 }
 
 const INITIAL_FILTERS: MetricFilters = {
@@ -365,7 +370,7 @@ export default function MetricsSettingsPage() {
                         ) : null}
                       </td>
                       <td className="px-3 py-3">{metric.department_name}</td>
-                      <td className="px-3 py-3">{DATA_TYPE_LABELS[metric.data_type]}</td>
+                      <td className="px-3 py-3">{DATA_TYPE_LABELS[metric.data_type] ?? metric.data_type}</td>
                       <td className="px-3 py-3">{metric.is_required ? 'Yes' : 'No'}</td>
                       <td className="px-3 py-3">
                         <span

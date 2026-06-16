@@ -3,6 +3,7 @@
 import { useState, useTransition, type FormEvent } from 'react'
 import { updateMetricAction, type MetricActionState } from '@/features/metrics/actions'
 import { METRIC_DATA_TYPES } from '@/lib/metrics/data-types'
+import { MetricSettingsFields } from '@/components/metrics/metric-settings-fields'
 import { Button } from '@/components/ui/button'
 import { Pencil } from 'lucide-react'
 
@@ -14,6 +15,7 @@ type MetricItem = {
   description: string | null
   data_type: string
   is_required: boolean
+  settings: unknown
 }
 
 type EditMetricModalProps = {
@@ -31,6 +33,10 @@ const DATA_TYPE_LABELS: Record<string, string> = {
   percentage: 'Percentage',
   boolean: 'Yes / No',
   text: 'Text',
+  duration: 'Duration',
+  datetime: 'Date / Time',
+  selection: 'Selection',
+  file: 'File / Link',
 }
 
 const INITIAL_STATE: MetricActionState = {
@@ -58,6 +64,11 @@ export function EditMetricModal({ metric, departments, onSaved }: EditMetricModa
   const [description, setDescription] = useState(metric.description ?? '')
   const [dataType, setDataType] = useState(metric.data_type)
   const [isRequired, setIsRequired] = useState(metric.is_required)
+  const [settings, setSettings] = useState<Record<string, unknown>>(
+    (metric.settings && typeof metric.settings === 'object' && !Array.isArray(metric.settings))
+      ? metric.settings as Record<string, unknown>
+      : {}
+  )
 
   function hydrateForm() {
     setDepartmentId(metric.department_id)
@@ -67,6 +78,11 @@ export function EditMetricModal({ metric, departments, onSaved }: EditMetricModa
     setDescription(metric.description ?? '')
     setDataType(metric.data_type)
     setIsRequired(metric.is_required)
+    setSettings(
+      (metric.settings && typeof metric.settings === 'object' && !Array.isArray(metric.settings))
+        ? metric.settings as Record<string, unknown>
+        : {}
+    )
   }
 
   function handleOpenModal() {
@@ -126,6 +142,7 @@ export function EditMetricModal({ metric, departments, onSaved }: EditMetricModa
 
             <form className="space-y-4" onSubmit={handleSubmit}>
               <input type="hidden" name="metricId" value={metric.id} />
+              <input type="hidden" name="settings" value={JSON.stringify(settings)} />
 
               <div className="space-y-2">
                 <label htmlFor={`edit-metric-department-${metric.id}`} className="text-sm font-medium">
@@ -224,7 +241,19 @@ export function EditMetricModal({ metric, departments, onSaved }: EditMetricModa
                     id={`edit-metric-data-type-${metric.id}`}
                     name="dataType"
                     value={dataType}
-                    onChange={(event) => setDataType(event.target.value)}
+                    onChange={(event) => {
+                      const newType = event.target.value
+                      setDataType(newType)
+                      if (newType !== metric.data_type) {
+                        setSettings({})
+                      } else {
+                        setSettings(
+                          (metric.settings && typeof metric.settings === 'object' && !Array.isArray(metric.settings))
+                            ? metric.settings as Record<string, unknown>
+                            : {}
+                        )
+                      }
+                    }}
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                   >
                     {METRIC_DATA_TYPES.map((type) => (
@@ -254,6 +283,14 @@ export function EditMetricModal({ metric, departments, onSaved }: EditMetricModa
                   </select>
                 </div>
               </div>
+
+              <MetricSettingsFields
+                dataType={dataType}
+                settings={settings}
+                onChange={setSettings}
+                disabled={pending}
+                idPrefix={`edit-metric-${metric.id}`}
+              />
 
               {state.status !== 'idle' ? (
                 <p className={state.status === 'error' ? 'text-sm text-destructive' : 'text-sm text-muted-foreground'}>

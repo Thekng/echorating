@@ -13,6 +13,33 @@ const optionalStringSchema = z.preprocess(
   z.string().optional(),
 )
 
+const settingsSchema = z.preprocess(
+  (value) => {
+    if (value === null || value === undefined) {
+      return {}
+    }
+    if (typeof value === 'object' && !Array.isArray(value)) {
+      return value
+    }
+    if (typeof value === 'string') {
+      const trimmed = value.trim()
+      if (!trimmed || trimmed === '{}') {
+        return {}
+      }
+      try {
+        const parsed = JSON.parse(trimmed)
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return parsed
+        }
+      } catch {
+        // ignore invalid JSON
+      }
+    }
+    return {}
+  },
+  z.record(z.unknown()).default({}),
+)
+
 export const metricFormSchema = z.object({
   metricId: optionalStringSchema,
   departmentId: z.string().uuid('Department is required'),
@@ -24,6 +51,7 @@ export const metricFormSchema = z.object({
     (value) => value === 'true' || value === true,
     z.boolean().default(false),
   ),
+  settings: settingsSchema,
 })
 
 export const metricFilterSchema = z.object({

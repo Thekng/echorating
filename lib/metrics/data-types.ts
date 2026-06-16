@@ -1,22 +1,20 @@
-// Phase 3 canonical data types for new metrics (used by settings UI dropdowns)
+// Canonical data types for metrics (used by settings UI dropdowns)
 export const METRIC_DATA_TYPES = [
   'number',
   'currency',
   'percentage',
   'boolean',
   'text',
+  'duration',
+  'datetime',
+  'selection',
+  'file',
 ] as const
 
-// MetricDataType is a broad union that includes both Phase 3 types and legacy
-// types so that daily-log, dashboard, leaderboard, and accountability code
-// compiles without changes while those features are migrated.
+// MetricDataType includes the canonical types plus the legacy 'percent' alias.
 export type MetricDataType =
   | (typeof METRIC_DATA_TYPES)[number]
   | 'percent'
-  | 'duration'
-  | 'datetime'
-  | 'selection'
-  | 'file'
 
 export const BOOLEAN_PRESETS = [
   'yes_no',

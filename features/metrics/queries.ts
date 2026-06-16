@@ -19,6 +19,7 @@ type MetricRow = {
   description: string | null
   data_type: MetricDataType
   is_required: boolean
+  settings: unknown
   sort_order: number | null
   is_active: boolean
   created_at: string
@@ -73,7 +74,7 @@ export async function listMetrics(rawFilters?: {
   let metricsQuery = context.admin
     .from('metrics')
     .select(
-      'id, department_id, name, code, description, data_type, is_required, sort_order, is_active, created_at',
+      'id, department_id, name, code, description, data_type, is_required, settings, sort_order, is_active, created_at',
     )
     .eq('organization_id', context.organizationId)
     .order('department_id', { ascending: true })
@@ -139,7 +140,7 @@ export async function getMetricById(id: string) {
   const { data, error } = await context.admin
     .from('metrics')
     .select(
-      'id, department_id, name, code, description, data_type, is_required, sort_order, is_active, created_at',
+      'id, department_id, name, code, description, data_type, is_required, settings, sort_order, is_active, created_at',
     )
     .eq('id', id)
     .eq('organization_id', context.organizationId)

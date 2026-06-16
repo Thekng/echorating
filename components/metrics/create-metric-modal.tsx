@@ -3,6 +3,7 @@
 import { useState, useTransition, type FormEvent } from 'react'
 import { createMetricAction, type MetricActionState } from '@/features/metrics/actions'
 import { METRIC_DATA_TYPES } from '@/lib/metrics/data-types'
+import { MetricSettingsFields } from '@/components/metrics/metric-settings-fields'
 import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
 
@@ -20,6 +21,10 @@ const DATA_TYPE_LABELS: Record<string, string> = {
   percentage: 'Percentage',
   boolean: 'Yes / No',
   text: 'Text',
+  duration: 'Duration',
+  datetime: 'Date / Time',
+  selection: 'Selection',
+  file: 'File / Link',
 }
 
 const INITIAL_STATE: MetricActionState = {
@@ -44,6 +49,7 @@ export function CreateMetricModal({ departments, onSaved }: CreateMetricModalPro
   const [code, setCode] = useState('')
   const [codeDirty, setCodeDirty] = useState(false)
   const [dataType, setDataType] = useState<string>('number')
+  const [settings, setSettings] = useState<Record<string, unknown>>({})
 
   function resetFormState() {
     setDepartmentId(departments[0]?.id ?? '')
@@ -51,6 +57,7 @@ export function CreateMetricModal({ departments, onSaved }: CreateMetricModalPro
     setCode('')
     setCodeDirty(false)
     setDataType('number')
+    setSettings({})
   }
 
   function handleOpenModal() {
@@ -109,6 +116,7 @@ export function CreateMetricModal({ departments, onSaved }: CreateMetricModalPro
             </div>
 
             <form className="space-y-4" onSubmit={handleSubmit}>
+              <input type="hidden" name="settings" value={JSON.stringify(settings)} />
               <div className="space-y-2">
                 <label htmlFor="create-metric-department" className="text-sm font-medium">
                   Department
@@ -205,7 +213,10 @@ export function CreateMetricModal({ departments, onSaved }: CreateMetricModalPro
                     id="create-metric-data-type"
                     name="dataType"
                     value={dataType}
-                    onChange={(event) => setDataType(event.target.value)}
+                    onChange={(event) => {
+                      setDataType(event.target.value)
+                      setSettings({})
+                    }}
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                   >
                     {METRIC_DATA_TYPES.map((type) => (
@@ -234,6 +245,14 @@ export function CreateMetricModal({ departments, onSaved }: CreateMetricModalPro
                   </select>
                 </div>
               </div>
+
+              <MetricSettingsFields
+                dataType={dataType}
+                settings={settings}
+                onChange={setSettings}
+                disabled={pending}
+                idPrefix="create-metric"
+              />
 
               {state.status !== 'idle' ? (
                 <p className={state.status === 'error' ? 'text-sm text-destructive' : 'text-sm text-muted-foreground'}>

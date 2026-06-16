@@ -6,7 +6,7 @@ import { getActorContext } from '@/lib/supabase/actor-context'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ROUTES } from '@/lib/constants/routes'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
-import { type MetricDataType } from '@/lib/metrics/data-types'
+import { normalizeMetricSettings, type MetricDataType } from '@/lib/metrics/data-types'
 import { z } from 'zod'
 
 type MetricFieldKey =
@@ -166,6 +166,7 @@ export async function createMetricAction(
     description: field(formData, 'description'),
     dataType: field(formData, 'dataType'),
     isRequired: field(formData, 'isRequired'),
+    settings: field(formData, 'settings'),
   })
 
   if (!parsed.success) {
@@ -185,6 +186,7 @@ export async function createMetricAction(
   }
 
   const code = (parsed.data.code?.trim() || toMetricCode(parsed.data.name)).toLowerCase()
+  const settings = normalizeMetricSettings(parsed.data.dataType, parsed.data.settings)
   const sortOrder = await getNextMetricSortOrder(
     context.admin,
     context.organizationId,
@@ -201,6 +203,7 @@ export async function createMetricAction(
       description: parsed.data.description?.trim() || null,
       data_type: parsed.data.dataType,
       is_required: parsed.data.isRequired,
+      settings,
       sort_order: sortOrder,
       is_active: true,
     })
@@ -225,6 +228,7 @@ export async function updateMetricAction(
     description: field(formData, 'description'),
     dataType: field(formData, 'dataType'),
     isRequired: field(formData, 'isRequired'),
+    settings: field(formData, 'settings'),
   })
 
   if (!parsed.success) {
@@ -267,6 +271,7 @@ export async function updateMetricAction(
   }
 
   const code = (parsed.data.code?.trim() || toMetricCode(parsed.data.name)).toLowerCase()
+  const settings = normalizeMetricSettings(parsed.data.dataType, parsed.data.settings)
 
   const { error: updateError } = await context.admin
     .from('metrics')
@@ -276,6 +281,7 @@ export async function updateMetricAction(
       description: parsed.data.description?.trim() || null,
       data_type: parsed.data.dataType,
       is_required: parsed.data.isRequired,
+      settings,
       department_id: parsed.data.departmentId,
       updated_at: new Date().toISOString(),
     })
