@@ -2,9 +2,7 @@
 
 import {
   type DashboardResultData,
-  type DashboardDepartmentScore,
   type DashboardTopPerformer,
-  type DashboardMissingEntry,
   type DashboardActivityItem,
 } from '@/features/dashboard/queries'
 import { DashboardFilters } from './dashboard-filters'
@@ -22,17 +20,12 @@ import {
 } from '@/components/shared/data-table'
 import { EmptyState } from '@/components/shared/empty-state'
 import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Progress } from '@/components/ui/progress'
 import {
   Send,
   CalendarCheck,
   TrendingUp,
-  Target,
   Users,
-  AlertCircle,
   Activity,
-  Trophy,
 } from 'lucide-react'
 
 type DashboardViewProps = {
@@ -48,32 +41,6 @@ function formatDateShort(dateStr: string) {
     day: 'numeric',
     timeZone: 'UTC',
   })
-}
-
-function getStatusBadgeClass(status: string) {
-  switch (status) {
-    case 'healthy':
-      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
-    case 'watch':
-      return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800'
-    case 'at_risk':
-      return 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400 border-rose-200 dark:border-rose-800'
-    default:
-      return ''
-  }
-}
-
-function getStatusLabel(status: string) {
-  switch (status) {
-    case 'healthy':
-      return 'Healthy'
-    case 'watch':
-      return 'Watch'
-    case 'at_risk':
-      return 'At Risk'
-    default:
-      return 'No Data'
-  }
 }
 
 export function DashboardView({ data, selectedMetricId }: DashboardViewProps) {
@@ -165,24 +132,9 @@ export function DashboardView({ data, selectedMetricId }: DashboardViewProps) {
         />
       )}
 
-      {/* Department Scorecards + Top Performers */}
-      {isManagerOrOwner && (data.departmentScores.length > 0 || data.topPerformers.length > 0) && (
+      {/* Top Performers + Recent Log */}
+      {isManagerOrOwner && (data.topPerformers.length > 0 || data.recentActivity.length > 0) && (
         <div className="grid gap-5 lg:grid-cols-2">
-          {/* Department Scorecards */}
-          {data.departmentScores.length > 0 && (
-            <div className="space-y-3">
-              <SectionHeader
-                title="Department Overview"
-                description={`${data.departmentScores.length} team${data.departmentScores.length !== 1 ? 's' : ''}`}
-              />
-              <div className="grid gap-3">
-                {data.departmentScores.map((dept) => (
-                  <DepartmentScoreCard key={dept.department_id} dept={dept} />
-                ))}
-              </div>
-            </div>
-          )}
-
           {/* Top Performers */}
           {data.topPerformers.length > 0 && (
             <div className="space-y-3">
@@ -193,25 +145,25 @@ export function DashboardView({ data, selectedMetricId }: DashboardViewProps) {
               <TopPerformersTable performers={data.topPerformers} />
             </div>
           )}
+
+          {/* Recent Log */}
+          {data.recentActivity.length > 0 && (
+            <div className="space-y-3">
+              <SectionHeader
+                title="Recent Log"
+                description="Latest submissions"
+              />
+              <ActivityFeed items={data.recentActivity} />
+            </div>
+          )}
         </div>
       )}
 
-      {/* Missing Entries */}
-      {isManagerOrOwner && data.missingEntries.length > 0 && (
+      {/* Recent Log (non-manager view) */}
+      {!isManagerOrOwner && data.recentActivity.length > 0 && (
         <div className="space-y-3">
           <SectionHeader
-            title="Missing Entries"
-            description={`${data.missingEntries.length} member${data.missingEntries.length !== 1 ? 's' : ''} without submissions this period`}
-          />
-          <MissingEntriesTable entries={data.missingEntries} />
-        </div>
-      )}
-
-      {/* Recent Activity */}
-      {data.recentActivity.length > 0 && (
-        <div className="space-y-3">
-          <SectionHeader
-            title="Recent Activity"
+            title="Recent Log"
             description="Latest submissions"
           />
           <ActivityFeed items={data.recentActivity} />
@@ -226,50 +178,6 @@ export function DashboardView({ data, selectedMetricId }: DashboardViewProps) {
         />
       )}
     </div>
-  )
-}
-
-function DepartmentScoreCard({ dept }: { dept: DashboardDepartmentScore }) {
-  return (
-    <Card>
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <p className="text-sm font-semibold truncate">{dept.name}</p>
-              {dept.status !== 'no_data' && (
-                <Badge
-                  variant="outline"
-                  className={`text-[10px] font-medium border shrink-0 ${getStatusBadgeClass(dept.status)}`}
-                >
-                  {getStatusLabel(dept.status)}
-                </Badge>
-              )}
-            </div>
-            <div className="mt-2 flex items-center gap-4 text-xs text-muted-foreground">
-              <span>{dept.submitted_count} submitted</span>
-              {dept.missing_count > 0 && (
-                <span className="text-amber-600 dark:text-amber-400">{dept.missing_count} missing</span>
-              )}
-            </div>
-          </div>
-          <div className="ml-4 text-right">
-            <p className="text-lg font-bold tabular-nums">
-              {dept.completion_rate.toFixed(0)}%
-            </p>
-            <p className="text-[10px] text-muted-foreground">completion</p>
-          </div>
-        </div>
-        <div className="mt-3">
-          <Progress value={Math.min(100, dept.completion_rate)} className="h-1.5" />
-        </div>
-        {dept.top_metric_name && dept.top_metric_value !== null && (
-          <p className="mt-2 text-[11px] text-muted-foreground truncate">
-            Top: {dept.top_metric_name} · {dept.top_metric_value.toLocaleString()}
-          </p>
-        )}
-      </CardContent>
-    </Card>
   )
 }
 
@@ -302,38 +210,6 @@ function TopPerformersTable({ performers }: { performers: DashboardTopPerformer[
                 {performer.score.toFixed(0)}
               </span>
               <span className="text-[11px] text-muted-foreground ml-0.5">%</span>
-            </DataTableCell>
-          </DataTableRow>
-        ))}
-      </tbody>
-    </DataTable>
-  )
-}
-
-function MissingEntriesTable({ entries }: { entries: DashboardMissingEntry[] }) {
-  return (
-    <DataTable>
-      <DataTableHeader>
-        <DataTableHeaderCell>Name</DataTableHeaderCell>
-        <DataTableHeaderCell>Department</DataTableHeaderCell>
-        <DataTableHeaderCell align="right">Last Submission</DataTableHeaderCell>
-      </DataTableHeader>
-      <tbody>
-        {entries.map((entry) => (
-          <DataTableRow key={entry.user_id}>
-            <DataTableCell>
-              <div className="flex items-center gap-2">
-                <AlertCircle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
-                <span className="text-sm font-medium">{entry.name}</span>
-              </div>
-            </DataTableCell>
-            <DataTableCell>
-              <span className="text-sm text-muted-foreground">{entry.department}</span>
-            </DataTableCell>
-            <DataTableCell align="right">
-              <span className="text-sm text-muted-foreground">
-                {entry.last_submission_date ? formatDateShort(entry.last_submission_date) : 'Never'}
-              </span>
             </DataTableCell>
           </DataTableRow>
         ))}

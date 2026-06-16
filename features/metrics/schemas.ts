@@ -37,7 +37,7 @@ const settingsSchema = z.preprocess(
     }
     return {}
   },
-  z.record(z.unknown()).default({}),
+  z.record(z.string(), z.unknown()).default({}),
 )
 
 export const metricFormSchema = z.object({
