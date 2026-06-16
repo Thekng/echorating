@@ -6,7 +6,7 @@ import { Trash2, Pencil } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { deleteDailyLogAction } from '@/features/daily-log/actions'
 import type {
-  DailyLogKeyMetric,
+  DailyLogMetric,
   DailyLogRecentEntry,
   DailyLogRecentMetricValue,
 } from '@/features/daily-log/types'
@@ -17,7 +17,7 @@ import { booleanLabels, normalizeMetricSettings } from '@/lib/metrics/data-types
 type RecentLogsTableProps = {
   departmentId: string
   logs: DailyLogRecentEntry[]
-  keyMetrics: DailyLogKeyMetric[]
+  metrics: DailyLogMetric[]
   canDelete: boolean
   currentPage: number
   pageSize: number
@@ -26,7 +26,7 @@ type RecentLogsTableProps = {
 
 const PAGE_SIZE_OPTIONS = [10, 30, 50] as const
 
-function isAverageMetric(metric: DailyLogKeyMetric) {
+function isAverageMetric(metric: DailyLogMetric) {
   return (
     metric.data_type === 'number' ||
     metric.data_type === 'currency' ||
@@ -35,7 +35,7 @@ function isAverageMetric(metric: DailyLogKeyMetric) {
   )
 }
 
-function formatAverageValue(metric: DailyLogKeyMetric, value: number | null) {
+function formatAverageValue(metric: DailyLogMetric, value: number | null) {
   if (value === null || value === undefined) {
     return '-'
   }
@@ -71,7 +71,7 @@ function formatAverageValue(metric: DailyLogKeyMetric, value: number | null) {
   return String(Number(value.toFixed(2)))
 }
 
-function getMetricAverage(logs: DailyLogRecentEntry[], metric: DailyLogKeyMetric) {
+function getMetricAverage(logs: DailyLogRecentEntry[], metric: DailyLogMetric) {
   if (!isAverageMetric(metric)) {
     return null
   }
@@ -88,7 +88,7 @@ function getMetricAverage(logs: DailyLogRecentEntry[], metric: DailyLogKeyMetric
   return total / values.length
 }
 
-function metricValue(values: DailyLogRecentMetricValue[], metric: DailyLogKeyMetric) {
+function metricValue(values: DailyLogRecentMetricValue[], metric: DailyLogMetric) {
   const value = values.find((item) => item.metric_id === metric.id)
   if (!value) {
     return '-'
@@ -166,7 +166,7 @@ function metricValue(values: DailyLogRecentMetricValue[], metric: DailyLogKeyMet
 export function RecentLogsTable({
   departmentId,
   logs,
-  keyMetrics,
+  metrics,
   canDelete,
   currentPage,
   pageSize,
@@ -301,7 +301,7 @@ export function RecentLogsTable({
           <tr>
             <th className="px-3 py-2 text-left font-medium">Date</th>
             <th className="px-3 py-2 text-left font-medium">Agent</th>
-            {keyMetrics.map((metric) => (
+            {metrics.map((metric) => (
               <th key={metric.id} className="px-3 py-2 text-left font-medium">
                 {metric.name}
               </th>
@@ -316,7 +316,7 @@ export function RecentLogsTable({
             <tr key={log.id} className="border-b last:border-b-0">
               <td className="px-3 py-2">{formatDateShort(log.report_date)}</td>
               <td className="px-3 py-2">{log.user_name}</td>
-              {keyMetrics.map((metric) => (
+              {metrics.map((metric) => (
                 <td key={metric.id} className="px-3 py-2">
                   {metricValue(log.key_metric_values, metric)}
                 </td>
@@ -376,7 +376,7 @@ export function RecentLogsTable({
           <tr>
             <td className="px-3 py-2 font-semibold">Avg</td>
             <td className="px-3 py-2 text-muted-foreground">Visible logs</td>
-            {keyMetrics.map((metric) => (
+            {metrics.map((metric) => (
               <td key={metric.id} className="px-3 py-2 font-medium">
                 {formatAverageValue(metric, getMetricAverage(logs, metric))}
               </td>

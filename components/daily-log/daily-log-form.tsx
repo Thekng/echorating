@@ -110,19 +110,27 @@ function renderMetricInput(
 
   if (metric.data_type === 'duration') {
     if (settings.durationFormat && settings.durationFormat !== 'hh_mm_ss') {
+      const unitLabel =
+        settings.durationFormat === 'minutes' ? 'min' :
+        settings.durationFormat === 'hours' ? 'hrs' :
+        settings.durationFormat === 'days' ? 'days' : ''
+
       return (
-        <input
-          name={`metric_${metric.id}`}
-          type="number"
-          step={settings.durationFormat === 'days' ? '0.01' : '1'}
-          min="0"
-          inputMode="decimal"
-          value={value}
-          onChange={(event) => onChange(event.currentTarget.value)}
-          placeholder={settings.durationFormat}
-          disabled={pending}
-          className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-        />
+        <div className="flex items-center gap-1.5">
+          <input
+            name={`metric_${metric.id}`}
+            type="number"
+            step={settings.durationFormat === 'days' ? '0.01' : '1'}
+            min="0"
+            inputMode="decimal"
+            value={value}
+            onChange={(event) => onChange(event.currentTarget.value)}
+            placeholder="0"
+            disabled={pending}
+            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+          />
+          {unitLabel && <span className="shrink-0 text-sm text-muted-foreground">{unitLabel}</span>}
+        </div>
       )
     }
 
@@ -283,12 +291,55 @@ function renderMetricInput(
     )
   }
 
+  const currencySymbol: Record<string, string> = {
+    USD: '$', EUR: '€', GBP: '£', CAD: 'CA$', AUD: 'A$', BRL: 'R$',
+  }
+
+  if (metric.data_type === 'currency') {
+    const symbol = currencySymbol[settings.currencyCode ?? 'USD'] ?? settings.currencyCode ?? '$'
+    return (
+      <div className="flex items-center gap-1.5">
+        <span className="shrink-0 text-sm text-muted-foreground">{symbol}</span>
+        <input
+          name={`metric_${metric.id}`}
+          type="number"
+          inputMode="decimal"
+          step="0.01"
+          value={value}
+          onChange={(event) => onChange(event.currentTarget.value)}
+          placeholder="0.00"
+          disabled={pending}
+          className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+        />
+      </div>
+    )
+  }
+
+  if (metric.data_type === 'percentage' || metric.data_type === 'percent') {
+    return (
+      <div className="flex items-center gap-1.5">
+        <input
+          name={`metric_${metric.id}`}
+          type="number"
+          inputMode="decimal"
+          step="0.01"
+          value={value}
+          onChange={(event) => onChange(event.currentTarget.value)}
+          placeholder="0"
+          disabled={pending}
+          className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+        />
+        <span className="shrink-0 text-sm text-muted-foreground">%</span>
+      </div>
+    )
+  }
+
   return (
     <input
       name={`metric_${metric.id}`}
       type="number"
       inputMode="decimal"
-      step={metric.data_type === 'number' && settings.numberKind === 'integer' ? '1' : '0.01'}
+      step={settings.numberKind === 'integer' ? '1' : '0.01'}
       value={value}
       onChange={(event) => onChange(event.currentTarget.value)}
       placeholder="0"

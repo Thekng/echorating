@@ -1,6 +1,5 @@
 import { DailyLogForm } from '@/components/daily-log/daily-log-form'
 import { DailyLogFilters } from '@/components/daily-log/daily-log-filters'
-import { HistoryColumnsConfig } from '@/components/daily-log/history-columns-config'
 import { RecentLogsTable } from '@/components/daily-log/recent-logs-table'
 import { getDailyLogFormData } from '@/features/daily-log/queries'
 
@@ -42,9 +41,6 @@ export default async function DailyLogPage({ searchParams }: DailyLogPageProps) 
     values,
     notes,
     existingEntry,
-    keyMetrics,
-    keyMetricsConfig,
-    keyMetricCandidates,
     recentLogs,
     recentLogsPage,
     recentLogsPerPage,
@@ -104,7 +100,7 @@ export default async function DailyLogPage({ searchParams }: DailyLogPageProps) 
         <RecentLogsTable
           departmentId={selectedDepartmentId}
           logs={recentLogs}
-          keyMetrics={keyMetrics}
+          metrics={metrics}
           canDelete={true}
           currentPage={recentLogsPage}
           pageSize={recentLogsPerPage}
@@ -112,18 +108,6 @@ export default async function DailyLogPage({ searchParams }: DailyLogPageProps) 
         />
       </section>
 
-      {canManage ? (
-        <details className="rounded-lg border bg-card p-4">
-          <summary className="cursor-pointer text-sm font-semibold">History columns (advanced)</summary>
-          <div className="mt-3">
-            <HistoryColumnsConfig
-              departmentId={selectedDepartmentId}
-              candidates={keyMetricCandidates}
-              config={keyMetricsConfig}
-            />
-          </div>
-        </details>
-      ) : null}
     </div>
   )
 }

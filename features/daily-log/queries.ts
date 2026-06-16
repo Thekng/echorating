@@ -11,8 +11,6 @@ import { formatSecondsToDuration } from '@/lib/daily-log/value-parser'
 import { normalizeMetricSettings, type DurationFormat } from '@/lib/metrics/data-types'
 import type {
   DailyLogAgentOption,
-  DailyLogKeyMetric,
-  DailyLogKeyMetricSlot,
   DailyLogMetric,
   DailyLogRecentEntry,
   DailyLogRecentMetricValue,
@@ -163,97 +161,6 @@ function toDailyLogValue(
   return String(row.value_number)
 }
 
-async function getKeyMetrics(
-  admin: ReturnType<typeof createAdminClient>,
-  organizationId: string,
-  departmentId: string,
-  metrics: DailyLogMetric[],
-) {
-  const candidates = metrics.slice()
-
-  const { data: configuredRows, error: configuredRowsError } = await admin
-    .from('department_log_key_metrics')
-    .select('slot, metric_id')
-    .eq('department_id', departmentId)
-
-  if (configuredRowsError) {
-    return {
-      ok: false as const,
-      message: formatDatabaseError(configuredRowsError.message),
-      keyMetrics: [] as DailyLogKeyMetric[],
-      keyMetricsConfig: [] as DailyLogKeyMetricSlot[],
-      keyMetricCandidates: [] as DailyLogMetric[],
-    }
-  }
-
-  const candidateById = new Map(candidates.map((metric) => [metric.id, metric]))
-  const keyMetricsConfig: DailyLogKeyMetricSlot[] = [
-    { slot: 1, metric_id: null },
-    { slot: 2, metric_id: null },
-    { slot: 3, metric_id: null },
-  ]
-
-  for (const row of (configuredRows ?? []) as Array<{ slot: number; metric_id: string }>) {
-    if (row.slot < 1 || row.slot > 3) {
-      continue
-    }
-
-    if (!candidateById.has(row.metric_id)) {
-      continue
-    }
-
-    keyMetricsConfig[row.slot - 1] = {
-      slot: row.slot as 1 | 2 | 3,
-      metric_id: row.metric_id,
-    }
-  }
-
-  const usedMetricIds = new Set<string>()
-  const keyMetrics: DailyLogKeyMetric[] = []
-
-  for (const slot of [1, 2, 3] as const) {
-    const configured = keyMetricsConfig[slot - 1]
-    const configuredMetric = configured.metric_id ? candidateById.get(configured.metric_id) : null
-
-    if (configuredMetric && !usedMetricIds.has(configuredMetric.id)) {
-      usedMetricIds.add(configuredMetric.id)
-      keyMetrics.push({
-        slot,
-        id: configuredMetric.id,
-        name: configuredMetric.name,
-        code: configuredMetric.code,
-        data_type: configuredMetric.data_type,
-        unit: configuredMetric.unit,
-        settings: configuredMetric.settings,
-      })
-      continue
-    }
-
-    const fallback = candidates.find((item) => !usedMetricIds.has(item.id))
-    if (!fallback) {
-      continue
-    }
-
-    usedMetricIds.add(fallback.id)
-    keyMetrics.push({
-      slot,
-      id: fallback.id,
-      name: fallback.name,
-      code: fallback.code,
-      data_type: fallback.data_type,
-      unit: fallback.unit,
-      settings: fallback.settings,
-    })
-  }
-
-  return {
-    ok: true as const,
-    keyMetrics,
-    keyMetricsConfig,
-    keyMetricCandidates: candidates,
-  }
-}
-
 async function getRecentLogs(
   admin: ReturnType<typeof createAdminClient>,
   organizationId: string,
@@ -261,7 +168,7 @@ async function getRecentLogs(
   canManageDepartment: boolean,
   viewerUserId: string,
   selectedUserId: string,
-  keyMetrics: DailyLogKeyMetric[],
+  metrics: DailyLogMetric[],
   page: number,
   pageSize: number,
 ) {
@@ -312,7 +219,7 @@ async function getRecentLogs(
 
   const entryIds = entries.map((entry) => entry.id)
   const userIds = Array.from(new Set(entries.map((entry) => entry.user_id)))
-  const keyMetricIds = keyMetrics.map((metric) => metric.id)
+  const keyMetricIds = metrics.map((metric) => metric.id)
 
   const { data: profilesData, error: profilesError } = await admin
     .from('organization_members')
@@ -448,9 +355,6 @@ export async function getDailyLogFormData(rawFilters?: {
         selectedUserId: '',
         agentOptions: [] as DailyLogAgentOption[],
         notes: '',
-        keyMetrics: [] as DailyLogKeyMetric[],
-        keyMetricsConfig: [] as DailyLogKeyMetricSlot[],
-        keyMetricCandidates: [] as DailyLogMetric[],
         recentLogs: [] as DailyLogRecentEntry[],
         recentLogsPage,
         recentLogsPerPage,
@@ -470,11 +374,6 @@ export async function getDailyLogFormData(rawFilters?: {
   }
 
   const metrics = metricsResult.metrics
-
-  const keyMetricsResult = await getKeyMetrics(context.admin, context.organizationId, selectedDepartmentId, metrics)
-  if (!keyMetricsResult.ok) {
-    return { success: false as const, error: keyMetricsResult.message, data: null }
-  }
 
   let agentOptions: DailyLogAgentOption[] = []
   let selectedUserId = context.userId
@@ -580,7 +479,7 @@ export async function getDailyLogFormData(rawFilters?: {
     canManageSelectedDepartment,
     context.userId,
     selectedUserId,
-    keyMetricsResult.keyMetrics,
+    metrics,
     recentLogsPage,
     recentLogsPerPage,
   )
@@ -601,9 +500,6 @@ export async function getDailyLogFormData(rawFilters?: {
       notes: entry?.notes ?? '',
       selectedUserId,
       agentOptions,
-      keyMetrics: keyMetricsResult.keyMetrics,
-      keyMetricsConfig: keyMetricsResult.keyMetricsConfig,
-      keyMetricCandidates: keyMetricsResult.keyMetricCandidates,
       recentLogs: recentLogsResult.recentLogs,
       recentLogsPage,
       recentLogsPerPage,
