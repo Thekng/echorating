@@ -3,11 +3,11 @@
 import React from 'react'
 
 interface DataTableProps {
-  _columns: unknown[]
-  _data: unknown[]
+  columns: unknown[]
+  data: unknown[]
 }
 
-export function DataTable({ _columns, _data }: DataTableProps) {
+export function DataTable({ columns, data }: DataTableProps) {
   return (
     <div className="rounded-md border">
       <table className="w-full">

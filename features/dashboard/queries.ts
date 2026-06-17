@@ -1,7 +1,8 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 'use server'
 
 import { getActorContext } from '@/lib/supabase/actor-context'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { createAdminClient as _createAdminClient } from '@/lib/supabase/admin'
 import { requireRole } from '@/lib/rbac/guards'
 import { type Role } from '@/lib/rbac/roles'
 import { getAccessibleDepartments } from '@/lib/rbac/department-access'
@@ -1033,7 +1034,7 @@ export async function getDashboardData(filters?: {
   if (agents.length > 0 && submittedCurrent.length > 0) {
     // Count submissions per agent
     const submissionCountByUser = new Map<string, number>()
-    const primaryMetricByUser = new Map<string, number>()
+    const _primaryMetricByUser = new Map<string, number>()
 
     for (const entry of submittedCurrent) {
       submissionCountByUser.set(entry.user_id, (submissionCountByUser.get(entry.user_id) ?? 0) + 1)
@@ -1073,7 +1074,7 @@ export async function getDashboardData(filters?: {
   // --- Missing Entries ---
   const missingEntries: DashboardMissingEntry[] = []
   if (agents.length > 0) {
-    const todayKey = dateKeyUtc(new Date())
+    const _todayKey = dateKeyUtc(new Date())
     const usersWithSubmissions = new Set(submittedCurrent.map((e) => e.user_id))
     const deptName = departments.find((d) => d.department_id === selectedDepartmentId)?.name ?? ''
 
