@@ -16,6 +16,7 @@ type CompanyMemberProfileRelation = {
 type CompanyMemberRow = {
   user_id: string
   role: Role
+  is_active: boolean
   created_at: string
   updated_at: string
   profiles: CompanyMemberProfileRelation
@@ -38,6 +39,7 @@ type MemberListRow = {
   name: string
   email: string
   role: Role
+  isActive: boolean
   createdAt: string
   updatedAt: string
   departments: MemberDepartment[]
@@ -75,6 +77,7 @@ async function getUserEmailMap(admin: ReturnType<typeof createAdminClient>, user
 export async function listMembers(rawFilters?: {
   q?: string
   role?: string
+  showInactive?: boolean
 }) {
   const context = await getActorContext()
   if (!context.ok) {
@@ -100,9 +103,13 @@ export async function listMembers(rawFilters?: {
 
   let membershipsQuery = context.admin
     .from('organization_members')
-    .select('user_id, role, created_at, updated_at, profiles!inner(full_name)')
+    .select('user_id, role, is_active, created_at, updated_at, profiles!inner(full_name)')
     .eq('organization_id', context.organizationId)
     .order('created_at', { ascending: false })
+
+  if (!rawFilters?.showInactive) {
+    membershipsQuery = membershipsQuery.eq('is_active', true)
+  }
 
   if (filters.role !== 'all') {
     membershipsQuery = membershipsQuery.eq('role', filters.role)
@@ -169,6 +176,7 @@ export async function listMembers(rawFilters?: {
       name: profileName(membership.profiles),
       email: emailMap.get(membership.user_id) ?? '',
       role: membership.role,
+      isActive: membership.is_active ?? true,
       createdAt: membership.created_at,
       updatedAt: membership.updated_at,
       departments: membershipsByUser.get(membership.user_id) ?? [],

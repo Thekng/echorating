@@ -1,8 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { ROUTES } from '@/lib/constants/routes'
 import { getDashboardData } from '@/features/dashboard/queries'
 import { DashboardView } from '@/components/dashboard/dashboard-view'
+import { getSessionClaims } from '@/lib/supabase/session-claims'
+import { hasPermission, isRole } from '@/lib/rbac/roles'
+import { getTodaySubmissionStatus } from '@/features/daily-log/submission-status'
 
 type DashboardPageProps = {
   searchParams: Promise<{
@@ -52,5 +56,17 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     )
   }
 
-  return <DashboardView data={result.data} selectedMetricId={params.metricId} />
+  // Check submission status for members
+  let hasSubmittedToday: boolean | undefined = undefined
+  const claims = getSessionClaims(user)
+  if (claims.active_organization_id) {
+    const role = isRole(user.app_metadata?.active_role) ? user.app_metadata.active_role : null
+    if (role && !hasPermission(role, 'manager')) {
+      const admin = createAdminClient()
+      const status = await getTodaySubmissionStatus(admin, claims.active_organization_id, user.id)
+      hasSubmittedToday = status.hasSubmittedToday
+    }
+  }
+
+  return <DashboardView data={result.data} selectedMetricId={params.metricId} hasSubmittedToday={hasSubmittedToday} />
 }

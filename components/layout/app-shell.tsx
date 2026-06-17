@@ -13,11 +13,15 @@ const THEME_KEY = 'echorating:theme'
 type AppShellProps = {
   children: ReactNode
   companyName?: string | null
+  userRole?: string
+  userName?: string | null
+  userEmail?: string | null
+  hasSubmittedToday?: boolean
 }
 
 type ThemeMode = 'light' | 'dark'
 
-export function AppShell({ children, companyName }: AppShellProps) {
+export function AppShell({ children, companyName, userRole, userName, userEmail, hasSubmittedToday }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [theme, setTheme] = useState<ThemeMode>('light')
   const [mounted, setMounted] = useState(false)
@@ -26,10 +30,10 @@ export function AppShell({ children, companyName }: AppShellProps) {
     // Load from localStorage after hydration
     const savedCollapsed = window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1'
     const savedTheme = window.localStorage.getItem(THEME_KEY)
-    const resolvedTheme = savedTheme === 'dark' || savedTheme === 'light' 
-      ? savedTheme 
+    const resolvedTheme = savedTheme === 'dark' || savedTheme === 'light'
+      ? savedTheme
       : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-    
+
     setCollapsed(savedCollapsed)
     setTheme(resolvedTheme)
     setMounted(true)
@@ -61,6 +65,8 @@ export function AppShell({ children, companyName }: AppShellProps) {
           theme={theme}
           onToggleTheme={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
           companyName={companyName}
+          userRole={userRole}
+          hasSubmittedToday={hasSubmittedToday}
         />
       </aside>
 
@@ -71,7 +77,7 @@ export function AppShell({ children, companyName }: AppShellProps) {
         )}
       >
         <header className="sticky top-0 z-30 bg-background/90 backdrop-blur">
-          <Topbar />
+          <Topbar userName={userName} userEmail={userEmail} companyName={companyName} />
         </header>
 
         <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-3 pb-24 sm:p-4 md:p-6 md:pb-6 xl:p-8">
@@ -79,7 +85,7 @@ export function AppShell({ children, companyName }: AppShellProps) {
         </main>
 
         <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 backdrop-blur md:hidden">
-          <MobileNav />
+          <MobileNav userRole={userRole} hasSubmittedToday={hasSubmittedToday} />
         </nav>
       </div>
     </div>

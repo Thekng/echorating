@@ -5,6 +5,8 @@ import { z } from 'zod'
 import {
   assignMemberDepartmentSchema,
   updateMemberRoleSchema,
+  toggleMemberStatusSchema,
+  createMemberSchema,
 } from './schemas'
 import { getActorContext } from '@/lib/supabase/actor-context'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -423,18 +425,333 @@ export async function updateDepartmentMemberRoleAction(
   return actionSuccess('Department member role updated.')
 }
 
-// Legacy stub — invitations are out of scope for Phase 3.
-// The create-member-modal component still imports this function.
-export async function createMemberAction(
-  _prevState: MemberActionState,
-  _formData: FormData,
+export async function deactivateMemberAction(
+  formData: FormData,
 ): Promise<MemberActionState> {
-  return actionError('Member invitations are not supported in this version.')
+  const parsed = toggleMemberStatusSchema.safeParse({
+    userId: field(formData, 'userId'),
+    nextStatus: 'inactive',
+  })
+
+  if (!parsed.success) {
+    return actionError('Invalid request.')
+  }
+
+  const context = await getActorContext()
+  if (!context.ok) {
+    return actionError(context.message)
+  }
+
+  try {
+    requireRole(context.role, 'manager')
+  } catch {
+    return actionError('Insufficient permissions.')
+  }
+
+  if (parsed.data.userId === context.userId) {
+    return actionError('You cannot deactivate yourself.')
+  }
+
+  const targetMemberResult = await getTargetOrgMember(context.admin, context.organizationId, parsed.data.userId)
+  if (!targetMemberResult.ok) {
+    return actionError(targetMemberResult.message)
+  }
+
+  const targetRole = targetMemberResult.membership.role
+
+  // Only owner can deactivate owner/admin
+  if (context.role !== 'owner' && (targetRole === 'owner' || targetRole === 'admin')) {
+    return actionError('Only owners can deactivate owners or admins.')
+  }
+
+  // Cannot deactivate the last owner
+  if (targetRole === 'owner') {
+    const { count } = await context.admin
+      .from('organization_members')
+      .select('user_id', { count: 'exact', head: true })
+      .eq('organization_id', context.organizationId)
+      .eq('role', 'owner')
+      .eq('is_active', true)
+
+    if ((count ?? 0) <= 1) {
+      return actionError('Cannot deactivate the last owner.')
+    }
+  }
+
+  // Set is_active = false
+  const { error: updateError } = await context.admin
+    .from('organization_members')
+    .update({ is_active: false, updated_at: new Date().toISOString() })
+    .eq('user_id', parsed.data.userId)
+    .eq('organization_id', context.organizationId)
+
+  if (updateError) {
+    return actionError(formatDatabaseError(updateError.message))
+  }
+
+  // Remove from all departments in this org
+  const { data: orgDepts } = await context.admin
+    .from('departments')
+    .select('id')
+    .eq('organization_id', context.organizationId)
+
+  const deptIds = (orgDepts ?? []).map((d) => (d as { id: string }).id)
+  if (deptIds.length > 0) {
+    await context.admin
+      .from('department_members')
+      .delete()
+      .eq('user_id', parsed.data.userId)
+      .in('department_id', deptIds)
+  }
+
+  revalidatePath(ROUTES.SETTINGS_MEMBERS)
+  return actionSuccess('Member deactivated.')
 }
 
-// Legacy stub — the invite-accept-form component still imports this function.
+export async function reactivateMemberAction(
+  formData: FormData,
+): Promise<MemberActionState> {
+  const parsed = toggleMemberStatusSchema.safeParse({
+    userId: field(formData, 'userId'),
+    nextStatus: 'active',
+  })
+
+  if (!parsed.success) {
+    return actionError('Invalid request.')
+  }
+
+  const context = await getActorContext()
+  if (!context.ok) {
+    return actionError(context.message)
+  }
+
+  try {
+    requireRole(context.role, 'manager')
+  } catch {
+    return actionError('Insufficient permissions.')
+  }
+
+  const { error: updateError } = await context.admin
+    .from('organization_members')
+    .update({ is_active: true, updated_at: new Date().toISOString() })
+    .eq('user_id', parsed.data.userId)
+    .eq('organization_id', context.organizationId)
+
+  if (updateError) {
+    return actionError(formatDatabaseError(updateError.message))
+  }
+
+  revalidatePath(ROUTES.SETTINGS_MEMBERS)
+  return actionSuccess('Member reactivated.')
+}
+
+export async function createMemberAction(
+  _prevState: MemberActionState,
+  formData: FormData,
+): Promise<MemberActionState> {
+  const parsed = createMemberSchema.safeParse({
+    email: field(formData, 'email'),
+    role: field(formData, 'role'),
+    departmentId: field(formData, 'departmentId'),
+  })
+
+  if (!parsed.success) {
+    return actionError(zodMessage(parsed.error), zodFieldErrors(parsed.error))
+  }
+
+  const context = await getActorContext()
+  if (!context.ok) {
+    return actionError(context.message)
+  }
+
+  try {
+    requireRole(context.role, 'manager')
+  } catch {
+    return actionError('Insufficient permissions.')
+  }
+
+  // Only owner can assign owner/admin roles
+  if (context.role !== 'owner' && (parsed.data.role === 'owner' || parsed.data.role === 'admin')) {
+    return actionError('Only owners can assign owner or admin roles.', {
+      role: 'Only owners can assign owner or admin roles.',
+    })
+  }
+
+  // Validate department if provided
+  const departmentId = parsed.data.departmentId || null
+  if (departmentId) {
+    const { data: department, error: departmentError } = await context.admin
+      .from('departments')
+      .select('id')
+      .eq('id', departmentId)
+      .eq('organization_id', context.organizationId)
+      .eq('is_active', true)
+      .maybeSingle()
+
+    if (departmentError || !department) {
+      return actionError('Department not found.')
+    }
+  }
+
+  // Look up user by email via admin auth API
+  const { data: usersData, error: usersError } = await context.admin.auth.admin.listUsers()
+
+  if (usersError) {
+    return actionError('Failed to look up user.')
+  }
+
+  const existingUser = usersData.users.find(
+    (u) => u.email?.toLowerCase() === parsed.data.email.toLowerCase(),
+  )
+
+  if (existingUser) {
+    // Check not already a member
+    const { data: existingMember } = await context.admin
+      .from('organization_members')
+      .select('user_id')
+      .eq('user_id', existingUser.id)
+      .eq('organization_id', context.organizationId)
+      .maybeSingle()
+
+    if (existingMember) {
+      return actionError('This user is already a member of this organization.')
+    }
+
+    // Insert into organization_members
+    const { error: insertError } = await context.admin.from('organization_members').insert({
+      organization_id: context.organizationId,
+      user_id: existingUser.id,
+      role: parsed.data.role,
+      is_active: true,
+    })
+
+    if (insertError) {
+      return actionError(formatDatabaseError(insertError.message))
+    }
+
+    // Optionally assign to department
+    if (departmentId) {
+      await context.admin.from('department_members').upsert(
+        {
+          department_id: departmentId,
+          user_id: existingUser.id,
+          role: 'member',
+        },
+        { onConflict: 'department_id,user_id' },
+      )
+    }
+
+    await syncSessionClaims(existingUser.id, context.organizationId, parsed.data.role)
+
+    revalidatePath(ROUTES.SETTINGS_MEMBERS)
+    return actionSuccess('Member added successfully.')
+  }
+
+  // User doesn't exist — create invitation
+  const { error: inviteError } = await context.admin
+    .from('organization_invitations')
+    .upsert(
+      {
+        organization_id: context.organizationId,
+        email: parsed.data.email.toLowerCase(),
+        role: parsed.data.role,
+        department_id: departmentId,
+        invited_by: context.userId,
+        accepted_at: null,
+      },
+      { onConflict: 'organization_id,email' },
+    )
+
+  if (inviteError) {
+    return actionError(formatDatabaseError(inviteError.message))
+  }
+
+  revalidatePath(ROUTES.SETTINGS_MEMBERS)
+  return actionSuccess('Invitation created. They\'ll be added when they sign up.')
+}
+
 export async function acceptInviteAction(
-  _invitationId: string,
+  userId: string,
+  email: string,
 ): Promise<{ success: boolean; message: string }> {
-  return { success: false, message: 'Invitations are not supported in this version.' }
+  const admin = createAdminClient()
+
+  // Look up pending invitations by email
+  const { data: invitations, error: invitationsError } = await admin
+    .from('organization_invitations')
+    .select('id, organization_id, role, department_id')
+    .eq('email', email.toLowerCase())
+    .is('accepted_at', null)
+
+  if (invitationsError || !invitations || invitations.length === 0) {
+    return { success: false, message: 'No pending invitations found.' }
+  }
+
+  let acceptedCount = 0
+
+  for (const invitation of invitations) {
+    const orgId = invitation.organization_id as string
+    const role = invitation.role as string
+    const departmentId = invitation.department_id as string | null
+
+    // Check not already a member
+    const { data: existingMember } = await admin
+      .from('organization_members')
+      .select('user_id')
+      .eq('user_id', userId)
+      .eq('organization_id', orgId)
+      .maybeSingle()
+
+    if (existingMember) {
+      // Already a member, just mark invitation as accepted
+      await admin
+        .from('organization_invitations')
+        .update({ accepted_at: new Date().toISOString() })
+        .eq('id', invitation.id)
+      continue
+    }
+
+    // Insert into organization_members
+    const { error: insertError } = await admin.from('organization_members').insert({
+      organization_id: orgId,
+      user_id: userId,
+      role,
+      is_active: true,
+    })
+
+    if (insertError) {
+      continue
+    }
+
+    // Optionally assign to department
+    if (departmentId) {
+      await admin.from('department_members').upsert(
+        {
+          department_id: departmentId,
+          user_id: userId,
+          role: 'member',
+        },
+        { onConflict: 'department_id,user_id' },
+      )
+    }
+
+    // Mark invitation as accepted
+    await admin
+      .from('organization_invitations')
+      .update({ accepted_at: new Date().toISOString() })
+      .eq('id', invitation.id)
+
+    acceptedCount += 1
+  }
+
+  if (acceptedCount > 0) {
+    await syncSessionClaims(userId)
+  }
+
+  return {
+    success: acceptedCount > 0,
+    message: acceptedCount > 0
+      ? `Joined ${acceptedCount} organization${acceptedCount > 1 ? 's' : ''}.`
+      : 'No new organizations to join.',
+  }
 }

@@ -13,7 +13,6 @@ import { formatDatabaseError } from '@/lib/supabase/error-messages'
 import { dailyLogFormSchema } from './schemas'
 import {
   type DailyLogActionState,
-  type DailyLogKeyMetricsActionState,
   type DailyLogMetricDataType,
 } from './types'
 import { parseBooleanInput, parseDurationToSeconds } from '@/lib/daily-log/value-parser'
@@ -29,18 +28,6 @@ const INITIAL_ERROR_STATE: DailyLogActionState = {
   savedAt: null,
   entryId: null,
 }
-
-const KEY_METRIC_ERROR_STATE: DailyLogKeyMetricsActionState = {
-  status: 'error',
-  message: 'Invalid request.',
-}
-
-const keyMetricsSchema = z.object({
-  departmentId: z.string().uuid('Department is required.'),
-  slot1: z.string().uuid().optional(),
-  slot2: z.string().uuid().optional(),
-  slot3: z.string().uuid().optional(),
-})
 
 const deleteDailyLogSchema = z.object({
   entryId: z.string().uuid('Invalid log entry.'),
@@ -767,133 +754,3 @@ export async function deleteDailyLogAction(formData: FormData): Promise<void> {
   revalidatePath(ROUTES.DAILY_LOG)
 }
 
-export async function updateDepartmentLogKeyMetricsAction(
-  _prevState: DailyLogKeyMetricsActionState,
-  formData: FormData,
-): Promise<DailyLogKeyMetricsActionState> {
-  const parsed = keyMetricsSchema.safeParse({
-    departmentId: field(formData, 'departmentId'),
-    slot1: optionalUuidField(formData, 'slot1'),
-    slot2: optionalUuidField(formData, 'slot2'),
-    slot3: optionalUuidField(formData, 'slot3'),
-  })
-
-  if (!parsed.success) {
-    return {
-      ...KEY_METRIC_ERROR_STATE,
-      message: zodMessage(parsed.error),
-    }
-  }
-
-  const context = await getActorContext()
-  if (!context.ok) {
-    return {
-      ...KEY_METRIC_ERROR_STATE,
-      message: context.message,
-    }
-  }
-
-  if (context.role !== 'owner' && context.role !== 'admin' && context.role !== 'manager') {
-    const viewerDepartmentRole = await getViewerDepartmentRole(
-      context.admin,
-      parsed.data.departmentId,
-      context.userId,
-    )
-
-    if (!viewerDepartmentRole.ok) {
-      return {
-        ...KEY_METRIC_ERROR_STATE,
-        message: viewerDepartmentRole.message,
-      }
-    }
-
-    if (viewerDepartmentRole.memberRole !== 'lead') {
-      return {
-        ...KEY_METRIC_ERROR_STATE,
-        message: 'Insufficient permissions.',
-      }
-    }
-  }
-
-  const slotValues = [parsed.data.slot1, parsed.data.slot2, parsed.data.slot3].filter(Boolean) as string[]
-  const uniqueMetricIds = new Set(slotValues)
-
-  if (uniqueMetricIds.size !== slotValues.length) {
-    return {
-      ...KEY_METRIC_ERROR_STATE,
-      message: 'Choose different metrics for each slot.',
-    }
-  }
-
-  const { data: department, error: departmentError } = await context.admin
-    .from('departments')
-    .select('id')
-    .eq('id', parsed.data.departmentId)
-    .eq('organization_id', context.organizationId)
-    .eq('is_active', true)
-    .maybeSingle()
-
-  if (departmentError || !department) {
-    return {
-      ...KEY_METRIC_ERROR_STATE,
-      message: formatDatabaseError(departmentError?.message ?? 'Department not found.'),
-    }
-  }
-
-  if (slotValues.length > 0) {
-    const { data: metrics, error: metricsError } = await context.admin
-      .from('metrics')
-      .select('id')
-      .eq('organization_id', context.organizationId)
-      .eq('department_id', parsed.data.departmentId)
-      .eq('is_active', true)
-      .eq('input_mode', 'manual')
-      .in('id', slotValues)
-
-    if (metricsError) {
-      return {
-        ...KEY_METRIC_ERROR_STATE,
-        message: formatDatabaseError(metricsError.message),
-      }
-    }
-
-    if ((metrics ?? []).length !== slotValues.length) {
-      return {
-        ...KEY_METRIC_ERROR_STATE,
-        message: 'One or more selected metrics are invalid for this department.',
-      }
-    }
-  }
-
-  const slots = [
-    { slot: 1, metric_id: parsed.data.slot1 ?? null },
-    { slot: 2, metric_id: parsed.data.slot2 ?? null },
-    { slot: 3, metric_id: parsed.data.slot3 ?? null },
-  ]
-
-  const { error: saveError } = await context.admin.rpc('save_department_key_metrics', {
-    p_organization_id: context.organizationId,
-    p_department_id: parsed.data.departmentId,
-    p_slots: slots,
-  })
-
-  if (saveError) {
-    if (saveError.message.includes('save_department_key_metrics') && saveError.message.toLowerCase().includes('does not exist')) {
-      return {
-        ...KEY_METRIC_ERROR_STATE,
-        message: 'Database migration missing: run 2026-04-17_save_department_key_metrics_rpc.sql in Supabase.',
-      }
-    }
-    return {
-      ...KEY_METRIC_ERROR_STATE,
-      message: formatDatabaseError(saveError.message),
-    }
-  }
-
-  revalidatePath(ROUTES.DAILY_LOG)
-
-  return {
-    status: 'success',
-    message: 'History columns updated.',
-  }
-}

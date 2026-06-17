@@ -28,21 +28,6 @@ export type DailyLogAgentOption = {
   role: 'owner' | 'admin' | 'manager' | 'member'
 }
 
-export type DailyLogKeyMetricSlot = {
-  slot: 1 | 2 | 3
-  metric_id: string | null
-}
-
-export type DailyLogKeyMetric = {
-  slot: 1 | 2 | 3
-  id: string
-  name: string
-  code: string
-  data_type: DailyLogMetricDataType
-  unit: string
-  settings: MetricSettings | null
-}
-
 export type DailyLogRecentMetricValue = {
   metric_id: string
   value_number: number | null
@@ -80,12 +65,3 @@ export const INITIAL_DAILY_LOG_ACTION_STATE: DailyLogActionState = {
   entryId: null,
 }
 
-export type DailyLogKeyMetricsActionState = {
-  status: 'idle' | 'success' | 'error'
-  message: string
-}
-
-export const INITIAL_DAILY_LOG_KEY_METRICS_STATE: DailyLogKeyMetricsActionState = {
-  status: 'idle',
-  message: '',
-}

@@ -23,4 +23,5 @@ export const ROUTES = {
   SETTINGS_METRICS: '/settings/metrics',
   SETTINGS_TARGETS: '/settings/targets',
   REPORTS: '/reports',
+  ACCOUNT: '/account',
 }

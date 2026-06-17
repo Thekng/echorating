@@ -2,11 +2,12 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { ChevronsLeft, ChevronsRight, LogOut, Moon, Play, Sun } from 'lucide-react'
-import { APP_NAV_ITEMS, isActivePath } from './nav-items'
+import { ChevronsLeft, ChevronsRight, Moon, Play, Sun } from 'lucide-react'
+import { APP_NAV_ITEMS, filterNavItems, isActivePath } from './nav-items'
 import { cn } from '@/lib/utils'
 import { useTour } from '@/components/tour/tour-provider'
-import { signOutAction } from '@/features/auth/actions'
+import { isRole } from '@/lib/rbac/roles'
+import { ROUTES } from '@/lib/constants/routes'
 
 type SidebarProps = {
   collapsed: boolean
@@ -14,11 +15,16 @@ type SidebarProps = {
   theme: 'light' | 'dark'
   onToggleTheme: () => void
   companyName?: string | null
+  userRole?: string
+  hasSubmittedToday?: boolean
 }
 
-export function Sidebar({ collapsed, onToggleCollapse, theme, onToggleTheme, companyName }: SidebarProps) {
+export function Sidebar({ collapsed, onToggleCollapse, theme, onToggleTheme, companyName, userRole, hasSubmittedToday }: SidebarProps) {
   const pathname = usePathname()
   const { startTour } = useTour()
+
+  const role = isRole(userRole) ? userRole : 'member'
+  const visibleItems = filterNavItems(APP_NAV_ITEMS, role)
 
   return (
     <div className="flex h-full w-full flex-col bg-sidebar text-sidebar-foreground">
@@ -28,9 +34,10 @@ export function Sidebar({ collapsed, onToggleCollapse, theme, onToggleTheme, com
       </div>
 
       <nav className={cn('flex-1 space-y-1', collapsed ? 'p-3' : 'p-3')}>
-        {APP_NAV_ITEMS.map((item) => {
+        {visibleItems.map((item) => {
           const active = isActivePath(pathname, item.href)
           const Icon = item.icon
+          const showReminderDot = item.href === ROUTES.DAILY_LOG && hasSubmittedToday === false
 
           return (
             <Link
@@ -47,7 +54,12 @@ export function Sidebar({ collapsed, onToggleCollapse, theme, onToggleTheme, com
               )}
               title={item.label}
             >
-              <Icon className="size-5" />
+              <span className="relative">
+                <Icon className="size-5" />
+                {showReminderDot && (
+                  <span className="absolute -right-1 -top-1 size-2 rounded-full bg-destructive" />
+                )}
+              </span>
               {!collapsed ? <span>{item.label}</span> : null}
             </Link>
           )
@@ -93,18 +105,6 @@ export function Sidebar({ collapsed, onToggleCollapse, theme, onToggleTheme, com
           <Play className="size-4" />
           {!collapsed ? <span>App Tour</span> : null}
         </button>
-
-        <form action={signOutAction}>
-          <button
-            type="submit"
-            className="mt-2 inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-sidebar-border bg-sidebar px-2 text-xs text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-            title="Log out"
-            aria-label="Log out"
-          >
-            <LogOut className="size-4" />
-            {!collapsed ? <span>Log out</span> : null}
-          </button>
-        </form>
       </div>
     </div>
   )

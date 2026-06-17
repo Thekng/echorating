@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import {
   type DashboardResultData,
   type DashboardTopPerformer,
@@ -20,17 +21,23 @@ import {
 } from '@/components/shared/data-table'
 import { EmptyState } from '@/components/shared/empty-state'
 import { Card, CardContent } from '@/components/ui/card'
+import { Progress } from '@/components/ui/progress'
 import {
   Send,
   CalendarCheck,
   TrendingUp,
   Users,
   Activity,
+  AlertTriangle,
+  Hash,
 } from 'lucide-react'
+import { hasPermission } from '@/lib/rbac/roles'
+import { ROUTES } from '@/lib/constants/routes'
 
 type DashboardViewProps = {
   data: DashboardResultData
   selectedMetricId?: string
+  hasSubmittedToday?: boolean
 }
 
 function formatDateShort(dateStr: string) {
@@ -43,16 +50,34 @@ function formatDateShort(dateStr: string) {
   })
 }
 
-export function DashboardView({ data, selectedMetricId }: DashboardViewProps) {
-  const isManagerOrOwner = data.viewerRole === 'manager' || data.viewerRole === 'owner'
+export function DashboardView({ data, selectedMetricId, hasSubmittedToday }: DashboardViewProps) {
+  const isManagerView = hasPermission(data.viewerRole, 'manager')
   const hasKpis = data.kpis.length > 0
   const hasSeries = data.series.length > 0
 
   return (
     <div className="space-y-5">
+      {/* Submission Reminder Banner (members only) */}
+      {!isManagerView && hasSubmittedToday === false && (
+        <div className="flex items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/30">
+          <AlertTriangle className="size-5 shrink-0 text-amber-600 dark:text-amber-400" />
+          <p className="flex-1 text-sm text-amber-800 dark:text-amber-200">
+            You haven&apos;t submitted today&apos;s log yet.
+          </p>
+          <Link
+            href={ROUTES.DAILY_LOG}
+            className="shrink-0 rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700"
+          >
+            Submit now
+          </Link>
+        </div>
+      )}
+
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+        <h1 className="text-3xl font-bold tracking-tight">
+          {isManagerView ? 'Dashboard' : 'Your Performance'}
+        </h1>
         <p className="text-sm text-muted-foreground">
           Performance overview · {formatDateShort(data.startDate)} – {formatDateShort(data.endDate)}
         </p>
@@ -62,7 +87,7 @@ export function DashboardView({ data, selectedMetricId }: DashboardViewProps) {
       <DashboardFilters
         departments={data.departments}
         selectedDepartmentId={data.selectedDepartmentId}
-        agents={isManagerOrOwner ? data.agents : undefined}
+        agents={isManagerView ? data.agents : undefined}
         selectedUserId={data.selectedUserId}
         period={data.period}
         startDate={data.startDate}
@@ -72,7 +97,7 @@ export function DashboardView({ data, selectedMetricId }: DashboardViewProps) {
       {/* Score Overview Row */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <ScoreCard
-          title="Agency Score"
+          title={isManagerView ? 'Agency Score' : 'Your Score'}
           score={data.agencyScore.score}
           subtitle={
             data.agencyScore.score !== null
@@ -92,19 +117,27 @@ export function DashboardView({ data, selectedMetricId }: DashboardViewProps) {
           icon={<CalendarCheck className="h-4 w-4" />}
           progress={data.stats.consistency_rate}
         />
-        {data.forecast ? (
-          <StatCard
-            title="Forecast"
-            value={data.forecast.projected_value?.toLocaleString() ?? '--'}
-            icon={<TrendingUp className="h-4 w-4" />}
-            target={data.forecast.target_value ? Number(data.forecast.target_value.toLocaleString()) : undefined}
-            progress={data.forecast.projected_achievement}
-          />
+        {isManagerView ? (
+          data.forecast ? (
+            <StatCard
+              title="Forecast"
+              value={data.forecast.projected_value?.toLocaleString() ?? '--'}
+              icon={<TrendingUp className="h-4 w-4" />}
+              target={data.forecast.target_value ? Number(data.forecast.target_value.toLocaleString()) : undefined}
+              progress={data.forecast.projected_achievement}
+            />
+          ) : (
+            <StatCard
+              title="Active Members"
+              value={data.stats.active_agents}
+              icon={<Users className="h-4 w-4" />}
+            />
+          )
         ) : (
           <StatCard
-            title="Active Members"
-            value={data.stats.active_agents}
-            icon={<Users className="h-4 w-4" />}
+            title="Your Rank"
+            value={data.viewerRank ? `#${data.viewerRank}` : '--'}
+            icon={<Hash className="h-4 w-4" />}
           />
         )}
       </div>
@@ -121,6 +154,31 @@ export function DashboardView({ data, selectedMetricId }: DashboardViewProps) {
         />
       )}
 
+      {/* Member Targets Progress */}
+      {!isManagerView && data.targets.length > 0 && (
+        <div className="space-y-3">
+          <SectionHeader
+            title="Your Targets"
+            description="Progress toward your current period targets"
+          />
+          <Card>
+            <CardContent className="space-y-4 p-4">
+              {data.targets.map((target) => (
+                <div key={target.metricName} className="space-y-1.5">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium">{target.metricName}</span>
+                    <span className="text-muted-foreground tabular-nums">
+                      {target.currentValue.toLocaleString()} / {target.targetValue.toLocaleString()}
+                    </span>
+                  </div>
+                  <Progress value={target.progressPct} />
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* Analytics Chart */}
       {hasSeries && (
         <AnalyticsLineChart
@@ -133,7 +191,7 @@ export function DashboardView({ data, selectedMetricId }: DashboardViewProps) {
       )}
 
       {/* Top Performers + Recent Log */}
-      {isManagerOrOwner && (data.topPerformers.length > 0 || data.recentActivity.length > 0) && (
+      {isManagerView && (data.topPerformers.length > 0 || data.recentActivity.length > 0) && (
         <div className="grid gap-5 lg:grid-cols-2">
           {/* Top Performers */}
           {data.topPerformers.length > 0 && (
@@ -160,7 +218,7 @@ export function DashboardView({ data, selectedMetricId }: DashboardViewProps) {
       )}
 
       {/* Recent Log (non-manager view) */}
-      {!isManagerOrOwner && data.recentActivity.length > 0 && (
+      {!isManagerView && data.recentActivity.length > 0 && (
         <div className="space-y-3">
           <SectionHeader
             title="Recent Log"

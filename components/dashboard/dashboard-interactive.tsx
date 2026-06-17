@@ -3,6 +3,7 @@
 import { type DashboardKpi } from '@/features/dashboard/queries'
 import { formatMetricNumber } from '@/lib/metrics/format'
 import { getMetricIcon } from '@/lib/utils/metric-helpers'
+import { ArrowUp, ArrowDown, Minus } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 type DashboardInteractiveProps = {
@@ -20,6 +21,32 @@ function formatKpiValue(kpi: DashboardKpi, value: number) {
     unit: kpi.unit,
     booleanMode: 'count',
   })
+}
+
+function TrendBadge({ changePct }: { changePct: number | null }) {
+  if (changePct === null) {
+    return null
+  }
+
+  if (changePct === 0) {
+    return (
+      <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground">
+        <Minus className="size-3" />
+      </span>
+    )
+  }
+
+  const isPositive = changePct > 0
+  return (
+    <span
+      className={`inline-flex items-center gap-0.5 text-xs font-medium ${
+        isPositive ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+      }`}
+    >
+      {isPositive ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />}
+      {Math.abs(changePct).toFixed(1)}%
+    </span>
+  )
 }
 
 export function DashboardInteractive({
@@ -54,7 +81,10 @@ export function DashboardInteractive({
             <span className="mb-1 block text-lg" aria-hidden="true">
               {getMetricIcon(kpi.code)}
             </span>
-            <p className="text-xl font-bold tracking-tight">{formatKpiValue(kpi, kpi.current_value)}</p>
+            <div className="flex items-baseline gap-1.5">
+              <p className="text-xl font-bold tracking-tight">{formatKpiValue(kpi, kpi.current_value)}</p>
+              <TrendBadge changePct={kpi.change_pct} />
+            </div>
             <p className="mt-0.5 truncate text-xs text-muted-foreground">{kpi.name}</p>
           </button>
         ))}

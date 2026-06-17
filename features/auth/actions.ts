@@ -8,6 +8,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { ROUTES } from '@/lib/constants/routes'
 import { syncSessionClaims } from '@/lib/supabase/session-claims'
 import { type Role, isRole } from '@/lib/rbac/roles'
+import { acceptInviteAction } from '@/features/members/actions'
 
 type AuthActionState = {
   status: 'idle' | 'success' | 'error'
@@ -74,6 +75,11 @@ export async function loginAction(
 
   if (error) {
     return { status: 'error', message: 'Email or password is invalid.' }
+  }
+
+  // Auto-accept pending invitations for this email
+  if (authData.user.email) {
+    await acceptInviteAction(authData.user.id, authData.user.email)
   }
 
   const admin = createAdminClient()

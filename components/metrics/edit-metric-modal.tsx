@@ -2,7 +2,7 @@
 
 import { useState, useTransition, type FormEvent } from 'react'
 import { updateMetricAction, type MetricActionState } from '@/features/metrics/actions'
-import { METRIC_DATA_TYPES } from '@/lib/metrics/data-types'
+import { METRIC_DATA_TYPES, normalizeMetricSettings } from '@/lib/metrics/data-types'
 import { MetricSettingsFields } from '@/components/metrics/metric-settings-fields'
 import { Button } from '@/components/ui/button'
 import { Pencil } from 'lucide-react'
@@ -45,6 +45,17 @@ const INITIAL_STATE: MetricActionState = {
   fieldErrors: {},
 }
 
+function resolveSettings(dataType: string, raw: unknown): Record<string, unknown> {
+  const obj =
+    raw && typeof raw === 'object' && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {}
+  if (Object.keys(obj).length === 0) {
+    return normalizeMetricSettings(dataType, {}) as Record<string, unknown>
+  }
+  return obj
+}
+
 function toMetricCode(name: string) {
   return name
     .toLowerCase()
@@ -65,9 +76,7 @@ export function EditMetricModal({ metric, departments, onSaved }: EditMetricModa
   const [dataType, setDataType] = useState(metric.data_type)
   const [isRequired, setIsRequired] = useState(metric.is_required)
   const [settings, setSettings] = useState<Record<string, unknown>>(
-    (metric.settings && typeof metric.settings === 'object' && !Array.isArray(metric.settings))
-      ? metric.settings as Record<string, unknown>
-      : {}
+    resolveSettings(metric.data_type, metric.settings)
   )
 
   function hydrateForm() {
@@ -78,11 +87,7 @@ export function EditMetricModal({ metric, departments, onSaved }: EditMetricModa
     setDescription(metric.description ?? '')
     setDataType(metric.data_type)
     setIsRequired(metric.is_required)
-    setSettings(
-      (metric.settings && typeof metric.settings === 'object' && !Array.isArray(metric.settings))
-        ? metric.settings as Record<string, unknown>
-        : {}
-    )
+    setSettings(resolveSettings(metric.data_type, metric.settings))
   }
 
   function handleOpenModal() {
@@ -245,13 +250,9 @@ export function EditMetricModal({ metric, departments, onSaved }: EditMetricModa
                       const newType = event.target.value
                       setDataType(newType)
                       if (newType !== metric.data_type) {
-                        setSettings({})
+                        setSettings(normalizeMetricSettings(newType, {}) as Record<string, unknown>)
                       } else {
-                        setSettings(
-                          (metric.settings && typeof metric.settings === 'object' && !Array.isArray(metric.settings))
-                            ? metric.settings as Record<string, unknown>
-                            : {}
-                        )
+                        setSettings(resolveSettings(metric.data_type, metric.settings))
                       }
                     }}
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"

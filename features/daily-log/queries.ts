@@ -88,6 +88,7 @@ async function getDepartmentAgents(
     .from('organization_members')
     .select('user_id, role, profiles!inner(full_name)')
     .eq('organization_id', organizationId)
+    .eq('is_active', true)
     .in('user_id', userIds)
 
   if (companyMembershipsError) {
@@ -219,7 +220,7 @@ async function getRecentLogs(
 
   const entryIds = entries.map((entry) => entry.id)
   const userIds = Array.from(new Set(entries.map((entry) => entry.user_id)))
-  const keyMetricIds = metrics.map((metric) => metric.id)
+  const metricIds = metrics.map((metric) => metric.id)
 
   const { data: profilesData, error: profilesError } = await admin
     .from('organization_members')
@@ -247,12 +248,12 @@ async function getRecentLogs(
   )
 
   let valuesByEntry = new Map<string, DailyLogRecentMetricValue[]>()
-  if (keyMetricIds.length > 0) {
+  if (metricIds.length > 0) {
     const { data: valuesData, error: valuesError } = await admin
       .from('daily_report_values')
       .select('daily_report_id, metric_id, value_number, value_text, value_boolean')
       .in('daily_report_id', entryIds)
-      .in('metric_id', keyMetricIds)
+      .in('metric_id', metricIds)
 
     if (valuesError) {
       return {

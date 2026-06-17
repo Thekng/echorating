@@ -38,3 +38,9 @@ export const toggleMemberStatusSchema = z.object({
   userId: z.string().uuid('Invalid member'),
   nextStatus: z.enum(['active', 'inactive']),
 })
+
+export const createMemberSchema = z.object({
+  email: z.string().email('Valid email is required.'),
+  role: memberRoleSchema,
+  departmentId: z.string().uuid().optional().or(z.literal('')),
+})

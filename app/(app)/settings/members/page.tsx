@@ -2,16 +2,17 @@
 
 import { useEffect, useState, useTransition } from 'react'
 import { listMembers } from '@/features/members/queries'
-import { removeMemberAction, type MemberActionState } from '@/features/members/actions'
+import { removeMemberAction, deactivateMemberAction, reactivateMemberAction, type MemberActionState } from '@/features/members/actions'
 import { EditMemberRoleModal } from '@/components/members/edit-member-role-modal'
 import { AssignMemberDepartmentModal } from '@/components/members/assign-member-department-modal'
+import { CreateMemberModal } from '@/components/members/create-member-modal'
 import { SettingsHeader } from '@/components/settings/settings-header'
 import { SettingsSurface } from '@/components/settings/settings-surface'
 import { SettingsEmptyState } from '@/components/settings/settings-empty-state'
 import { SettingsError } from '@/components/settings/settings-error'
 import { Button } from '@/components/ui/button'
 import { formatMemberDepartments } from '@/features/settings/helpers'
-import { Trash2, Users } from 'lucide-react'
+import { Trash2, Users, UserX, UserCheck } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 
 type MemberDepartment = {
@@ -26,6 +27,7 @@ type MemberRow = {
   name: string
   email: string
   role: 'owner' | 'admin' | 'manager' | 'member'
+  isActive: boolean
   createdAt: string
   updatedAt: string
   departments: MemberDepartment[]
@@ -66,6 +68,8 @@ export default function MembersSettingsPage() {
   const [queryFilters, setQueryFilters] = useState<MemberFilters>(INITIAL_FILTERS)
   const [formFilters, setFormFilters] = useState<MemberFilters>(INITIAL_FILTERS)
 
+  const [showInactive, setShowInactive] = useState(false)
+
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<Feedback | null>(null)
@@ -73,7 +77,7 @@ export default function MembersSettingsPage() {
   const [pendingRowId, setPendingRowId] = useState<string | null>(null)
   const [isMutating, startMutationTransition] = useTransition()
 
-  async function fetchMembers(filters: MemberFilters) {
+  async function fetchMembers(filters: MemberFilters, includeInactive = false) {
     setLoading(true)
     setError(null)
 
@@ -81,6 +85,7 @@ export default function MembersSettingsPage() {
       const result = await listMembers({
         q: filters.q || undefined,
         role: filters.role,
+        showInactive: includeInactive,
       })
 
       if (!result.success || !result.data) {
@@ -99,12 +104,12 @@ export default function MembersSettingsPage() {
   }
 
   useEffect(() => {
-    fetchMembers(queryFilters)
+    fetchMembers(queryFilters, showInactive)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queryFilters.q, queryFilters.role])
+  }, [queryFilters.q, queryFilters.role, showInactive])
 
   function refreshMembers() {
-    void fetchMembers(queryFilters)
+    void fetchMembers(queryFilters, showInactive)
   }
 
   function handleMemberSaved(message: string) {
@@ -128,7 +133,52 @@ export default function MembersSettingsPage() {
       })
 
       if (result.status === 'success') {
-        await fetchMembers(queryFilters)
+        await fetchMembers(queryFilters, showInactive)
+      }
+
+      setPendingRowId(null)
+    })
+  }
+
+  function handleDeactivateMember(member: MemberRow) {
+    const confirmed = window.confirm(
+      `Deactivate "${member.name}"? This member will be removed from all departments. Their historical data will be preserved.`,
+    )
+    if (!confirmed) return
+
+    setPendingRowId(member.rowId)
+    startMutationTransition(async () => {
+      const formData = new FormData()
+      formData.set('userId', member.userId)
+
+      const result = await deactivateMemberAction(formData)
+      setFeedback({
+        tone: result.status === 'success' ? 'success' : 'error',
+        message: result.message,
+      })
+
+      if (result.status === 'success') {
+        await fetchMembers(queryFilters, showInactive)
+      }
+
+      setPendingRowId(null)
+    })
+  }
+
+  function handleReactivateMember(member: MemberRow) {
+    setPendingRowId(member.rowId)
+    startMutationTransition(async () => {
+      const formData = new FormData()
+      formData.set('userId', member.userId)
+
+      const result = await reactivateMemberAction(formData)
+      setFeedback({
+        tone: result.status === 'success' ? 'success' : 'error',
+        message: result.message,
+      })
+
+      if (result.status === 'success') {
+        await fetchMembers(queryFilters, showInactive)
       }
 
       setPendingRowId(null)
@@ -164,10 +214,17 @@ export default function MembersSettingsPage() {
 
   return (
     <div className="space-y-6">
-      <SettingsHeader
-        title="Members"
-        description="Manage members, assign roles, and department assignments."
-      />
+      <div className="flex items-start justify-between gap-4">
+        <SettingsHeader
+          title="Members"
+          description="Manage members, assign roles, and department assignments."
+        />
+        <CreateMemberModal
+          departments={departments}
+          viewerRole={viewerRole}
+          onSaved={handleMemberSaved}
+        />
+      </div>
 
       {feedback ? (
         <SettingsSurface
@@ -225,11 +282,22 @@ export default function MembersSettingsPage() {
             </select>
           </div>
 
-          <div className="md:col-span-3 flex items-center justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setFormFilters(INITIAL_FILTERS)}>
-              Clear
-            </Button>
-            <Button type="submit">Apply Filters</Button>
+          <div className="md:col-span-3 flex items-center justify-between gap-2">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={showInactive}
+                onChange={(event) => setShowInactive(event.target.checked)}
+                className="rounded border-input"
+              />
+              Show inactive
+            </label>
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="outline" onClick={() => setFormFilters(INITIAL_FILTERS)}>
+                Clear
+              </Button>
+              <Button type="submit">Apply Filters</Button>
+            </div>
           </div>
         </form>
       </SettingsSurface>
@@ -266,20 +334,27 @@ export default function MembersSettingsPage() {
                         <p className="text-xs text-muted-foreground">{row.email || '-'}</p>
                       </td>
                       <td className="px-3 py-3">
-                        <Badge
-                          variant="outline"
-                          className={
-                            row.role === 'owner'
-                              ? 'border-emerald-200 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
-                              : row.role === 'admin'
-                                ? 'border-purple-200 bg-purple-100 text-purple-700 dark:border-purple-800 dark:bg-purple-900/30 dark:text-purple-400'
-                                : row.role === 'manager'
-                                  ? 'border-blue-200 bg-blue-100 text-blue-700 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
-                                  : ''
-                          }
-                        >
-                          {ROLE_LABELS[row.role]}
-                        </Badge>
+                        <div className="flex items-center gap-1.5">
+                          <Badge
+                            variant="outline"
+                            className={
+                              row.role === 'owner'
+                                ? 'border-emerald-200 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                : row.role === 'admin'
+                                  ? 'border-purple-200 bg-purple-100 text-purple-700 dark:border-purple-800 dark:bg-purple-900/30 dark:text-purple-400'
+                                  : row.role === 'manager'
+                                    ? 'border-blue-200 bg-blue-100 text-blue-700 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
+                                    : ''
+                            }
+                          >
+                            {ROLE_LABELS[row.role]}
+                          </Badge>
+                          {!row.isActive ? (
+                            <Badge variant="outline" className="border-gray-200 bg-gray-100 text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
+                              Inactive
+                            </Badge>
+                          ) : null}
+                        </div>
                       </td>
                       <td className="px-3 py-3">{departmentsText}</td>
                       <td className="px-3 py-3">
@@ -299,6 +374,32 @@ export default function MembersSettingsPage() {
                             departments={departments}
                             onSaved={handleMemberSaved}
                           />
+
+                          {row.isActive ? (
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="outline"
+                              title={`Deactivate ${row.name}`}
+                              aria-label={`Deactivate ${row.name}`}
+                              onClick={() => handleDeactivateMember(row)}
+                              disabled={rowPending}
+                            >
+                              <UserX className="size-4" />
+                            </Button>
+                          ) : (
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="outline"
+                              title={`Reactivate ${row.name}`}
+                              aria-label={`Reactivate ${row.name}`}
+                              onClick={() => handleReactivateMember(row)}
+                              disabled={rowPending}
+                            >
+                              <UserCheck className="size-4" />
+                            </Button>
+                          )}
 
                           <Button
                             type="button"
