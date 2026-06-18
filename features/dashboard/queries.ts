@@ -688,7 +688,7 @@ export async function getDashboardData(filters?: {
   }
 
   let kpis: DashboardKpi[] = []
-  let trend: DashboardTrendPoint[] = []
+  const trend: DashboardTrendPoint[] = []
   let series: DashboardSeries[] = []
   let primaryMetricLabel: string | null = null
 
@@ -949,7 +949,8 @@ export async function getDashboardData(filters?: {
   let previousAgencyScore: number | null = null
   if (primaryKpi && primaryKpi.previous_value > 0) {
     // Rough estimate: we only have previous KPI values, not full previous stats
-    previousAgencyScore = agencyScoreValue !== null ? agencyScoreValue : null
+    const agencyScoreTrend = agencyScoreValue !== null ? agencyScoreValue : null
+    previousAgencyScore = agencyScoreTrend
   }
 
   const agencyScore: DashboardAgencyScore = {
@@ -967,7 +968,6 @@ export async function getDashboardData(filters?: {
   if (agents.length > 0 && submittedCurrent.length > 0) {
     // Count submissions per agent
     const submissionCountByUser = new Map<string, number>()
-    const primaryMetricByUser = new Map<string, number>()
 
     for (const entry of submittedCurrent) {
       submissionCountByUser.set(entry.user_id, (submissionCountByUser.get(entry.user_id) ?? 0) + 1)
