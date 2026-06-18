@@ -459,9 +459,7 @@ export function DailyLogForm({
     userId,
   ])
 
-  // @ts-expect-error - used for debugging and future status display
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _statusText = (() => {
+  const statusText = (() => {
     const savedTime = formatTime(lastSavedAt)
 
     if (pending) {

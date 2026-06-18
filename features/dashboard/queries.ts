@@ -1,6 +1,7 @@
 'use server'
 
 import { getActorContext } from '@/lib/supabase/actor-context'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { requireRole } from '@/lib/rbac/guards'
 import { type Role } from '@/lib/rbac/roles'
 import { getAccessibleDepartments } from '@/lib/rbac/department-access'
@@ -687,7 +688,7 @@ export async function getDashboardData(filters?: {
   }
 
   let kpis: DashboardKpi[] = []
-  const trend: DashboardTrendPoint[] = []
+  let trend: DashboardTrendPoint[] = []
   let series: DashboardSeries[] = []
   let primaryMetricLabel: string | null = null
 
@@ -966,6 +967,7 @@ export async function getDashboardData(filters?: {
   if (agents.length > 0 && submittedCurrent.length > 0) {
     // Count submissions per agent
     const submissionCountByUser = new Map<string, number>()
+    const primaryMetricByUser = new Map<string, number>()
 
     for (const entry of submittedCurrent) {
       submissionCountByUser.set(entry.user_id, (submissionCountByUser.get(entry.user_id) ?? 0) + 1)

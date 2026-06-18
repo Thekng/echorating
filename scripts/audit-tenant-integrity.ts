@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { config as loadEnv } from 'dotenv'

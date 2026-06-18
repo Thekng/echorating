@@ -10,7 +10,6 @@ interface ConfirmDialogProps {
   confirmText?: string
   cancelText?: string
   isLoading?: boolean
-  variant?: 'default' | 'destructive'
   onConfirm: () => void
   onCancel: () => void
 }
@@ -23,10 +22,13 @@ export function ConfirmDialog({
   confirmText = 'Confirm',
   cancelText = 'Cancel',
   isLoading = false,
-  variant = 'destructive',
 }: ConfirmDialogProps) {
   useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => e.key === 'Escape' && !isLoading && onCancel()
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isLoading) {
+        onCancel()
+      }
+    }
     window.addEventListener('keydown', handleEsc)
     return () => window.removeEventListener('keydown', handleEsc)
   }, [onCancel, isLoading])
@@ -34,7 +36,9 @@ export function ConfirmDialog({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
-      onClick={(e) => e.target === e.currentTarget && !isLoading && onCancel()}
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !isLoading) onCancel()
+      }}
     >
       <div
         role="alertdialog"
@@ -44,10 +48,19 @@ export function ConfirmDialog({
         <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
         {description && <p className="mt-2 text-sm text-muted-foreground">{description}</p>}
         <div className="mt-6 flex justify-end gap-3">
-          <Button variant="outline" onClick={onCancel} disabled={isLoading}>
+          <Button
+            variant="outline"
+            onClick={onCancel}
+            disabled={isLoading}
+          >
             {cancelText}
           </Button>
-          <Button variant={variant} onClick={onConfirm} disabled={isLoading} autoFocus>
+          <Button
+            variant="destructive"
+            onClick={onConfirm}
+            disabled={isLoading}
+            autoFocus
+          >
             {isLoading && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}
             {confirmText}
           </Button>

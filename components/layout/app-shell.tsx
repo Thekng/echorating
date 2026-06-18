@@ -27,7 +27,6 @@ export function AppShell({ children, companyName, userRole, userName, userEmail,
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect */
     // Load from localStorage after hydration
     const savedCollapsed = window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1'
     const savedTheme = window.localStorage.getItem(THEME_KEY)
@@ -38,7 +37,6 @@ export function AppShell({ children, companyName, userRole, userName, userEmail,
     setCollapsed(savedCollapsed)
     setTheme(resolvedTheme)
     setMounted(true)
-    /* eslint-enable react-hooks/set-state-in-effect */
   }, [])
 
   useEffect(() => {

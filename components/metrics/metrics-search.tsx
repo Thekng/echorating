@@ -22,12 +22,9 @@ interface MetricsSearchProps {
 export function MetricsSearch({ 
   metrics, 
   onSelect, 
-  onSearch: _onSearch,
+  onSearch,
   placeholder = 'Search metrics by name or code...'
 }: MetricsSearchProps) {
-  /* eslint-disable @typescript-eslint/no-unused-vars */
-  const onSearch = _onSearch
-  /* eslint-enable @typescript-eslint/no-unused-vars */
   const [query, setQuery] = useState('')
   const [isOpen, setIsOpen] = useState(false)
 
@@ -42,6 +39,9 @@ export function MetricsSearch({
     onSelect?.(metric)
   }, [onSelect])
 
+  const handleSearch = useCallback(() => {
+    onSearch?.(query)
+  }, [query, onSearch])
 
   return (
     <div className="relative">

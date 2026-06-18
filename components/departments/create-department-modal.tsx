@@ -19,12 +19,10 @@ export function CreateDepartmentModal({ onSaved }: { onSaved?: (message: string)
   )
 
   useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect */
     if (state.status === 'success') {
       onSaved?.(state.message)
       setOpen(false)
     }
-    /* eslint-enable react-hooks/set-state-in-effect */
   }, [state.status, state.message, onSaved])
 
   return (

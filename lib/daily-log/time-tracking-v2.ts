@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { z } from 'zod'
 import { parseDurationToSeconds, formatSecondsToDuration } from '@/lib/daily-log/value-parser'
 
@@ -62,7 +61,7 @@ export class TimeEntryVersionControl {
    * @throws Error if version mismatch (another user edited the entry)
    */
   static async updateTimeValue(
-    supabase: Record<string, any>,
+    supabase: any,
     entryId: string,
     metricId: string,
     timeValue: number | null, // seconds or null
@@ -112,7 +111,7 @@ export class TimeEntryVersionControl {
    * Safely batch update multiple time values
    */
   static async updateMultipleTimeValues(
-    supabase: Record<string, any>,
+    supabase: any,
     entryId: string,
     updates: Array<{ metricId: string; timeValue: number | null }>
   ) {
@@ -217,7 +216,7 @@ export class ConflictResolution {
    * Detect if entry was modified since last fetch
    */
   static async detectConflict(
-    supabase: Record<string, any>,
+    supabase: any,
     entryId: string,
     lastKnownVersion: number
   ): Promise<boolean> {
@@ -234,7 +233,7 @@ export class ConflictResolution {
   /**
    * Fetch latest entry data for merge/refresh
    */
-  static async fetchLatestEntry(supabase: Record<string, any>, entryId: string) {
+  static async fetchLatestEntry(supabase: any, entryId: string) {
     const { data, error } = await supabase
       .from('daily_entries')
       .select(`
@@ -257,16 +256,13 @@ export class ConflictResolution {
    * Three-way merge strategy
    * merges conflicting changes if they're in different metrics
    */
-  static mergeEntries(local: Record<string, any>, remote: Record<string, any>, _base: Record<string, any>): any {
-    /* eslint-disable @typescript-eslint/no-unused-vars */
-    const base = _base
-    /* eslint-enable @typescript-eslint/no-unused-vars */
+  static mergeEntries(local: any, remote: any, base: any): any {
     const merged = { ...remote }
 
     // If local edited a different metric than remote, keep both
     for (const value of local.entry_values || []) {
       const remoteValue = (remote.entry_values || []).find(
-        (v: Record<string, any>) => v.metric_id === value.metric_id
+        (v: any) => v.metric_id === value.metric_id
       )
 
       if (!remoteValue) {

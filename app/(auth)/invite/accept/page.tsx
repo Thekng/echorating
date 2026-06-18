@@ -75,6 +75,7 @@ export default async function InviteAcceptPage() {
 
   return (
     <InviteAcceptForm
+      invitationId={invitation.invitation_id}
       companyName={companyName}
       role={invitation.role}
       isExistingUser={isExistingUser}

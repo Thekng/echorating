@@ -32,7 +32,6 @@ export function TourProvider({ children, userRole = 'member' }: TourProviderProp
     const steps = useMemo(() => getTourStepsForRole(userRole), [userRole])
 
     useEffect(() => {
-        /* eslint-disable react-hooks/set-state-in-effect */
         setIsMounted(true)
         const seen = localStorage.getItem('echorating_tour_seen')
         if (!seen) {
@@ -42,7 +41,6 @@ export function TourProvider({ children, userRole = 'member' }: TourProviderProp
             }, 1000)
             return () => clearTimeout(timer)
         }
-        /* eslint-enable react-hooks/set-state-in-effect */
     }, [])
 
     const startTour = () => {
