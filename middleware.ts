@@ -55,6 +55,9 @@ function redirectToLogin(request: NextRequest, response: NextResponse, reason?: 
 }
 
 export async function middleware(request: NextRequest) {
+  if (request.nextUrl.pathname === '/test-palette') {
+    return NextResponse.next()
+  }
   const incomingRequestId = request.headers.get('x-request-id')
   const requestId = incomingRequestId && incomingRequestId.trim() !== ''
     ? incomingRequestId

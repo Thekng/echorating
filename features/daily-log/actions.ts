@@ -704,7 +704,7 @@ export async function saveDailyLogAction(
   }
 }
 
-export async function deleteDailyLogAction(formData: FormData): Promise<void> {
+export async function deleteDailyLogAction(_prevState: unknown, formData: FormData): Promise<void> {
   const parsed = deleteDailyLogSchema.safeParse({
     entryId: field(formData, 'entryId'),
   })
