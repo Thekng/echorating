@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Trash2, Pencil } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { deleteDailyLogAction } from '@/features/daily-log/actions'
 import type {
   DailyLogMetric,
@@ -13,6 +15,7 @@ import type {
 import { formatSecondsToDuration } from '@/lib/daily-log/value-parser'
 import { formatDateShort } from '@/lib/utils'
 import { booleanLabels, normalizeMetricSettings } from '@/lib/metrics/data-types'
+import { useState, useTransition } from 'react'
 
 type RecentLogsTableProps = {
   departmentId: string
@@ -174,6 +177,8 @@ export function RecentLogsTable({
 }: RecentLogsTableProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const [isDeleting, startDeleteTransition] = useTransition()
+  const [selectedLogId, setSelectedLogId] = useState<string | null>(null)
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
   const startItem = totalCount === 0 ? 0 : (currentPage - 1) * pageSize + 1
@@ -193,6 +198,17 @@ export function RecentLogsTable({
     router.push(`/daily-log?${params.toString()}`)
   }
 
+  function handleDeleteConfirm() {
+    if (!selectedLogId) return
+
+    startDeleteTransition(async () => {
+      const formData = new FormData()
+      formData.set('entryId', selectedLogId)
+      await deleteDailyLogAction(formData)
+      setSelectedLogId(null)
+    })
+  }
+
   if (logs.length === 0) {
     return (
       <div className="space-y-3">
@@ -208,7 +224,7 @@ export function RecentLogsTable({
             <select
               id="recent-logs-page-size"
               value={String(pageSize)}
-              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
               onChange={(event) =>
                 updateTableParams({
                   logsPerPage: event.currentTarget.value,
@@ -231,9 +247,9 @@ export function RecentLogsTable({
 
         {totalCount > 0 ? (
           <div className="flex items-center justify-end gap-2">
-            <button
-              type="button"
-              className="inline-flex h-9 items-center justify-center rounded-md border border-input px-3 text-sm hover:bg-muted/40 disabled:pointer-events-none disabled:opacity-50"
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() =>
                 updateTableParams({
                   logsPage: String(currentPage - 1),
@@ -242,13 +258,13 @@ export function RecentLogsTable({
               disabled={currentPage <= 1}
             >
               Previous
-            </button>
+            </Button>
             <span className="text-sm text-muted-foreground">
               Page {currentPage} of {totalPages}
             </span>
-            <button
-              type="button"
-              className="inline-flex h-9 items-center justify-center rounded-md border border-input px-3 text-sm hover:bg-muted/40 disabled:pointer-events-none disabled:opacity-50"
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() =>
                 updateTableParams({
                   logsPage: String(currentPage + 1),
@@ -257,7 +273,7 @@ export function RecentLogsTable({
               disabled={currentPage >= totalPages}
             >
               Next
-            </button>
+            </Button>
           </div>
         ) : null}
       </div>
@@ -278,7 +294,7 @@ export function RecentLogsTable({
           <select
             id="recent-logs-page-size"
             value={String(pageSize)}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
             onChange={(event) =>
               updateTableParams({
                 logsPerPage: event.currentTarget.value,
@@ -313,9 +329,9 @@ export function RecentLogsTable({
         </thead>
         <tbody>
           {logs.map((log) => (
-            <tr key={log.id} className="border-b last:border-b-0">
-              <td className="px-3 py-2">{formatDateShort(log.report_date)}</td>
-              <td className="px-3 py-2">{log.user_name}</td>
+            <tr key={log.id} className="border-b last:border-b-0 hover:bg-muted/10 transition-colors">
+              <td className="px-3 py-2 whitespace-nowrap">{formatDateShort(log.report_date)}</td>
+              <td className="px-3 py-2 font-medium">{log.user_name}</td>
               {metrics.map((metric) => (
                 <td key={metric.id} className="px-3 py-2">
                   {metricValue(log.key_metric_values, metric)}
@@ -338,34 +354,33 @@ export function RecentLogsTable({
               </td>
               <td className="px-3 py-2">
                 <div className="flex items-center justify-end gap-2">
-                  <Link
-                    href={`/daily-log?departmentId=${departmentId}&userId=${log.user_id}&date=${log.report_date}`}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-input hover:bg-muted/40"
+                  <Button
+                    asChild
+                    variant="outline"
+                    size="icon"
+                    className="size-8"
                     title="Edit"
                     aria-label="Edit"
                   >
-                    <Pencil className="size-3.5" />
-                  </Link>
+                    <Link
+                      href={`/daily-log?departmentId=${departmentId}&userId=${log.user_id}&date=${log.report_date}`}
+                    >
+                      <Pencil className="size-3.5" />
+                    </Link>
+                  </Button>
 
                   {canDelete ? (
-                    <form
-                      action={deleteDailyLogAction}
-                      onSubmit={(event) => {
-                        if (!window.confirm('Delete this log permanently?')) {
-                          event.preventDefault()
-                        }
-                      }}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="size-8 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      onClick={() => setSelectedLogId(log.id)}
+                      title="Delete"
+                      aria-label="Delete"
                     >
-                      <input type="hidden" name="entryId" value={log.id} />
-                      <button
-                        type="submit"
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-destructive/30 text-destructive hover:bg-destructive/10"
-                        title="Delete"
-                        aria-label="Delete"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
-                    </form>
+                      <Trash2 className="size-3.5" />
+                    </Button>
                   ) : null}
                 </div>
               </td>
@@ -390,9 +405,9 @@ export function RecentLogsTable({
       </div>
 
       <div className="flex items-center justify-end gap-2">
-        <button
-          type="button"
-          className="inline-flex h-9 items-center justify-center rounded-md border border-input px-3 text-sm hover:bg-muted/40 disabled:pointer-events-none disabled:opacity-50"
+        <Button
+          variant="outline"
+          size="sm"
           onClick={() =>
             updateTableParams({
               logsPage: String(currentPage - 1),
@@ -401,13 +416,13 @@ export function RecentLogsTable({
           disabled={currentPage <= 1}
         >
           Previous
-        </button>
+        </Button>
         <span className="text-sm text-muted-foreground">
           Page {currentPage} of {totalPages}
         </span>
-        <button
-          type="button"
-          className="inline-flex h-9 items-center justify-center rounded-md border border-input px-3 text-sm hover:bg-muted/40 disabled:pointer-events-none disabled:opacity-50"
+        <Button
+          variant="outline"
+          size="sm"
           onClick={() =>
             updateTableParams({
               logsPage: String(currentPage + 1),
@@ -416,8 +431,20 @@ export function RecentLogsTable({
           disabled={currentPage >= totalPages}
         >
           Next
-        </button>
+        </Button>
       </div>
+
+      {selectedLogId && (
+        <ConfirmDialog
+          title="Delete Daily Log"
+          description="Are you sure you want to delete this log entry? This action cannot be undone."
+          confirmText="Delete"
+          variant="destructive"
+          isLoading={isDeleting}
+          onConfirm={handleDeleteConfirm}
+          onCancel={() => setSelectedLogId(null)}
+        />
+      )}
     </div>
   )
 }

@@ -12,14 +12,12 @@ test('areMetricFiltersEqual matches all filter fields', () => {
       {
         q: 'sales',
         departmentId: 'all',
-        mode: 'manual',
-        status: 'active',
+        status: 'all',
       },
       {
         q: 'sales',
         departmentId: 'all',
-        mode: 'manual',
-        status: 'active',
+        status: 'all',
       },
     ),
     true,
@@ -30,14 +28,12 @@ test('areMetricFiltersEqual matches all filter fields', () => {
       {
         q: 'sales',
         departmentId: 'all',
-        mode: 'manual',
-        status: 'active',
+        status: 'all',
       },
       {
         q: 'sales',
         departmentId: 'dept_1',
-        mode: 'manual',
-        status: 'active',
+        status: 'all',
       },
     ),
     false,
@@ -50,12 +46,10 @@ test('areMemberFiltersEqual matches all filter fields', () => {
       {
         q: 'ana',
         role: 'manager',
-        status: 'all',
       },
       {
         q: 'ana',
         role: 'manager',
-        status: 'all',
       },
     ),
     true,
@@ -66,12 +60,10 @@ test('areMemberFiltersEqual matches all filter fields', () => {
       {
         q: 'ana',
         role: 'manager',
-        status: 'all',
       },
       {
         q: 'ana',
         role: 'member',
-        status: 'all',
       },
     ),
     false,
