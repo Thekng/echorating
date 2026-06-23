@@ -93,7 +93,7 @@ export function InviteAcceptForm({ companyName, role, isExistingUser }: InviteAc
 
       <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
         {!isExistingUser && (
-          <>
+          <div className="space-y-4">
             <div className="space-y-2">
               <label htmlFor="invite-password">Password</label>
               <input id="invite-password" type="password" autoComplete="new-password" minLength={8} required
@@ -106,7 +106,7 @@ export function InviteAcceptForm({ companyName, role, isExistingUser }: InviteAc
                 value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
                 className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" />
             </div>
-          </>
+          </div>
         )}
         {status === 'error' && <p className="text-sm text-destructive">{message}</p>}
         <Button type="submit" className="w-full" disabled={pending}>
