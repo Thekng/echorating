@@ -13,7 +13,7 @@ type InviteAcceptFormProps = {
   isExistingUser: boolean
 }
 
-export function InviteAcceptForm({ invitationId, companyName, role, isExistingUser }: InviteAcceptFormProps) {
+export function InviteAcceptForm({ companyName, role, isExistingUser }: InviteAcceptFormProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [password, setPassword] = useState('')
@@ -23,14 +23,12 @@ export function InviteAcceptForm({ invitationId, companyName, role, isExistingUs
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-
     if (!isExistingUser) {
       if (password.length < 8) {
         setStatus('error')
         setMessage('Password must be at least 8 characters.')
         return
       }
-
       if (password !== confirmPassword) {
         setStatus('error')
         setMessage('Passwords do not match.')
@@ -42,12 +40,9 @@ export function InviteAcceptForm({ invitationId, companyName, role, isExistingUs
     setMessage('')
 
     startTransition(async () => {
+      const supabase = createClient()
       if (!isExistingUser) {
-        const supabase = createClient()
-        const { error } = await supabase.auth.updateUser({
-          password,
-        })
-
+        const { error } = await supabase.auth.updateUser({ password })
         if (error) {
           setStatus('error')
           setMessage('Failed to set password. Please try again.')
@@ -55,18 +50,18 @@ export function InviteAcceptForm({ invitationId, companyName, role, isExistingUs
         }
       }
 
-      const acceptResult = await acceptInviteAction(invitationId)
+      const { data: { user } } = await supabase.auth.getUser()
+      const acceptResult = await acceptInviteAction(user?.id ?? '', user?.email ?? '')
       if (!acceptResult.success) {
         setStatus('error')
         setMessage(acceptResult.message)
         return
       }
 
-      const supabase = createClient()
       const { data: memberships, error: membershipsError } = await supabase
         .from('organization_members')
         .select('organization_id')
-        .eq('user_id', (await supabase.auth.getUser()).data.user?.id ?? '')
+        .eq('user_id', user?.id ?? '')
 
       if (membershipsError) {
         setStatus('error')
@@ -100,45 +95,22 @@ export function InviteAcceptForm({ invitationId, companyName, role, isExistingUs
         {!isExistingUser && (
           <>
             <div className="space-y-2">
-              <label htmlFor="invite-password" className="text-sm font-medium">
-                Password
-              </label>
-              <input
-                id="invite-password"
-                type="password"
-                autoComplete="new-password"
-                minLength={8}
-                required
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              />
+              <label htmlFor="invite-password">Password</label>
+              <input id="invite-password" type="password" autoComplete="new-password" minLength={8} required
+                value={password} onChange={(e) => setPassword(e.target.value)}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" />
             </div>
-
             <div className="space-y-2">
-              <label htmlFor="invite-confirm-password" className="text-sm font-medium">
-                Confirm password
-              </label>
-              <input
-                id="invite-confirm-password"
-                type="password"
-                autoComplete="new-password"
-                minLength={8}
-                required
-                value={confirmPassword}
-                onChange={(event) => setConfirmPassword(event.target.value)}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              />
+              <label htmlFor="invite-confirm-password">Confirm password</label>
+              <input id="invite-confirm-password" type="password" autoComplete="new-password" minLength={8} required
+                value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" />
             </div>
           </>
         )}
-
-        {status === 'error' ? <p className="text-sm text-destructive">{message}</p> : null}
-
+        {status === 'error' && <p className="text-sm text-destructive">{message}</p>}
         <Button type="submit" className="w-full" disabled={pending}>
-          {pending
-            ? (isExistingUser ? 'Joining...' : 'Setting password...')
-            : (isExistingUser ? `Join ${companyName}` : 'Set password and join')}
+          {pending ? (isExistingUser ? 'Joining...' : 'Setting password...') : (isExistingUser ? `Join ${companyName}` : 'Set password and join')}
         </Button>
       </form>
     </section>

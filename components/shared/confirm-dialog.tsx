@@ -5,24 +5,23 @@ import { Button } from '@/components/ui/button'
 import { RefreshCw } from 'lucide-react'
 
 interface ConfirmDialogProps {
-  title: string
-  description?: string
-  confirmText?: string
-  cancelText?: string
-  isLoading?: boolean
-  loadingText?: string
-  onConfirm: () => void
-  onCancel: () => void
+  title: string; description?: string; confirmText?: string; cancelText?: string;
+  isLoading?: boolean; loadingText?: string; onConfirm: () => void; onCancel: () => void;
 }
 
 export function ConfirmDialog({
   title, description, confirmText = 'Confirm', cancelText = 'Cancel',
   isLoading, loadingText, onConfirm, onCancel,
 }: ConfirmDialogProps) {
+  const previousFocus = React.useRef<HTMLElement | null>(null)
   React.useEffect(() => {
+    previousFocus.current = document.activeElement as HTMLElement
     const handleKeyDown = (e: KeyboardEvent) => e.key === 'Escape' && !isLoading && onCancel()
     window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      previousFocus.current?.focus()
+    }
   }, [onCancel, isLoading])
 
   return (
