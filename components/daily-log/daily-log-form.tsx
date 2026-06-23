@@ -382,7 +382,6 @@ export function DailyLogForm({
   const [lastSavedSnapshot, setLastSavedSnapshot] = useState(savedSnapshot)
 
   useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect */
     setValues(initialValues)
     setNotes(initialNotes)
     setLogDate(date)
@@ -391,7 +390,6 @@ export function DailyLogForm({
     setLastSavedSnapshot(savedSnapshot)
     setPendingIntent(null)
     setLastSubmitKind(null)
-    /* eslint-enable react-hooks/set-state-in-effect */
   }, [date, existingEntry?.id, existingEntry?.status, existingEntry?.updated_at, initialValues, initialNotes, savedSnapshot])
 
   const currentSnapshot = useMemo(
@@ -421,12 +419,10 @@ export function DailyLogForm({
     lastHandledStateRef.current = key
 
     if (state.status === 'success') {
-      /* eslint-disable react-hooks/set-state-in-effect */
       setLastSavedSnapshot(currentSnapshot)
       setLastSavedAt(state.savedAt)
       setEntryStatus(state.entryStatus)
       setPendingIntent(null)
-      /* eslint-enable react-hooks/set-state-in-effect */
       pushToast('success', state.message)
 
       if (logDate !== date) {
@@ -647,22 +643,10 @@ export function DailyLogForm({
                 className={`shrink-0 text-xs ${
                   state.status === 'error'
                     ? 'text-destructive'
-                    : pending
-                      ? 'text-muted-foreground'
-                      : 'text-muted-foreground'
+                    : 'text-muted-foreground'
                 }`}
               >
-                {pending
-                  ? pendingIntent === 'submit'
-                    ? 'Submitting...'
-                    : 'Saving...'
-                  : state.status === 'error'
-                    ? state.message
-                    : entryStatus === 'submitted'
-                      ? `Submitted${formatTime(lastSavedAt) ? ` at ${formatTime(lastSavedAt)}` : ''}`
-                      : lastSavedAt
-                        ? `Draft saved at ${formatTime(lastSavedAt) ?? '-'}`
-                        : ''}
+                {statusText}
               </p>
             </div>
           </>
