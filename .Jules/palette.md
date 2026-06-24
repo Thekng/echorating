@@ -1,0 +1,3 @@
+## 2025-05-15 - [Accessible Confirm Dialog with Async Feedback]
+**Learning:** Replacing native `window.confirm` with a custom dialog improves UX by allowing asynchronous feedback (loading states) and better accessibility (keyboard support, ARIA roles). In React 18/19 transition environments, server actions in `useTransition` should manage promises (e.g., `.then()`) to avoid type errors with synchronous `startTransition` expectations.
+**Action:** Use `ConfirmDialog` from `components/shared/confirm-dialog.tsx` for destructive actions and ensure `isLoading` is passed to provide visual feedback during async operations. Always ensure the component stays under 50 lines by modularizing and using standard primitives.
