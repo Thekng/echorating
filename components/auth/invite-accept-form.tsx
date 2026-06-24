@@ -8,12 +8,20 @@ import { acceptInviteAction } from '@/features/members/actions'
 
 type InviteAcceptFormProps = {
   invitationId: string
+  userId: string
+  email: string
   companyName: string
   role: 'manager' | 'member'
   isExistingUser: boolean
 }
 
-export function InviteAcceptForm({ invitationId, companyName, role, isExistingUser }: InviteAcceptFormProps) {
+export function InviteAcceptForm({
+  userId,
+  email,
+  companyName,
+  role,
+  isExistingUser,
+}: InviteAcceptFormProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [password, setPassword] = useState('')
@@ -55,7 +63,7 @@ export function InviteAcceptForm({ invitationId, companyName, role, isExistingUs
         }
       }
 
-      const acceptResult = await acceptInviteAction(invitationId)
+      const acceptResult = await acceptInviteAction(userId, email)
       if (!acceptResult.success) {
         setStatus('error')
         setMessage(acceptResult.message)
