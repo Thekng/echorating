@@ -13,6 +13,7 @@ import { SettingsSurface } from '@/components/settings/settings-surface'
 import { SettingsEmptyState } from '@/components/settings/settings-empty-state'
 import { SettingsError } from '@/components/settings/settings-error'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { formatDateShort } from '@/lib/utils'
 import { FolderKanban, Pencil, Plus, Power, Trash2 } from 'lucide-react'
 
@@ -45,6 +46,7 @@ export default function DepartmentsSettingsPage() {
 
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [editingDepartment, setEditingDepartment] = useState<Department | null>(null)
+  const [deletingDepartment, setDeletingDepartment] = useState<Department | null>(null)
 
   const [createState, setCreateState] = useState<DepartmentActionState>(INITIAL_ACTION_STATE)
   const [updateState, setUpdateState] = useState<DepartmentActionState>(INITIAL_ACTION_STATE)
@@ -152,11 +154,6 @@ export default function DepartmentsSettingsPage() {
   }
 
   function handleDeleteDepartment(department: Department) {
-    const confirmed = window.confirm(
-      `Delete "${department.name}"? This will also remove its members and metrics.`,
-    )
-    if (!confirmed) return
-
     setPendingActionId(department.id)
     startMutationTransition(async () => {
       const formData = new FormData()
@@ -170,6 +167,7 @@ export default function DepartmentsSettingsPage() {
 
       if (result.status === 'success') {
         await fetchDepartments()
+        setDeletingDepartment(null)
       }
 
       setPendingActionId(null)
@@ -292,7 +290,7 @@ export default function DepartmentsSettingsPage() {
                           title={`Delete ${department.name}`}
                           aria-label={`Delete ${department.name}`}
                           className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                          onClick={() => handleDeleteDepartment(department)}
+                          onClick={() => setDeletingDepartment(department)}
                           disabled={rowPending}
                         >
                           <Trash2 className="size-4" />
@@ -404,6 +402,17 @@ export default function DepartmentsSettingsPage() {
             </form>
           </div>
         </div>
+      ) : null}
+
+      {deletingDepartment ? (
+        <ConfirmDialog
+          title={`Delete "${deletingDepartment.name}"?`}
+          description="This will also remove its members and metrics. This action cannot be undone."
+          confirmText="Delete"
+          isLoading={isMutating && pendingActionId === deletingDepartment.id}
+          onConfirm={() => handleDeleteDepartment(deletingDepartment)}
+          onCancel={() => setDeletingDepartment(null)}
+        />
       ) : null}
 
       {editingDepartment ? (
