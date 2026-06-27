@@ -673,15 +673,22 @@ export async function createMemberAction(
 export async function acceptInviteAction(
   userId: string,
   email: string,
+  invitationId?: string,
 ): Promise<{ success: boolean; message: string }> {
   const admin = createAdminClient()
 
   // Look up pending invitations by email
-  const { data: invitations, error: invitationsError } = await admin
+  const query = admin
     .from('organization_invitations')
     .select('id, organization_id, role, department_id')
     .eq('email', email.toLowerCase())
     .is('accepted_at', null)
+
+  if (invitationId) {
+    query.eq('id', invitationId)
+  }
+
+  const { data: invitations, error: invitationsError } = await query
 
   if (invitationsError || !invitations || invitations.length === 0) {
     return { success: false, message: 'No pending invitations found.' }
