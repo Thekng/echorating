@@ -4,7 +4,7 @@ import { AlertCircle, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 export default function DashboardError({
-    error,
+    _error,
     reset,
 }: {
     error: Error & { digest?: string }

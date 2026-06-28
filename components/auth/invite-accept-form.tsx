@@ -13,7 +13,12 @@ type InviteAcceptFormProps = {
   isExistingUser: boolean
 }
 
-export function InviteAcceptForm({ invitationId, companyName, role, isExistingUser }: InviteAcceptFormProps) {
+export function InviteAcceptForm({
+  invitationId: _invitationId,
+  companyName,
+  role,
+  isExistingUser,
+}: InviteAcceptFormProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [password, setPassword] = useState('')

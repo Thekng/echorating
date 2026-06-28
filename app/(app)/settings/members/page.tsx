@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from 'react'
 import { listMembers } from '@/features/members/queries'
-import { removeMemberAction, deactivateMemberAction, reactivateMemberAction, type MemberActionState } from '@/features/members/actions'
+import { removeMemberAction, deactivateMemberAction, reactivateMemberAction, type _MemberActionState } from '@/features/members/actions'
 import { EditMemberRoleModal } from '@/components/members/edit-member-role-modal'
 import { AssignMemberDepartmentModal } from '@/components/members/assign-member-department-modal'
 import { CreateMemberModal } from '@/components/members/create-member-modal'
