@@ -35,7 +35,7 @@ type FormulaRow = {
   formula_id: string
   metric_id: string
   expression: string
-  ast_json: unknown
+  ast_json: any
   return_type: string | null
 }
 
@@ -139,7 +139,7 @@ function parseOptions(): CliOptions {
   return options
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord(value: any): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
 }
 
@@ -185,7 +185,7 @@ function isMissingCalculatedValuesVersionHashColumn(message: string) {
 }
 
 async function loadDepartmentComputeContext(
-  admin: unknown,
+  admin: any,
   companyId: string,
   departmentId: string,
 ): Promise<{ ok: true; context: DepartmentComputeContext } | { ok: false; message: string }> {
@@ -336,7 +336,7 @@ async function loadDepartmentComputeContext(
 }
 
 async function loadEntryValues(
-  admin: unknown,
+  admin: any,
   entryId: string,
 ): Promise<{ ok: true; values: EntryValueRow[] } | { ok: false; message: string }> {
   const withBool = await admin
@@ -375,7 +375,7 @@ async function loadEntryValues(
 }
 
 async function insertLegacyNumericCalculatedRows(
-  admin: unknown,
+  admin: any,
   rows: RecomputedCalculatedRow[],
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   if (rows.some((row) => row.value_bool !== null)) {
@@ -420,7 +420,7 @@ async function insertLegacyNumericCalculatedRows(
 }
 
 async function persistCalculatedRows(
-  admin: unknown,
+  admin: any,
   entryId: string,
   rows: RecomputedCalculatedRow[],
 ): Promise<{ ok: true } | { ok: false; message: string }> {
@@ -481,7 +481,7 @@ async function persistCalculatedRows(
 }
 
 async function recomputeEntry(
-  admin: unknown,
+  admin: any,
   entry: EntryRow,
   context: DepartmentComputeContext,
   dryRun: boolean,

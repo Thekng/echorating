@@ -113,7 +113,7 @@ async function processNextJob(workerId = 'recalc-worker-local') {
 
     if (evError) throw evError
 
-    const metricIds = Array.from(new Set((ev ?? []).map((r: unknown) => r.metric_id)))
+    const metricIds = Array.from(new Set((ev ?? []).map((r: any) => r.metric_id)))
 
     const { data: metrics, error: metricsError } = await admin
       .from('metrics')
@@ -167,7 +167,7 @@ async function processNextJob(workerId = 'recalc-worker-local') {
     // Mark job complete
     await admin.rpc('complete_recalc_job', { job_entry_id: entryId, success: true, error_msg: null })
     return true
-  } catch (err: unknown) {
+  } catch (err: any) {
     console.error('processing error', err?.message ?? err)
     await admin.rpc('complete_recalc_job', { job_entry_id: entryId, success: false, error_msg: String(err?.message ?? err) })
     return true

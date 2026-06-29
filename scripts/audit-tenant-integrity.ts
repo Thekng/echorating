@@ -166,7 +166,7 @@ function lower(value: string | null | undefined) {
   return value?.trim().toLowerCase() ?? ''
 }
 
-async function loadOwnerAuthSnapshots(admin: unknown, ownerUserIds: string[]) {
+async function loadOwnerAuthSnapshots(admin: any, ownerUserIds: string[]) {
   const snapshots = new Map<string, AuthUserSnapshot>()
 
   await Promise.all(

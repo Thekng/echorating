@@ -1,10 +1,10 @@
 'use client'
 
 export default function ErrorPage({
-  _error,
+   error: _error,
   reset,
 }: {
-  error: Error & { digest?: string }
+   error: Error & { digest?: string }
   reset: () => void
 }) {
   return (
