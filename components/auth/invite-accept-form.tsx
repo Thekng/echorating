@@ -13,7 +13,7 @@ type InviteAcceptFormProps = {
   isExistingUser: boolean
 }
 
-export function InviteAcceptForm({ invitationId, companyName, role, isExistingUser }: InviteAcceptFormProps) {
+export function InviteAcceptForm({ companyName, role, isExistingUser }: InviteAcceptFormProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [password, setPassword] = useState('')
@@ -55,18 +55,28 @@ export function InviteAcceptForm({ invitationId, companyName, role, isExistingUs
         }
       }
 
-      const acceptResult = await acceptInviteAction(invitationId)
+      const supabase = createClient()
+      const { data: userData } = await supabase.auth.getUser()
+      const userId = userData.user?.id
+      const email = userData.user?.email
+
+      if (!userId || !email) {
+        setStatus('error')
+        setMessage('User not found. Please try logging in again.')
+        return
+      }
+
+      const acceptResult = await acceptInviteAction(userId, email)
       if (!acceptResult.success) {
         setStatus('error')
         setMessage(acceptResult.message)
         return
       }
 
-      const supabase = createClient()
       const { data: memberships, error: membershipsError } = await supabase
         .from('organization_members')
         .select('organization_id')
-        .eq('user_id', (await supabase.auth.getUser()).data.user?.id ?? '')
+        .eq('user_id', userId)
 
       if (membershipsError) {
         setStatus('error')
