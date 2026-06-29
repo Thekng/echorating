@@ -55,7 +55,7 @@ jobs:
       - name: Apply Supabase-compat scaffolding
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/db-ci-bootstrap.sql
       - name: Apply all Supabase migrations
-        run: supabase db reset --db-url "$DATABASE_URL" --no-seed
+        run: supabase db reset --force --db-url "$DATABASE_URL" --no-seed
       - name: Lint migrated schema
         run: supabase db lint --db-url "$DATABASE_URL" --fail-on error
 
