@@ -551,6 +551,9 @@ export function DailyLogForm({
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 {statusBadge}
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {statusText}
+                </span>
                 {dirty && (
                   <span className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
                     <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />

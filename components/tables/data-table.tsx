@@ -7,7 +7,7 @@ interface DataTableProps {
   data: any[]
 }
 
-export function DataTable({ columns, data }: DataTableProps) {
+export function DataTable({ columns: _columns, data: _data }: DataTableProps) {
   return (
     <div className="rounded-md border">
       <table className="w-full">

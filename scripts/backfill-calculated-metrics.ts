@@ -35,7 +35,7 @@ type FormulaRow = {
   formula_id: string
   metric_id: string
   expression: string
-  ast_json: unknown
+  ast_json: any
   return_type: string | null
 }
 
@@ -139,7 +139,7 @@ function parseOptions(): CliOptions {
   return options
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord(value: any): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
 }
 

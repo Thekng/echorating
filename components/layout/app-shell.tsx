@@ -34,6 +34,7 @@ export function AppShell({ children, companyName, userRole, userName, userEmail,
       ? savedTheme
       : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCollapsed(savedCollapsed)
     setTheme(resolvedTheme)
     setMounted(true)
