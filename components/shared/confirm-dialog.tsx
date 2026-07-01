@@ -1,33 +1,69 @@
+'use client'
+
+import * as React from "react"
+import { Dialog as DialogPrimitive } from "radix-ui"
+import { RefreshCw } from "lucide-react"
+import { Button } from "@/components/ui/button"
+
 interface ConfirmDialogProps {
   title: string
   description?: string
+  confirmText?: string
+  cancelText?: string
   onConfirm: () => void
   onCancel: () => void
+  isLoading?: boolean
+  variant?: "default" | "destructive"
 }
 
 export function ConfirmDialog({
   title,
   description,
+  confirmText = "Confirm",
+  cancelText = "Cancel",
   onConfirm,
   onCancel,
+  isLoading = false,
+  variant = "destructive",
 }: ConfirmDialogProps) {
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center">
-      <div className="bg-background rounded-lg p-6 max-w-sm">
-        <h2 className="text-lg font-semibold mb-2">{title}</h2>
-        {description && <p className="text-sm text-muted-foreground mb-4">{description}</p>}
-        <div className="flex gap-2 justify-end">
-          <button onClick={onCancel} className="px-4 py-2 rounded border">
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            className="px-4 py-2 rounded bg-destructive text-destructive-foreground"
-          >
-            Confirm
-          </button>
-        </div>
-      </div>
-    </div>
+    <DialogPrimitive.Root open onOpenChange={(open) => !open && onCancel()}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+        <DialogPrimitive.Content
+          role="alertdialog"
+          className="fixed left-[50%] top-[50%] z-50 grid w-full max-w-sm translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] rounded-lg"
+        >
+          <div className="flex flex-col gap-2 text-center sm:text-left">
+            <DialogPrimitive.Title className="text-lg font-semibold">
+              {title}
+            </DialogPrimitive.Title>
+            {description && (
+              <DialogPrimitive.Description className="text-sm text-muted-foreground">
+                {description}
+              </DialogPrimitive.Description>
+            )}
+          </div>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button
+              variant="outline"
+              onClick={onCancel}
+              disabled={isLoading}
+            >
+              {cancelText}
+            </Button>
+            <Button
+              variant={variant}
+              onClick={onConfirm}
+              disabled={isLoading}
+              autoFocus
+            >
+              {isLoading && <RefreshCw className="mr-2 size-4 animate-spin" />}
+              {confirmText}
+            </Button>
+          </div>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   )
 }
