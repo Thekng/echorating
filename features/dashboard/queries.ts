@@ -7,6 +7,7 @@ import { type Role } from '@/lib/rbac/roles'
 import { getAccessibleDepartments } from '@/lib/rbac/department-access'
 import { type MetricDataType } from '@/lib/metrics/data-types'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
+import { calcChangePct } from '@/lib/metrics/trend'
 import {
   computeCompletionScore,
   computeTargetPerformanceScore,
@@ -477,16 +478,6 @@ function toPercent(numerator: number, denominator: number) {
   return Number(((numerator / denominator) * 100).toFixed(1))
 }
 
-function calcChangePct(currentValue: number, previousValue: number) {
-  if (previousValue === 0 && currentValue === 0) {
-    return 0
-  }
-  if (previousValue === 0) {
-    return null
-  }
-  return Number((((currentValue - previousValue) / Math.abs(previousValue)) * 100).toFixed(1))
-}
-
 function parseMetricValue(
   dataType: MetricDataType,
   row: { value_number: number | null; value_boolean: boolean | null },
@@ -587,18 +578,55 @@ export async function getDashboardData(filters?: {
       ? filters.departmentId
       : departments[0].department_id
 
-  const metricsResult = await context.admin
-    .from('metrics')
-    .select('id, name, code, data_type, unit, sort_order')
+  const isManagerOrOwner = context.role === 'manager' || context.role === 'owner'
+  const requestedUserId = filters?.userId === 'all' ? null : filters?.userId
+  const effectiveUserId = isManagerOrOwner ? (requestedUserId || null) : context.userId
+
+  let entriesCurrentQuery = context.admin
+    .from('daily_reports')
+    .select('id, report_date, status, user_id')
     .eq('organization_id', context.organizationId)
     .eq('department_id', selectedDepartmentId)
-    .eq('is_active', true)
-    .in('data_type', SUPPORTED_KPI_TYPES)
-    .order('sort_order', { ascending: true, nullsFirst: false })
-    .order('name', { ascending: true })
+    .gte('report_date', range.startDate)
+    .lte('report_date', range.cutoffDate)
+
+  if (effectiveUserId) {
+    entriesCurrentQuery = entriesCurrentQuery.eq('user_id', effectiveUserId)
+  }
+
+  // Batch 1: all independent queries in parallel
+  const [metricsResult, activeMembersResult, entriesCurrentResult, activeOrgMembersResult] = await Promise.all([
+    context.admin
+      .from('metrics')
+      .select('id, name, code, data_type, unit, sort_order')
+      .eq('organization_id', context.organizationId)
+      .eq('department_id', selectedDepartmentId)
+      .eq('is_active', true)
+      .in('data_type', SUPPORTED_KPI_TYPES)
+      .order('sort_order', { ascending: true, nullsFirst: false })
+      .order('name', { ascending: true }),
+    context.admin
+      .from('department_members')
+      .select('user_id, profiles!inner(full_name)')
+      .eq('department_id', selectedDepartmentId),
+    entriesCurrentQuery,
+    context.admin
+      .from('organization_members')
+      .select('user_id')
+      .eq('organization_id', context.organizationId)
+      .eq('is_active', true),
+  ])
 
   if (metricsResult.error) {
     return { success: false as const, error: formatDatabaseError(metricsResult.error.message), data: null }
+  }
+
+  if (activeMembersResult.error) {
+    return { success: false as const, error: formatDatabaseError(activeMembersResult.error.message), data: null }
+  }
+
+  if (entriesCurrentResult.error) {
+    return { success: false as const, error: formatDatabaseError(entriesCurrentResult.error.message), data: null }
   }
 
   const metrics = (metricsResult.data ?? []) as DashboardMetric[]
@@ -618,46 +646,8 @@ export async function getDashboardData(filters?: {
   const selectedMetricIds = prioritizedMetrics.map((metric) => metric.id)
   const metricById = new Map(prioritizedMetrics.map((metric) => [metric.id, metric]))
 
-  const isManagerOrOwner = context.role === 'manager' || context.role === 'owner'
-  const requestedUserId = filters?.userId === 'all' ? null : filters?.userId
-  const effectiveUserId = isManagerOrOwner ? (requestedUserId || null) : context.userId
-
-  let entriesCurrentQuery = context.admin
-    .from('daily_reports')
-    .select('id, report_date, status, user_id')
-    .eq('organization_id', context.organizationId)
-    .eq('department_id', selectedDepartmentId)
-    .gte('report_date', range.startDate)
-    .lte('report_date', range.cutoffDate)
-
-  if (effectiveUserId) {
-    entriesCurrentQuery = entriesCurrentQuery.eq('user_id', effectiveUserId)
-  }
-
-  const [activeMembersResult, entriesCurrentResult] = await Promise.all([
-    context.admin
-      .from('department_members')
-      .select('user_id, profiles!inner(full_name)')
-      .eq('department_id', selectedDepartmentId),
-    entriesCurrentQuery,
-  ])
-
-  if (activeMembersResult.error) {
-    return { success: false as const, error: formatDatabaseError(activeMembersResult.error.message), data: null }
-  }
-
-  if (entriesCurrentResult.error) {
-    return { success: false as const, error: formatDatabaseError(entriesCurrentResult.error.message), data: null }
-  }
-
   const activeMembersData = (activeMembersResult.data as unknown[]) ?? []
-
-  // Cross-filter department members against active org members
-  const { data: activeOrgMembersData } = await context.admin
-    .from('organization_members')
-    .select('user_id')
-    .eq('organization_id', context.organizationId)
-    .eq('is_active', true)
+  const activeOrgMembersData = activeOrgMembersResult.data
 
   const activeOrgUserIds = new Set(
     ((activeOrgMembersData ?? []) as Array<{ user_id: string }>).map((r) => r.user_id),
@@ -691,6 +681,7 @@ export async function getDashboardData(filters?: {
   let trend: DashboardTrendPoint[] = []
   let series: DashboardSeries[] = []
   let primaryMetricLabel: string | null = null
+  let targetByMetricId = new Map<string, number>()
 
   if (selectedMetricIds.length > 0) {
     let entriesBothQuery = context.admin
@@ -706,13 +697,35 @@ export async function getDashboardData(filters?: {
       entriesBothQuery = entriesBothQuery.eq('user_id', effectiveUserId)
     }
 
-    const { data: entriesBothData, error: entriesBothError } = await entriesBothQuery
+    // Batch 2: entries-both-periods + targets (both depend on metric IDs)
+    const [entriesBothResult, targetsResult] = await Promise.all([
+      entriesBothQuery,
+      context.admin
+        .from('targets')
+        .select('metric_id, value')
+        .eq('company_id', context.organizationId)
+        .eq('department_id', selectedDepartmentId)
+        .eq('scope', 'department')
+        .eq('period', 'daily')
+        .eq('is_active', true)
+        .is('deleted_at', null)
+        .in('metric_id', selectedMetricIds),
+    ])
 
-    if (entriesBothError) {
-      return { success: false as const, error: formatDatabaseError(entriesBothError.message), data: null }
+    if (entriesBothResult.error) {
+      return { success: false as const, error: formatDatabaseError(entriesBothResult.error.message), data: null }
     }
 
-    const entriesBoth = (entriesBothData ?? []) as Array<{ id: string; report_date: string }>
+    if (targetsResult.data) {
+      targetByMetricId = new Map(
+        (targetsResult.data as Array<{ metric_id: string; value: number }>).map((t) => [
+          t.metric_id,
+          Number(t.value),
+        ]),
+      )
+    }
+
+    const entriesBoth = (entriesBothResult.data ?? []) as Array<{ id: string; report_date: string }>
     const entryIds = entriesBoth.map((entry) => entry.id)
     const entryDateById = new Map(entriesBoth.map((entry) => [entry.id, entry.report_date]))
 
@@ -895,29 +908,7 @@ export async function getDashboardData(filters?: {
     }
   }
 
-  // --- Targets for selected department ---
-  let targetByMetricId = new Map<string, number>()
-  if (selectedMetricIds.length > 0) {
-    const { data: targetsData } = await context.admin
-      .from('targets')
-      .select('metric_id, value')
-      .eq('company_id', context.organizationId)
-      .eq('department_id', selectedDepartmentId)
-      .eq('scope', 'department')
-      .eq('period', 'daily')
-      .eq('is_active', true)
-      .is('deleted_at', null)
-      .in('metric_id', selectedMetricIds)
-
-    if (targetsData) {
-      targetByMetricId = new Map(
-        (targetsData as Array<{ metric_id: string; value: number }>).map((t) => [
-          t.metric_id,
-          Number(t.value),
-        ]),
-      )
-    }
-  }
+  // targetByMetricId is populated in Batch 2 above when selectedMetricIds.length > 0
 
   // --- Agency Score ---
   const expectedLogs = effectiveUserId

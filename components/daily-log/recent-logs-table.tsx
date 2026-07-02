@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Trash2, Pencil } from 'lucide-react'
+import { Trash2, Pencil, Download } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { deleteDailyLogAction } from '@/features/daily-log/actions'
 import type {
@@ -10,15 +10,16 @@ import type {
   DailyLogRecentEntry,
   DailyLogRecentMetricValue,
 } from '@/features/daily-log/types'
-import { formatSecondsToDuration } from '@/lib/daily-log/value-parser'
 import { formatDateShort } from '@/lib/utils'
 import { booleanLabels, normalizeMetricSettings } from '@/lib/metrics/data-types'
+import { formatMetricNumber } from '@/lib/metrics/format'
 
 type RecentLogsTableProps = {
   departmentId: string
   logs: DailyLogRecentEntry[]
   metrics: DailyLogMetric[]
   canDelete: boolean
+  canExport?: boolean
   currentPage: number
   pageSize: number
   totalCount: number
@@ -40,35 +41,11 @@ function formatAverageValue(metric: DailyLogMetric, value: number | null) {
     return '-'
   }
 
-  const settings = normalizeMetricSettings(metric.data_type, metric.settings)
-
-  if (metric.data_type === 'duration') {
-    if (settings.durationFormat === 'minutes') {
-      return `${Number((value / 60).toFixed(2))}`
-    }
-    if (settings.durationFormat === 'hours') {
-      return `${Number((value / 3600).toFixed(2))}`
-    }
-    if (settings.durationFormat === 'days') {
-      return `${Number((value / 86400).toFixed(2))}`
-    }
-    return formatSecondsToDuration(value) || '-'
-  }
-
-  if (metric.data_type === 'currency') {
-    const currencyCode = settings.currencyCode || 'USD'
-    return new Intl.NumberFormat(undefined, {
-      style: 'currency',
-      currency: currencyCode,
-      maximumFractionDigits: 2,
-    }).format(value)
-  }
-
-  if (metric.data_type === 'percent') {
-    return `${Number(value.toFixed(2))}%`
-  }
-
-  return String(Number(value.toFixed(2)))
+  return formatMetricNumber(value, {
+    dataType: metric.data_type,
+    unit: metric.unit,
+    settings: metric.settings,
+  })
 }
 
 function getMetricAverage(logs: DailyLogRecentEntry[], metric: DailyLogMetric) {
@@ -95,30 +72,13 @@ function metricValue(values: DailyLogRecentMetricValue[], metric: DailyLogMetric
   }
   const settings = normalizeMetricSettings(metric.data_type, metric.settings)
 
+  // Non-numeric types: handle directly
   if (metric.data_type === 'boolean') {
     if (value.value_boolean === null) {
       return '-'
     }
-
     const labels = booleanLabels(settings)
     return value.value_boolean ? labels.trueLabel : labels.falseLabel
-  }
-
-  if (metric.data_type === 'duration') {
-    if (value.value_number === null || value.value_number === undefined) {
-      return '-'
-    }
-
-    if (settings.durationFormat === 'minutes') {
-      return `${Number((value.value_number / 60).toFixed(2))}`
-    }
-    if (settings.durationFormat === 'hours') {
-      return `${Number((value.value_number / 3600).toFixed(2))}`
-    }
-    if (settings.durationFormat === 'days') {
-      return `${Number((value.value_number / 86400).toFixed(2))}`
-    }
-    return formatSecondsToDuration(value.value_number) || '-'
   }
 
   if (metric.data_type === 'text' || metric.data_type === 'datetime' || metric.data_type === 'file') {
@@ -129,7 +89,6 @@ function metricValue(values: DailyLogRecentMetricValue[], metric: DailyLogMetric
     if (!value.value_text) {
       return '-'
     }
-
     if (settings.selectionMode === 'multi') {
       try {
         const parsed = JSON.parse(value.value_text) as string[]
@@ -143,24 +102,16 @@ function metricValue(values: DailyLogRecentMetricValue[], metric: DailyLogMetric
     return value.value_text
   }
 
+  // Numeric types (number, currency, percent, duration): delegate to formatMetricNumber
   if (value.value_number === null || value.value_number === undefined) {
     return '-'
   }
 
-  if (metric.data_type === 'currency') {
-    const currencyCode = settings.currencyCode || 'USD'
-    return new Intl.NumberFormat(undefined, {
-      style: 'currency',
-      currency: currencyCode,
-      maximumFractionDigits: 2,
-    }).format(value.value_number)
-  }
-
-  if (metric.data_type === 'percent') {
-    return `${value.value_number}%`
-  }
-
-  return String(value.value_number)
+  return formatMetricNumber(value.value_number, {
+    dataType: metric.data_type,
+    unit: metric.unit,
+    settings: metric.settings,
+  })
 }
 
 export function RecentLogsTable({
@@ -168,6 +119,7 @@ export function RecentLogsTable({
   logs,
   metrics,
   canDelete,
+  canExport,
   currentPage,
   pageSize,
   totalCount,
@@ -272,6 +224,16 @@ export function RecentLogsTable({
         </p>
 
         <div className="flex items-center gap-2">
+          {canExport && (
+            <a
+              href={`/api/export/daily-logs?departmentId=${departmentId}`}
+              className="inline-flex h-9 items-center gap-1.5 rounded-md border border-input px-3 text-sm hover:bg-muted/40"
+              title="Export CSV"
+            >
+              <Download className="size-3.5" />
+              Export CSV
+            </a>
+          )}
           <label htmlFor="recent-logs-page-size" className="text-sm text-muted-foreground">
             Logs
           </label>

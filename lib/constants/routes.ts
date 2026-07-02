@@ -22,6 +22,7 @@ export const ROUTES = {
   SETTINGS_MEMBERS: '/settings/members',
   SETTINGS_METRICS: '/settings/metrics',
   SETTINGS_TARGETS: '/settings/targets',
+  SETTINGS_AUDIT_LOG: '/settings/audit-log',
   REPORTS: '/reports',
   ACCOUNT: '/account',
 }

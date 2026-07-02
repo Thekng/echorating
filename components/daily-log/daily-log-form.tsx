@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
-import { FormEvent, useActionState, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type FormEvent, useActionState, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
@@ -9,6 +9,7 @@ import { CheckCircle2, FileEdit, Circle } from 'lucide-react'
 import { saveDailyLogAction } from '@/features/daily-log/actions'
 import { DurationSelector } from '@/components/daily-log/duration-selector'
 import { booleanLabels, normalizeMetricSettings } from '@/lib/metrics/data-types'
+import { validateMetricValue } from '@/lib/daily-log/validate-metric-value'
 import {
   INITIAL_DAILY_LOG_ACTION_STATE,
   type DailyLogMetric,
@@ -87,6 +88,7 @@ function renderMetricInput(
   value: string,
   pending: boolean,
   onChange: (nextValue: string) => void,
+  onBlur?: () => void,
 ) {
   const settings = normalizeMetricSettings(metric.data_type, metric.settings)
 
@@ -176,6 +178,7 @@ function renderMetricInput(
         inputMode={settings.textFormat === 'phone' ? 'tel' : 'text'}
         value={value}
         onChange={(event) => onChange(event.currentTarget.value)}
+        onBlur={onBlur}
         placeholder={settings.textFormat?.replace('_', ' ') ?? 'text'}
         disabled={pending}
         className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
@@ -284,6 +287,7 @@ function renderMetricInput(
         type="url"
         value={value}
         onChange={(event) => onChange(event.currentTarget.value)}
+        onBlur={onBlur}
         placeholder={settings.fileKind === 'image' ? 'https://.../image.png' : 'https://.../document.pdf'}
         disabled={pending}
         className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
@@ -307,6 +311,7 @@ function renderMetricInput(
           step="0.01"
           value={value}
           onChange={(event) => onChange(event.currentTarget.value)}
+          onBlur={onBlur}
           placeholder="0.00"
           disabled={pending}
           className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
@@ -325,6 +330,7 @@ function renderMetricInput(
           step="0.01"
           value={value}
           onChange={(event) => onChange(event.currentTarget.value)}
+          onBlur={onBlur}
           placeholder="0"
           disabled={pending}
           className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
@@ -342,6 +348,7 @@ function renderMetricInput(
       step={settings.numberKind === 'integer' ? '1' : '0.01'}
       value={value}
       onChange={(event) => onChange(event.currentTarget.value)}
+      onBlur={onBlur}
       placeholder="0"
       disabled={pending}
       className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
@@ -362,6 +369,7 @@ export function DailyLogForm({
   const searchParams = useSearchParams()
   const [state, formAction, pending] = useActionState(saveDailyLogAction, INITIAL_DAILY_LOG_ACTION_STATE)
   const [values, setValues] = useState<Record<string, string>>(initialValues)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   const [notes, setNotes] = useState(initialNotes)
   const [logDate, setLogDate] = useState(date)
@@ -384,6 +392,7 @@ export function DailyLogForm({
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect */
     setValues(initialValues)
+    setFieldErrors({})
     setNotes(initialNotes)
     setLogDate(date)
     setEntryStatus(existingEntry?.status ?? null)
@@ -488,6 +497,7 @@ export function DailyLogForm({
     return 'No saved draft yet'
   })()
 
+  const hasFieldErrors = Object.keys(fieldErrors).length > 0
   const disabledForm = pending || !departmentId || !userId
 
   const filledCount = metrics.filter((m) => {
@@ -587,7 +597,29 @@ export function DailyLogForm({
                         ...current,
                         [metric.id]: nextValue,
                       }))
+                      // Clear error on change
+                      if (fieldErrors[metric.id]) {
+                        setFieldErrors((current) => {
+                          const next = { ...current }
+                          delete next[metric.id]
+                          return next
+                        })
+                      }
+                    }, () => {
+                      const result = validateMetricValue(metric.data_type, metric.settings, values[metric.id] ?? '')
+                      if (!result.valid) {
+                        setFieldErrors((current) => ({ ...current, [metric.id]: result.message }))
+                      } else {
+                        setFieldErrors((current) => {
+                          const next = { ...current }
+                          delete next[metric.id]
+                          return next
+                        })
+                      }
                     })}
+                    {fieldErrors[metric.id] && (
+                      <p className="text-xs text-red-600 dark:text-red-400">{fieldErrors[metric.id]}</p>
+                    )}
                   </div>
                 )
               })}
@@ -624,7 +656,7 @@ export function DailyLogForm({
                   type="submit"
                   name="intent"
                   value="draft"
-                  disabled={disabledForm || !dirty}
+                  disabled={disabledForm || !dirty || hasFieldErrors}
                   data-submit-kind="manual-draft"
                   variant="outline"
                   className="h-11 flex-1 text-sm font-semibold"
@@ -635,7 +667,7 @@ export function DailyLogForm({
                   type="submit"
                   name="intent"
                   value="submit"
-                  disabled={disabledForm}
+                  disabled={disabledForm || hasFieldErrors}
                   data-submit-kind="submit"
                   className="h-11 flex-1 gap-2 text-sm font-semibold"
                 >

@@ -3,7 +3,7 @@
 import { type DashboardKpi } from '@/features/dashboard/queries'
 import { formatMetricNumber } from '@/lib/metrics/format'
 import { getMetricIcon } from '@/lib/utils/metric-helpers'
-import { ArrowUp, ArrowDown, Minus } from 'lucide-react'
+import { TrendBadge } from '@/components/shared/trend-badge'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 type DashboardInteractiveProps = {
@@ -21,32 +21,6 @@ function formatKpiValue(kpi: DashboardKpi, value: number) {
     unit: kpi.unit,
     booleanMode: 'count',
   })
-}
-
-function TrendBadge({ changePct }: { changePct: number | null }) {
-  if (changePct === null) {
-    return null
-  }
-
-  if (changePct === 0) {
-    return (
-      <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground">
-        <Minus className="size-3" />
-      </span>
-    )
-  }
-
-  const isPositive = changePct > 0
-  return (
-    <span
-      className={`inline-flex items-center gap-0.5 text-xs font-medium ${
-        isPositive ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
-      }`}
-    >
-      {isPositive ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />}
-      {Math.abs(changePct).toFixed(1)}%
-    </span>
-  )
 }
 
 export function DashboardInteractive({

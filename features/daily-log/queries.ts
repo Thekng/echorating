@@ -222,23 +222,42 @@ async function getRecentLogs(
   const userIds = Array.from(new Set(entries.map((entry) => entry.user_id)))
   const metricIds = metrics.map((metric) => metric.id)
 
-  const { data: profilesData, error: profilesError } = await admin
-    .from('organization_members')
-    .select('user_id, profiles!inner(full_name)')
-    .eq('organization_id', organizationId)
-    .in('user_id', userIds)
+  // Batch profiles + values in parallel (both depend on entryIds/userIds from above)
+  const [profilesResult, valuesResult] = await Promise.all([
+    admin
+      .from('organization_members')
+      .select('user_id, profiles!inner(full_name)')
+      .eq('organization_id', organizationId)
+      .in('user_id', userIds),
+    metricIds.length > 0
+      ? admin
+          .from('daily_report_values')
+          .select('daily_report_id, metric_id, value_number, value_text, value_boolean')
+          .in('daily_report_id', entryIds)
+          .in('metric_id', metricIds)
+      : Promise.resolve({ data: null, error: null }),
+  ])
 
-  if (profilesError) {
+  if (profilesResult.error) {
       return {
         ok: false as const,
-        message: formatDatabaseError(profilesError.message),
+        message: formatDatabaseError(profilesResult.error.message),
         recentLogs: [] as DailyLogRecentEntry[],
         totalCount: 0,
       }
   }
 
+  if (valuesResult.error) {
+    return {
+      ok: false as const,
+      message: formatDatabaseError(valuesResult.error.message),
+      recentLogs: [] as DailyLogRecentEntry[],
+      totalCount: 0,
+    }
+  }
+
   const nameByUserId = new Map(
-    ((profilesData ?? []) as Array<{
+    ((profilesResult.data ?? []) as Array<{
       user_id: string
       profiles: { full_name?: string | null } | Array<{ full_name?: string | null }> | null
     }>).map((profile) => {
@@ -247,35 +266,23 @@ async function getRecentLogs(
     }),
   )
 
-  let valuesByEntry = new Map<string, DailyLogRecentMetricValue[]>()
-  if (metricIds.length > 0) {
-    const { data: valuesData, error: valuesError } = await admin
-      .from('daily_report_values')
-      .select('daily_report_id, metric_id, value_number, value_text, value_boolean')
-      .in('daily_report_id', entryIds)
-      .in('metric_id', metricIds)
-
-    if (valuesError) {
-      return {
-        ok: false as const,
-        message: formatDatabaseError(valuesError.message),
-        recentLogs: [] as DailyLogRecentEntry[],
-        totalCount: 0,
-      }
-    }
-
-    valuesByEntry = (valuesData ?? []).reduce((acc, item) => {
-      const existing = acc.get(item.daily_report_id as string) ?? []
-      existing.push({
-        metric_id: item.metric_id as string,
-        value_number: item.value_number === null ? null : Number(item.value_number),
-        value_text: item.value_text as string | null,
-        value_boolean: item.value_boolean as boolean | null,
-      })
-      acc.set(item.daily_report_id as string, existing)
-      return acc
-    }, new Map<string, DailyLogRecentMetricValue[]>())
-  }
+  const valuesByEntry = ((valuesResult.data ?? []) as Array<{
+    daily_report_id: string
+    metric_id: string
+    value_number: number | null
+    value_text: string | null
+    value_boolean: boolean | null
+  }>).reduce((acc, item) => {
+    const existing = acc.get(item.daily_report_id) ?? []
+    existing.push({
+      metric_id: item.metric_id,
+      value_number: item.value_number === null ? null : Number(item.value_number),
+      value_text: item.value_text,
+      value_boolean: item.value_boolean,
+    })
+    acc.set(item.daily_report_id, existing)
+    return acc
+  }, new Map<string, DailyLogRecentMetricValue[]>())
 
   return {
     ok: true as const,

@@ -6,8 +6,10 @@ import { getActorContext } from '@/lib/supabase/actor-context'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ROUTES } from '@/lib/constants/routes'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
-import { normalizeMetricSettings, type MetricDataType } from '@/lib/metrics/data-types'
+import { normalizeMetricSettings, isCalculatedSupportedType, type MetricDataType } from '@/lib/metrics/data-types'
+import { parseFormulaExpression } from '@/lib/metrics/formula'
 import { z } from 'zod'
+import { logAuditEvent } from '@/lib/audit/log'
 
 type MetricFieldKey =
   | 'metricId'
@@ -85,6 +87,84 @@ function mapMetricDatabaseError(message: string): MetricActionState {
   }
 
   return actionError(formatDatabaseError(message))
+}
+
+async function syncMetricFormula(
+  admin: ReturnType<typeof createAdminClient>,
+  organizationId: string,
+  metricId: string,
+  inputMode: string,
+  formulaExpression: string | undefined,
+) {
+  if (inputMode === 'calculated' && formulaExpression?.trim()) {
+    const parsed = parseFormulaExpression(formulaExpression)
+    if (!parsed.success) {
+      return { ok: false as const, message: parsed.error }
+    }
+
+    // Upsert metric_formulas
+    const { error: formulaError } = await admin
+      .from('metric_formulas')
+      .upsert(
+        {
+          metric_id: metricId,
+          organization_id: organizationId,
+          expression: parsed.normalizedExpression,
+          return_type: parsed.returnType,
+        },
+        { onConflict: 'metric_id' },
+      )
+
+    if (formulaError) {
+      return { ok: false as const, message: formatDatabaseError(formulaError.message) }
+    }
+
+    // Sync dependencies: delete old, insert new
+    await admin
+      .from('metric_formula_dependencies')
+      .delete()
+      .eq('metric_id', metricId)
+
+    if (parsed.metricCodes.length > 0) {
+      // Resolve metric codes to IDs in same department
+      const { data: depMetrics } = await admin
+        .from('metrics')
+        .select('id, code')
+        .eq('organization_id', organizationId)
+        .in('code', parsed.metricCodes)
+
+      const dependencyRows = ((depMetrics ?? []) as Array<{ id: string; code: string }>).map((m) => ({
+        metric_id: metricId,
+        depends_on_metric_id: m.id,
+      }))
+
+      if (dependencyRows.length > 0) {
+        await admin.from('metric_formula_dependencies').insert(dependencyRows)
+      }
+    }
+
+    // Update the metric's input_mode
+    await admin
+      .from('metrics')
+      .update({ input_mode: 'calculated', updated_at: new Date().toISOString() })
+      .eq('id', metricId)
+      .eq('organization_id', organizationId)
+
+    return { ok: true as const }
+  }
+
+  // Switching to manual or not calculated — clean up
+  if (inputMode === 'manual') {
+    await admin.from('metric_formula_dependencies').delete().eq('metric_id', metricId)
+    await admin.from('metric_formulas').delete().eq('metric_id', metricId)
+    await admin
+      .from('metrics')
+      .update({ input_mode: 'manual', updated_at: new Date().toISOString() })
+      .eq('id', metricId)
+      .eq('organization_id', organizationId)
+  }
+
+  return { ok: true as const }
 }
 
 function revalidateMetricConsumerPaths() {
@@ -167,6 +247,8 @@ export async function createMetricAction(
     dataType: field(formData, 'dataType'),
     isRequired: field(formData, 'isRequired'),
     settings: field(formData, 'settings'),
+    inputMode: field(formData, 'inputMode'),
+    formulaExpression: field(formData, 'formulaExpression'),
   })
 
   if (!parsed.success) {
@@ -212,6 +294,40 @@ export async function createMetricAction(
     return mapMetricDatabaseError(createError.message)
   }
 
+  // Fetch created metric id for audit
+  const { data: createdMetric } = await context.admin
+    .from('metrics')
+    .select('id')
+    .eq('organization_id', context.organizationId)
+    .eq('department_id', parsed.data.departmentId)
+    .eq('code', code)
+    .maybeSingle()
+
+  if (createdMetric) {
+    // Sync formula if calculated mode
+    if (parsed.data.inputMode === 'calculated' && isCalculatedSupportedType(parsed.data.dataType)) {
+      const formulaResult = await syncMetricFormula(
+        context.admin,
+        context.organizationId,
+        createdMetric.id as string,
+        parsed.data.inputMode,
+        parsed.data.formulaExpression,
+      )
+      if (!formulaResult.ok) {
+        return actionError(formulaResult.message)
+      }
+    }
+
+    logAuditEvent({
+      organizationId: context.organizationId,
+      userId: context.userId,
+      action: 'metric.created',
+      entityType: 'metric',
+      entityId: createdMetric.id as string,
+      metadata: { name: parsed.data.name.trim(), dataType: parsed.data.dataType, inputMode: parsed.data.inputMode },
+    })
+  }
+
   revalidateMetricConsumerPaths()
   return actionSuccess('Metric created.')
 }
@@ -229,6 +345,8 @@ export async function updateMetricAction(
     dataType: field(formData, 'dataType'),
     isRequired: field(formData, 'isRequired'),
     settings: field(formData, 'settings'),
+    inputMode: field(formData, 'inputMode'),
+    formulaExpression: field(formData, 'formulaExpression'),
   })
 
   if (!parsed.success) {
@@ -291,6 +409,32 @@ export async function updateMetricAction(
   if (updateError) {
     return mapMetricDatabaseError(updateError.message)
   }
+
+  // Sync formula for calculated metrics
+  if (isCalculatedSupportedType(parsed.data.dataType)) {
+    const formulaResult = await syncMetricFormula(
+      context.admin,
+      context.organizationId,
+      parsed.data.metricId,
+      parsed.data.inputMode ?? 'manual',
+      parsed.data.formulaExpression,
+    )
+    if (!formulaResult.ok) {
+      return actionError(formulaResult.message)
+    }
+  } else if (parsed.data.inputMode !== 'calculated') {
+    // Clean up formula if switching to unsupported type
+    await syncMetricFormula(context.admin, context.organizationId, parsed.data.metricId, 'manual', undefined)
+  }
+
+  logAuditEvent({
+    organizationId: context.organizationId,
+    userId: context.userId,
+    action: 'metric.updated',
+    entityType: 'metric',
+    entityId: parsed.data.metricId,
+    metadata: { name: parsed.data.name.trim(), dataType: parsed.data.dataType, inputMode: parsed.data.inputMode },
+  })
 
   revalidateMetricConsumerPaths()
   return actionSuccess('Metric updated.')
@@ -456,6 +600,15 @@ export async function deleteMetricAction(formData: FormData): Promise<MetricActi
   if (deleteError) {
     return actionError(formatDatabaseError(deleteError.message))
   }
+
+  logAuditEvent({
+    organizationId: context.organizationId,
+    userId: context.userId,
+    action: 'metric.deleted',
+    entityType: 'metric',
+    entityId: parsed.data.metricId,
+    metadata: { name: metric.name as string },
+  })
 
   revalidatePath(ROUTES.SETTINGS_METRICS)
   return actionSuccess(`Metric "${metric.name}" deleted.`)

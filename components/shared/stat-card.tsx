@@ -1,7 +1,7 @@
 import React from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
-import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { TrendBadge } from '@/components/shared/trend-badge'
 import { cn } from '@/lib/utils'
 
 interface StatCardProps {
@@ -25,8 +25,6 @@ export function StatCard({
   progress,
   className,
 }: StatCardProps) {
-  const isPositive = change !== null && change !== undefined && change > 0
-  const isNegative = change !== null && change !== undefined && change < 0
   const showProgress = progress !== null && progress !== undefined
 
   return (
@@ -44,21 +42,8 @@ export function StatCard({
               )}
             </div>
             {change !== null && change !== undefined && (
-              <div
-                className={cn(
-                  'mt-2 flex items-center gap-1 text-xs font-medium',
-                  isPositive && 'text-emerald-600 dark:text-emerald-400',
-                  isNegative && 'text-rose-600 dark:text-rose-400',
-                  !isPositive && !isNegative && 'text-muted-foreground',
-                )}
-              >
-                {isPositive && <TrendingUp className="h-3 w-3" />}
-                {isNegative && <TrendingDown className="h-3 w-3" />}
-                {!isPositive && !isNegative && <Minus className="h-3 w-3" />}
-                <span>
-                  {change > 0 ? '+' : ''}
-                  {change.toFixed(1)}%
-                </span>
+              <div className="mt-2">
+                <TrendBadge changePct={change} />
               </div>
             )}
             {target !== null && target !== undefined && (

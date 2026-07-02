@@ -52,6 +52,11 @@ export const metricFormSchema = z.object({
     z.boolean().default(false),
   ),
   settings: settingsSchema,
+  inputMode: z.preprocess(
+    (value) => (typeof value === 'string' && value ? value : 'manual'),
+    z.enum(['manual', 'calculated']).default('manual'),
+  ),
+  formulaExpression: optionalStringSchema,
 })
 
 export const metricFilterSchema = z.object({

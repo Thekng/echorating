@@ -15,6 +15,7 @@ import { ROUTES } from '@/lib/constants/routes'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
 import { type Role, isRole } from '@/lib/rbac/roles'
 import { syncSessionClaims } from '@/lib/supabase/session-claims'
+import { logAuditEvent } from '@/lib/audit/log'
 
 type MemberFieldKey = 'role' | 'departmentId' | 'userId' | 'nextStatus'
 
@@ -182,6 +183,15 @@ export async function updateMemberRoleAction(
 
   const newRole = isRole(parsed.data.role) ? parsed.data.role : null
   await syncSessionClaims(parsed.data.userId, context.organizationId, newRole)
+
+  logAuditEvent({
+    organizationId: context.organizationId,
+    userId: context.userId,
+    action: 'member.role_updated',
+    entityType: 'member',
+    entityId: parsed.data.userId,
+    metadata: { newRole: parsed.data.role, previousRole: targetMembership.role },
+  })
 
   revalidatePath(ROUTES.SETTINGS_MEMBERS)
   return actionSuccess('Member role updated.')
@@ -504,6 +514,14 @@ export async function deactivateMemberAction(
       .in('department_id', deptIds)
   }
 
+  logAuditEvent({
+    organizationId: context.organizationId,
+    userId: context.userId,
+    action: 'member.deactivated',
+    entityType: 'member',
+    entityId: parsed.data.userId,
+  })
+
   revalidatePath(ROUTES.SETTINGS_MEMBERS)
   return actionSuccess('Member deactivated.')
 }
@@ -540,6 +558,14 @@ export async function reactivateMemberAction(
   if (updateError) {
     return actionError(formatDatabaseError(updateError.message))
   }
+
+  logAuditEvent({
+    organizationId: context.organizationId,
+    userId: context.userId,
+    action: 'member.reactivated',
+    entityType: 'member',
+    entityId: parsed.data.userId,
+  })
 
   revalidatePath(ROUTES.SETTINGS_MEMBERS)
   return actionSuccess('Member reactivated.')
@@ -643,6 +669,15 @@ export async function createMemberAction(
 
     await syncSessionClaims(existingUser.id, context.organizationId, parsed.data.role)
 
+    logAuditEvent({
+      organizationId: context.organizationId,
+      userId: context.userId,
+      action: 'member.created',
+      entityType: 'member',
+      entityId: existingUser.id,
+      metadata: { email: parsed.data.email, role: parsed.data.role },
+    })
+
     revalidatePath(ROUTES.SETTINGS_MEMBERS)
     return actionSuccess('Member added successfully.')
   }
@@ -665,6 +700,15 @@ export async function createMemberAction(
   if (inviteError) {
     return actionError(formatDatabaseError(inviteError.message))
   }
+
+  logAuditEvent({
+    organizationId: context.organizationId,
+    userId: context.userId,
+    action: 'member.invited',
+    entityType: 'member',
+    entityId: parsed.data.email,
+    metadata: { email: parsed.data.email, role: parsed.data.role },
+  })
 
   revalidatePath(ROUTES.SETTINGS_MEMBERS)
   return actionSuccess('Invitation created. They\'ll be added when they sign up.')

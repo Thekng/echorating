@@ -19,6 +19,7 @@ import { parseBooleanInput, parseDurationToSeconds } from '@/lib/daily-log/value
 import { booleanLabels, normalizeMetricSettings, type DurationFormat } from '@/lib/metrics/data-types'
 import { enqueueCalculatedRecomputeJob } from './calculated-recompute'
 import { triggerCalculatedRecomputeWorker } from '@/lib/jobs/calculated-recompute-trigger'
+import { logAuditEvent } from '@/lib/audit/log'
 
 const INITIAL_ERROR_STATE: DailyLogActionState = {
   status: 'error',
@@ -652,6 +653,15 @@ export async function saveDailyLogAction(
     after(() => triggerCalculatedRecomputeWorker())
   }
 
+  logAuditEvent({
+    organizationId: context.organizationId,
+    userId: context.userId,
+    action: submitting ? 'daily_report.submitted' : 'daily_report.saved',
+    entityType: 'daily_report',
+    entityId: savedEntryId,
+    metadata: { date: parsed.data.date, departmentId: parsed.data.departmentId },
+  })
+
   revalidatePath(ROUTES.DAILY_LOG)
 
   telemetryOutcome = 'success'
@@ -750,6 +760,14 @@ export async function deleteDailyLogAction(formData: FormData): Promise<void> {
   if (deleteError) {
     return
   }
+
+  logAuditEvent({
+    organizationId: context.organizationId,
+    userId: context.userId,
+    action: 'daily_report.deleted',
+    entityType: 'daily_report',
+    entityId: parsed.data.entryId,
+  })
 
   revalidatePath(ROUTES.DAILY_LOG)
 }

@@ -102,6 +102,7 @@ export default async function DailyLogPage({ searchParams }: DailyLogPageProps) 
           logs={recentLogs}
           metrics={metrics}
           canDelete={true}
+          canExport={canManage}
           currentPage={recentLogsPage}
           pageSize={recentLogsPerPage}
           totalCount={recentLogsTotalCount}

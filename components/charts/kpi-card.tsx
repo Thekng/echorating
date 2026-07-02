@@ -1,5 +1,5 @@
 import React from 'react'
-import { TrendingUp, TrendingDown } from 'lucide-react'
+import { TrendBadge } from '@/components/shared/trend-badge'
 
 interface KPICardProps {
   title: string
@@ -10,9 +10,6 @@ interface KPICardProps {
 }
 
 export function KPICard({ title, value, change, icon, unit }: KPICardProps) {
-  const isPositive = change !== null && change !== undefined && change > 0
-  const isNegative = change !== null && change !== undefined && change < 0
-
   return (
     <div className="rounded-xl border bg-card p-5 hover:shadow-sm transition-shadow">
       <div className="flex items-start justify-between">
@@ -23,10 +20,8 @@ export function KPICard({ title, value, change, icon, unit }: KPICardProps) {
             {unit && <span className="text-xs text-muted-foreground">{unit}</span>}
           </div>
           {change !== null && change !== undefined && (
-            <div className={`mt-2 flex items-center gap-1 text-xs font-medium ${isPositive ? 'text-emerald-600' : isNegative ? 'text-rose-600' : 'text-slate-600'}`}>
-              {isPositive && <TrendingUp className="h-3 w-3" />}
-              {isNegative && <TrendingDown className="h-3 w-3" />}
-              <span>{change > 0 ? '+' : ''}{change.toFixed(1)}%</span>
+            <div className="mt-2">
+              <TrendBadge changePct={change} />
             </div>
           )}
         </div>

@@ -7,6 +7,7 @@ import { getActorContext } from '@/lib/supabase/actor-context'
 import { requireRole } from '@/lib/rbac/guards'
 import { ROUTES } from '@/lib/constants/routes'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
+import { logAuditEvent } from '@/lib/audit/log'
 
 type CompanyActionState = {
   status: 'idle' | 'success' | 'error'
@@ -59,6 +60,15 @@ export async function updateCompanyAction(
   if (error) {
     return { status: 'error', message: formatDatabaseError(error.message) }
   }
+
+  logAuditEvent({
+    organizationId: context.organizationId,
+    userId: context.userId,
+    action: 'company.updated',
+    entityType: 'company',
+    entityId: context.companyId,
+    metadata: { name: parsed.data.name.trim(), timezone: parsed.data.timezone },
+  })
 
   revalidatePath(ROUTES.SETTINGS_COMPANY)
   return { status: 'success', message: 'Company updated successfully.' }

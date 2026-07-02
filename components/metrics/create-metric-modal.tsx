@@ -2,16 +2,24 @@
 
 import { useState, useTransition, type FormEvent } from 'react'
 import { createMetricAction, type MetricActionState } from '@/features/metrics/actions'
-import { METRIC_DATA_TYPES } from '@/lib/metrics/data-types'
+import { METRIC_DATA_TYPES, isCalculatedSupportedType } from '@/lib/metrics/data-types'
+import { parseFormulaExpression } from '@/lib/metrics/formula'
 import { MetricSettingsFields } from '@/components/metrics/metric-settings-fields'
 import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
+
+type SiblingMetric = {
+  id: string
+  code: string
+  name: string
+}
 
 type CreateMetricModalProps = {
   departments: Array<{
     id: string
     name: string
   }>
+  siblingMetrics?: SiblingMetric[]
   onSaved?: (message: string) => void
 }
 
@@ -40,7 +48,7 @@ function toMetricCode(name: string) {
     .replace(/^_+|_+$/g, '')
 }
 
-export function CreateMetricModal({ departments, onSaved }: CreateMetricModalProps) {
+export function CreateMetricModal({ departments, siblingMetrics, onSaved }: CreateMetricModalProps) {
   const [open, setOpen] = useState(false)
   const [state, setState] = useState<MetricActionState>(INITIAL_STATE)
   const [pending, startTransition] = useTransition()
@@ -50,6 +58,9 @@ export function CreateMetricModal({ departments, onSaved }: CreateMetricModalPro
   const [codeDirty, setCodeDirty] = useState(false)
   const [dataType, setDataType] = useState<string>('number')
   const [settings, setSettings] = useState<Record<string, unknown>>({})
+  const [inputMode, setInputMode] = useState<'manual' | 'calculated'>('manual')
+  const [formulaExpression, setFormulaExpression] = useState('')
+  const [formulaError, setFormulaError] = useState<string | null>(null)
 
   function resetFormState() {
     setDepartmentId(departments[0]?.id ?? '')
@@ -58,6 +69,9 @@ export function CreateMetricModal({ departments, onSaved }: CreateMetricModalPro
     setCodeDirty(false)
     setDataType('number')
     setSettings({})
+    setInputMode('manual')
+    setFormulaExpression('')
+    setFormulaError(null)
   }
 
   function handleOpenModal() {
@@ -245,6 +259,90 @@ export function CreateMetricModal({ departments, onSaved }: CreateMetricModalPro
                   </select>
                 </div>
               </div>
+
+              {isCalculatedSupportedType(dataType) && (
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Input Mode</label>
+                    <div className="flex gap-4">
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="radio"
+                          name="inputMode"
+                          value="manual"
+                          checked={inputMode === 'manual'}
+                          onChange={() => setInputMode('manual')}
+                          disabled={pending}
+                        />
+                        Manual
+                      </label>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="radio"
+                          name="inputMode"
+                          value="calculated"
+                          checked={inputMode === 'calculated'}
+                          onChange={() => setInputMode('calculated')}
+                          disabled={pending}
+                        />
+                        Calculated
+                      </label>
+                    </div>
+                  </div>
+
+                  {inputMode === 'calculated' && (
+                    <div className="space-y-2">
+                      <label htmlFor="create-metric-formula" className="text-sm font-medium">
+                        Formula Expression
+                      </label>
+                      <textarea
+                        id="create-metric-formula"
+                        name="formulaExpression"
+                        rows={2}
+                        value={formulaExpression}
+                        onChange={(event) => {
+                          const expr = event.target.value
+                          setFormulaExpression(expr)
+                          if (expr.trim()) {
+                            const result = parseFormulaExpression(expr)
+                            setFormulaError(result.success ? null : result.error)
+                          } else {
+                            setFormulaError(null)
+                          }
+                        }}
+                        placeholder="e.g. revenue / calls"
+                        disabled={pending}
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
+                      />
+                      {formulaError && (
+                        <p className="text-xs text-destructive">{formulaError}</p>
+                      )}
+                      {formulaExpression.trim() && !formulaError && (
+                        <p className="text-xs text-emerald-600 dark:text-emerald-400">Formula is valid.</p>
+                      )}
+                      {siblingMetrics && siblingMetrics.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          <span className="text-xs text-muted-foreground">Available:</span>
+                          {siblingMetrics.map((m) => (
+                            <span
+                              key={m.id}
+                              className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-mono cursor-pointer hover:bg-muted/80"
+                              onClick={() => setFormulaExpression((prev) => prev ? `${prev} ${m.code}` : m.code)}
+                              title={m.name}
+                            >
+                              {m.code}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {inputMode !== 'calculated' && (
+                <input type="hidden" name="inputMode" value="manual" />
+              )}
 
               <MetricSettingsFields
                 dataType={dataType}

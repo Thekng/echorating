@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Building2, FolderKanban, Gauge, Users } from 'lucide-react'
+import { Building2, FolderKanban, Gauge, ScrollText, Users } from 'lucide-react'
 import { ROUTES } from '@/lib/constants/routes'
 import { cn } from '@/lib/utils'
 
@@ -11,6 +11,7 @@ const SETTINGS_TABS = [
   { href: ROUTES.SETTINGS_DEPARTMENTS, label: 'Departments', icon: FolderKanban },
   { href: ROUTES.SETTINGS_METRICS, label: 'Metrics', icon: Gauge },
   { href: ROUTES.SETTINGS_MEMBERS, label: 'Members', icon: Users },
+  { href: ROUTES.SETTINGS_AUDIT_LOG, label: 'Audit Log', icon: ScrollText },
 ]
 
 export function SettingsTabs() {
