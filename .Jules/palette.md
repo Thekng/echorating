@@ -1,0 +1,3 @@
+## 2026-07-03 - [Enhanced ConfirmDialog with Radix UI]
+**Learning:** Replacing native `window.confirm` with a custom Radix UI `AlertDialog` (ConfirmDialog) improves UX by being non-blocking, accessible, and providing visual feedback (loading states) during asynchronous operations. In React 18/19 transitions, asynchronous logic inside `startTransition` must be handled carefully (e.g., using `.then()`) to avoid type errors.
+**Action:** Always prefer `ConfirmDialog` over `window.confirm` for destructive actions, and ensure it supports `isLoading` and `useTransition` for a smooth, interactive experience.
