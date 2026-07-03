@@ -55,18 +55,26 @@ export function InviteAcceptForm({ invitationId, companyName, role, isExistingUs
         }
       }
 
-      const acceptResult = await acceptInviteAction(invitationId)
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+
+      if (!user?.id || !user?.email) {
+        setStatus('error')
+        setMessage('Could not retrieve user information.')
+        return
+      }
+
+      const acceptResult = await acceptInviteAction(user.id, user.email)
       if (!acceptResult.success) {
         setStatus('error')
         setMessage(acceptResult.message)
         return
       }
 
-      const supabase = createClient()
       const { data: memberships, error: membershipsError } = await supabase
         .from('organization_members')
         .select('organization_id')
-        .eq('user_id', (await supabase.auth.getUser()).data.user?.id ?? '')
+        .eq('user_id', user.id)
 
       if (membershipsError) {
         setStatus('error')
