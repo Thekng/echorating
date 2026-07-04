@@ -72,7 +72,7 @@ export function InviteAcceptForm({ companyName, role, isExistingUser }: InviteAc
       const { data: memberships, error: membershipsError } = await supabase
         .from('organization_members')
         .select('organization_id')
-        .eq('user_id', (await supabase.auth.getUser()).data.user?.id ?? '')
+        .eq('user_id', user.id)
 
       if (membershipsError) {
         setStatus('error')
