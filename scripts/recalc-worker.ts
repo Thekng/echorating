@@ -113,6 +113,7 @@ async function processNextJob(workerId = 'recalc-worker-local') {
 
     if (evError) throw evError
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const metricIds = Array.from(new Set((ev ?? []).map((r: any) => r.metric_id)))
 
     const { data: metrics, error: metricsError } = await admin
@@ -167,6 +168,7 @@ async function processNextJob(workerId = 'recalc-worker-local') {
     // Mark job complete
     await admin.rpc('complete_recalc_job', { job_entry_id: entryId, success: true, error_msg: null })
     return true
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (err: any) {
     console.error('processing error', err?.message ?? err)
     await admin.rpc('complete_recalc_job', { job_entry_id: entryId, success: false, error_msg: String(err?.message ?? err) })

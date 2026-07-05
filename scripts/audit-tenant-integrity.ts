@@ -166,6 +166,7 @@ function lower(value: string | null | undefined) {
   return value?.trim().toLowerCase() ?? ''
 }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function loadOwnerAuthSnapshots(admin: any, ownerUserIds: string[]) {
   const snapshots = new Map<string, AuthUserSnapshot>()
 

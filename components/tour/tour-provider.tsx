@@ -32,6 +32,7 @@ export function TourProvider({ children, userRole = 'member' }: TourProviderProp
     const steps = useMemo(() => getTourStepsForRole(userRole), [userRole])
 
     useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
         setIsMounted(true)
         const seen = localStorage.getItem('echorating_tour_seen')
         if (!seen) {

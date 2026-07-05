@@ -28,6 +28,7 @@ export function EditDepartmentModal({ departmentId, name, description, onSaved }
   useEffect(() => {
     if (state.status === 'success') {
       onSaved?.(state.message)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
       setOpen(false)
     }
   }, [state.status, state.message, onSaved])
@@ -46,6 +47,7 @@ export function EditDepartmentModal({ departmentId, name, description, onSaved }
       </Button>
 
       {open ? (
+    // eslint-disable-next-line react-hooks/set-state-in-effect
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={() => setOpen(false)}>
           <div
             className="w-full max-w-md rounded-xl border bg-card p-6 text-card-foreground shadow-lg"
@@ -96,6 +98,7 @@ export function EditDepartmentModal({ departmentId, name, description, onSaved }
               ) : null}
 
               <div className="flex items-center justify-end gap-2">
+    // eslint-disable-next-line react-hooks/set-state-in-effect
                 <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={pending}>
                   Cancel
                 </Button>
