@@ -42,8 +42,9 @@ export function InviteAcceptForm({ invitationId, companyName, role, isExistingUs
     setMessage('')
 
     startTransition(async () => {
+      const supabase = createClient()
+
       if (!isExistingUser) {
-        const supabase = createClient()
         const { error } = await supabase.auth.updateUser({
           password,
         })
@@ -55,14 +56,14 @@ export function InviteAcceptForm({ invitationId, companyName, role, isExistingUs
         }
       }
 
-      const acceptResult = await acceptInviteAction(invitationId)
+      const { data: { user } } = await supabase.auth.getUser()
+      const acceptResult = await acceptInviteAction(user?.id ?? '', user?.email ?? '')
       if (!acceptResult.success) {
         setStatus('error')
         setMessage(acceptResult.message)
         return
       }
 
-      const supabase = createClient()
       const { data: memberships, error: membershipsError } = await supabase
         .from('organization_members')
         .select('organization_id')
