@@ -185,7 +185,6 @@ function isMissingCalculatedValuesVersionHashColumn(message: string) {
 }
 
 async function loadDepartmentComputeContext(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   admin: any,
   companyId: string,
   departmentId: string,
@@ -337,7 +336,6 @@ async function loadDepartmentComputeContext(
 }
 
 async function loadEntryValues(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   admin: any,
   entryId: string,
 ): Promise<{ ok: true; values: EntryValueRow[] } | { ok: false; message: string }> {
@@ -377,7 +375,6 @@ async function loadEntryValues(
 }
 
 async function insertLegacyNumericCalculatedRows(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   admin: any,
   rows: RecomputedCalculatedRow[],
 ): Promise<{ ok: true } | { ok: false; message: string }> {
@@ -423,7 +420,6 @@ async function insertLegacyNumericCalculatedRows(
 }
 
 async function persistCalculatedRows(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   admin: any,
   entryId: string,
   rows: RecomputedCalculatedRow[],
@@ -485,7 +481,6 @@ async function persistCalculatedRows(
 }
 
 async function recomputeEntry(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   admin: any,
   entry: EntryRow,
   context: DepartmentComputeContext,

@@ -468,8 +468,7 @@ export function DailyLogForm({
     userId,
   ])
 
-  // @ts-expect-error - used for status logging but linting fails if not in JSX
-  const _statusText = (() => {
+  const statusText = (() => {
     const savedTime = formatTime(lastSavedAt)
 
     if (pending) {

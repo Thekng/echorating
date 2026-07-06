@@ -47,7 +47,7 @@ export function ConfirmDialog({
     >
       <div
         className="w-full max-w-sm scale-100 rounded-xl border bg-background p-6 shadow-lg transition-all animate-in zoom-in-95 duration-200"
-        onClick={(e) => e.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
       >
         <h2 id="confirm-title" className="text-xl font-semibold tracking-tight">
           {title}
