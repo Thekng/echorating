@@ -1,0 +1,3 @@
+## 2026-07-08 - Improving DailyLogForm Accessibility and Feedback
+**Learning:** Proper label association in complex forms (like those with dynamic metric inputs) requires unique IDs to avoid collisions and ensure screen reader compatibility. Using `aria-labelledby` on fieldsets or group containers (like radio groups) provides a better semantic structure than just `htmlFor` on a wrapper label.
+**Action:** Always use unique, prefixed IDs for labels and inputs (e.g., `metric-label-${id}` and `metric-input-${id}`) and ensure interactive elements like buttons provide both visual (spinners) and non-visual (`aria-live`) feedback during async operations.
