@@ -7,13 +7,12 @@ import { createClient } from '@/lib/supabase/client'
 import { acceptInviteAction } from '@/features/members/actions'
 
 type InviteAcceptFormProps = {
-  invitationId: string
   companyName: string
   role: 'manager' | 'member'
   isExistingUser: boolean
 }
 
-export function InviteAcceptForm({ invitationId, companyName, role, isExistingUser }: InviteAcceptFormProps) {
+export function InviteAcceptForm({ companyName, role, isExistingUser }: InviteAcceptFormProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [password, setPassword] = useState('')
