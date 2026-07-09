@@ -482,6 +482,35 @@ export function DailyLogForm({
   ])
 
 
+  const statusText = (() => {
+    const savedTime = formatTime(lastSavedAt)
+
+    if (pending) {
+      if (pendingIntent === 'submit') {
+        return 'Submitting log...'
+      }
+      return 'Saving draft...'
+    }
+
+    if (dirty) {
+      return 'Unsaved changes'
+    }
+
+    if (state.status === 'error') {
+      return state.message
+    }
+
+    if (entryStatus === 'submitted') {
+      return `Submitted${savedTime ? ` at ${savedTime}` : ''}`
+    }
+
+    if (lastSavedAt) {
+      return `Draft saved at ${savedTime ?? '-'}`
+    }
+
+    return 'No saved draft yet'
+  })()
+
   const hasFieldErrors = Object.keys(fieldErrors).length > 0
   const disabledForm = pending || !departmentId || !userId
 
@@ -682,34 +711,7 @@ export function DailyLogForm({
                     : 'text-muted-foreground'
                 }`}
               >
-                {(() => {
-                  const savedTime = formatTime(lastSavedAt)
-
-                  if (pending) {
-                    if (pendingIntent === 'submit') {
-                      return 'Submitting log...'
-                    }
-                    return 'Saving draft...'
-                  }
-
-                  if (dirty) {
-                    return 'Unsaved changes'
-                  }
-
-                  if (state.status === 'error') {
-                    return state.message
-                  }
-
-                  if (entryStatus === 'submitted') {
-                    return `Submitted${savedTime ? ` at ${savedTime}` : ''}`
-                  }
-
-                  if (lastSavedAt) {
-                    return `Draft saved at ${savedTime ?? '-'}`
-                  }
-
-                  return 'No saved draft yet'
-                })()}
+                {statusText}
               </p>
             </div>
           </>
