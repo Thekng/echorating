@@ -3,13 +3,8 @@ import { RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 interface ConfirmDialogProps {
-  /** @deprecated use open and onOpenChange instead */
-  onConfirm?: () => void
-  /** @deprecated use open and onOpenChange instead */
-  onCancel?: () => void
-
-  open?: boolean
-  onOpenChange?: (open: boolean) => void
+  open: boolean
+  onOpenChange: (open: boolean) => void
   title: string
   description?: string
   confirmText?: string
@@ -17,7 +12,7 @@ interface ConfirmDialogProps {
   loadingText?: string
   isLoading?: boolean
   variant?: 'default' | 'destructive'
-  onConfirmAction?: () => void
+  onConfirm: () => void
 }
 
 export function ConfirmDialog({
@@ -30,31 +25,15 @@ export function ConfirmDialog({
   loadingText = 'Deleting...',
   isLoading = false,
   variant = 'destructive',
-  onConfirmAction,
-  // Legacy props
   onConfirm,
-  onCancel,
 }: ConfirmDialogProps) {
-  // Support legacy mode where it's always "open" if rendered
-  const isLegacy = open === undefined && onOpenChange === undefined
-  const isOpen = isLegacy ? true : !!open
-
-  if (!isOpen) return null
-
-  const handleConfirm = onConfirmAction || onConfirm
-  const handleCancel = () => {
-    if (onOpenChange) {
-      onOpenChange(false)
-    } else if (onCancel) {
-      onCancel()
-    }
-  }
+  if (!open) return null
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
         className="fixed inset-0 bg-black/40 animate-in fade-in-0"
-        onClick={() => !isLoading && handleCancel()}
+        onClick={() => !isLoading && onOpenChange(false)}
       />
       <div
         role="alertdialog"
@@ -74,14 +53,14 @@ export function ConfirmDialog({
         <div className="mt-6 flex justify-end gap-2">
           <Button
             variant="outline"
-            onClick={handleCancel}
+            onClick={() => onOpenChange(false)}
             disabled={isLoading}
           >
             {cancelText}
           </Button>
           <Button
             variant={variant}
-            onClick={handleConfirm}
+            onClick={onConfirm}
             disabled={isLoading}
             autoFocus
           >
