@@ -403,7 +403,7 @@ export function RecentLogsTable({
         description={`Are you sure you want to delete the log for ${logToDelete ? formatDateShort(logToDelete.report_date) : ''}? This action cannot be undone.`}
         confirmText="Delete"
         isLoading={isDeleting}
-        onConfirmAction={handleDeleteConfirm}
+        onConfirm={handleDeleteConfirm}
       />
     </div>
   )
