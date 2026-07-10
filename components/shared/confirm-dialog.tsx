@@ -12,7 +12,9 @@ interface ConfirmDialogProps {
   loadingText?: string
   isLoading?: boolean
   variant?: 'default' | 'destructive'
-  onConfirm: () => void
+  onConfirmAction?: () => void
+  /** @deprecated use onConfirmAction instead */
+  onConfirm?: () => void
 }
 
 export function ConfirmDialog({
@@ -25,9 +27,12 @@ export function ConfirmDialog({
   loadingText = 'Deleting...',
   isLoading = false,
   variant = 'destructive',
+  onConfirmAction,
   onConfirm,
 }: ConfirmDialogProps) {
   if (!open) return null
+
+  const handleConfirm = onConfirmAction || onConfirm || (() => {})
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -60,7 +65,7 @@ export function ConfirmDialog({
           </Button>
           <Button
             variant={variant}
-            onClick={onConfirm}
+            onClick={handleConfirm}
             disabled={isLoading}
             autoFocus
           >
