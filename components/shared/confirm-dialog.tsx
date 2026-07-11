@@ -1,33 +1,55 @@
+'use client'
+
+import * as React from 'react'
+import { AlertDialog } from 'radix-ui'
+import { RefreshCw } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
+
 interface ConfirmDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
   title: string
   description?: string
-  onConfirm: () => void
-  onCancel: () => void
+  confirmText?: string
+  cancelText?: string
+  loadingText?: string
+  isLoading?: boolean
+  variant?: 'default' | 'destructive'
+  onConfirmAction: () => void
 }
 
 export function ConfirmDialog({
-  title,
-  description,
-  onConfirm,
-  onCancel,
+  open, onOpenChange, title, description,
+  confirmText = 'Confirm', cancelText = 'Cancel', loadingText = 'Processing...',
+  isLoading = false, variant = 'destructive', onConfirmAction,
 }: ConfirmDialogProps) {
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center">
-      <div className="bg-background rounded-lg p-6 max-w-sm">
-        <h2 className="text-lg font-semibold mb-2">{title}</h2>
-        {description && <p className="text-sm text-muted-foreground mb-4">{description}</p>}
-        <div className="flex gap-2 justify-end">
-          <button onClick={onCancel} className="px-4 py-2 rounded border">
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            className="px-4 py-2 rounded bg-destructive text-destructive-foreground"
-          >
-            Confirm
-          </button>
-        </div>
-      </div>
-    </div>
+    <AlertDialog.Root open={open} onOpenChange={onOpenChange}>
+      <AlertDialog.Portal>
+        <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/50 animate-in fade-in-0" />
+        <AlertDialog.Content className={cn(
+          'fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-card p-6 shadow-lg outline-hidden',
+          'animate-in fade-in-0 zoom-in-95'
+        )}>
+          <AlertDialog.Title className="text-lg font-semibold tracking-tight">{title}</AlertDialog.Title>
+          {description && <AlertDialog.Description className="mt-3 text-sm text-muted-foreground">{description}</AlertDialog.Description>}
+          <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <AlertDialog.Cancel asChild>
+              <Button variant="outline" disabled={isLoading}>{cancelText}</Button>
+            </AlertDialog.Cancel>
+            <Button
+              variant={variant === 'destructive' ? 'destructive' : 'default'}
+              onClick={onConfirmAction}
+              disabled={isLoading}
+              className="min-w-24"
+              autoFocus
+            >
+              {isLoading ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />{loadingText}</> : confirmText}
+            </Button>
+          </div>
+        </AlertDialog.Content>
+      </AlertDialog.Portal>
+    </AlertDialog.Root>
   )
 }
