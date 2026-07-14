@@ -12,10 +12,12 @@ test('areMetricFiltersEqual matches all filter fields', () => {
       {
         q: 'sales',
         departmentId: 'all',
+        status: 'active',
       },
       {
         q: 'sales',
         departmentId: 'all',
+        status: 'active',
       },
     ),
     true,
@@ -26,10 +28,12 @@ test('areMetricFiltersEqual matches all filter fields', () => {
       {
         q: 'sales',
         departmentId: 'all',
+        status: 'active',
       },
       {
         q: 'sales',
         departmentId: 'dept_1',
+        status: 'active',
       },
     ),
     false,
