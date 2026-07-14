@@ -55,7 +55,8 @@ export function InviteAcceptForm({ invitationId, companyName, role, isExistingUs
         }
       }
 
-      const acceptResult = await acceptInviteAction(invitationId)
+      const { data: { user } } = await createClient().auth.getUser()
+      const acceptResult = await acceptInviteAction(user?.id ?? '', user?.email ?? '')
       if (!acceptResult.success) {
         setStatus('error')
         setMessage(acceptResult.message)
