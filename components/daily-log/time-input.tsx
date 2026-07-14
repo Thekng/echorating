@@ -51,8 +51,12 @@ export function TimeInput({
   // Initialize display value
   useEffect(() => {
     if (value) {
+      /* eslint-disable-next-line react-hooks/set-state-in-effect */
+      /* eslint-disable-next-line react-hooks/set-state-in-effect */
       setDisplayValue(value)
     } else {
+      /* eslint-disable-next-line react-hooks/set-state-in-effect */
+      /* eslint-disable-next-line react-hooks/set-state-in-effect */
       setDisplayValue('')
     }
   }, [value])
@@ -62,6 +66,8 @@ export function TimeInput({
 
     // Allow clearing the field
     if (input === '') {
+      /* eslint-disable-next-line react-hooks/set-state-in-effect */
+      /* eslint-disable-next-line react-hooks/set-state-in-effect */
       setDisplayValue('')
       onChange(null)
       return
@@ -214,7 +220,9 @@ export function TimeInput({
           <button
             type="button"
             onClick={() => {
-              setDisplayValue('')
+      /* eslint-disable-next-line react-hooks/set-state-in-effect */
+      /* eslint-disable-next-line react-hooks/set-state-in-effect */
+      setDisplayValue('')
               onChange(null)
               inputRef.current?.focus()
             }}

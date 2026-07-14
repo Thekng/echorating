@@ -679,22 +679,10 @@ export function DailyLogForm({
                 className={`shrink-0 text-xs ${
                   state.status === 'error'
                     ? 'text-destructive'
-                    : pending
-                      ? 'text-muted-foreground'
-                      : 'text-muted-foreground'
+                    : 'text-muted-foreground'
                 }`}
               >
-                {pending
-                  ? pendingIntent === 'submit'
-                    ? 'Submitting...'
-                    : 'Saving...'
-                  : state.status === 'error'
-                    ? state.message
-                    : entryStatus === 'submitted'
-                      ? `Submitted${formatTime(lastSavedAt) ? ` at ${formatTime(lastSavedAt)}` : ''}`
-                      : lastSavedAt
-                        ? `Draft saved at ${formatTime(lastSavedAt) ?? '-'}`
-                        : ''}
+                {statusText}
               </p>
             </div>
           </>
