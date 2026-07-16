@@ -15,6 +15,8 @@ import { formatDatabaseError } from '@/lib/supabase/error-messages'
 import { isRole } from '@/lib/rbac/roles'
 import { syncSessionClaims } from '@/lib/supabase/session-claims'
 import { logAuditEvent } from '@/lib/audit/log'
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 type MemberFieldKey = 'role' | 'departmentId' | 'userId' | 'nextStatus'
 
@@ -683,4 +685,36 @@ export async function createMemberAction(
 
   // User doesn't exist in auth — cannot add
   return actionError('No account found with that email. The user must sign up first.')
+}
+
+export async function acceptInviteAction(
+  invitationId: string,
+): Promise<{ success: boolean; message: string }> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser()
+
+  if (userError || !user) {
+    return { success: false, message: 'Authentication required.' }
+  }
+
+  const admin = createAdminClient()
+  const { data, error } = await admin.rpc('accept_invitation', {
+    p_user_id: user.id,
+    p_invitation_id: invitationId,
+    p_fallback_name: user.user_metadata?.full_name ?? user.email ?? '',
+  })
+
+  if (error) {
+    return { success: false, message: error.message }
+  }
+
+  const result = Array.isArray(data) ? data[0] : data
+  if (result?.company_id) {
+    await syncSessionClaims(user.id, result.company_id, result.role ?? null)
+  }
+
+  return { success: true, message: 'Invitation accepted.' }
 }

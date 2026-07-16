@@ -1,3 +1,5 @@
+'use server'
+
 import { getActorContext } from '@/lib/supabase/actor-context'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
 import { requireRole } from '@/lib/rbac/guards'
