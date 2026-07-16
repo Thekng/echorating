@@ -9,11 +9,10 @@ import {
   createMemberSchema,
 } from './schemas'
 import { getActorContext } from '@/lib/supabase/actor-context'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { requireRole } from '@/lib/rbac/guards'
 import { ROUTES } from '@/lib/constants/routes'
 import { formatDatabaseError } from '@/lib/supabase/error-messages'
-import { type Role, isRole } from '@/lib/rbac/roles'
+import { isRole } from '@/lib/rbac/roles'
 import { syncSessionClaims } from '@/lib/supabase/session-claims'
 import { logAuditEvent } from '@/lib/audit/log'
 
@@ -682,120 +681,6 @@ export async function createMemberAction(
     return actionSuccess('Member added successfully.')
   }
 
-  // User doesn't exist — create invitation
-  const { error: inviteError } = await context.admin
-    .from('organization_invitations')
-    .upsert(
-      {
-        organization_id: context.organizationId,
-        email: parsed.data.email.toLowerCase(),
-        role: parsed.data.role,
-        department_id: departmentId,
-        invited_by: context.userId,
-        accepted_at: null,
-      },
-      { onConflict: 'organization_id,email' },
-    )
-
-  if (inviteError) {
-    return actionError(formatDatabaseError(inviteError.message))
-  }
-
-  logAuditEvent({
-    organizationId: context.organizationId,
-    userId: context.userId,
-    action: 'member.invited',
-    entityType: 'member',
-    entityId: parsed.data.email,
-    metadata: { email: parsed.data.email, role: parsed.data.role },
-  })
-
-  revalidatePath(ROUTES.SETTINGS_MEMBERS)
-  return actionSuccess('Invitation created. They\'ll be added when they sign up.')
-}
-
-export async function acceptInviteAction(
-  userId: string,
-  email: string,
-): Promise<{ success: boolean; message: string }> {
-  const admin = createAdminClient()
-
-  // Look up pending invitations by email
-  const { data: invitations, error: invitationsError } = await admin
-    .from('organization_invitations')
-    .select('id, organization_id, role, department_id')
-    .eq('email', email.toLowerCase())
-    .is('accepted_at', null)
-
-  if (invitationsError || !invitations || invitations.length === 0) {
-    return { success: false, message: 'No pending invitations found.' }
-  }
-
-  let acceptedCount = 0
-
-  for (const invitation of invitations) {
-    const orgId = invitation.organization_id as string
-    const role = invitation.role as string
-    const departmentId = invitation.department_id as string | null
-
-    // Check not already a member
-    const { data: existingMember } = await admin
-      .from('organization_members')
-      .select('user_id')
-      .eq('user_id', userId)
-      .eq('organization_id', orgId)
-      .maybeSingle()
-
-    if (existingMember) {
-      // Already a member, just mark invitation as accepted
-      await admin
-        .from('organization_invitations')
-        .update({ accepted_at: new Date().toISOString() })
-        .eq('id', invitation.id)
-      continue
-    }
-
-    // Insert into organization_members
-    const { error: insertError } = await admin.from('organization_members').insert({
-      organization_id: orgId,
-      user_id: userId,
-      role,
-      is_active: true,
-    })
-
-    if (insertError) {
-      continue
-    }
-
-    // Optionally assign to department
-    if (departmentId) {
-      await admin.from('department_members').upsert(
-        {
-          department_id: departmentId,
-          user_id: userId,
-          role: 'member',
-        },
-        { onConflict: 'department_id,user_id' },
-      )
-    }
-
-    // Mark invitation as accepted
-    await admin
-      .from('organization_invitations')
-      .update({ accepted_at: new Date().toISOString() })
-      .eq('id', invitation.id)
-
-    acceptedCount += 1
-  }
-
-  if (acceptedCount > 0) {
-    await syncSessionClaims(userId)
-  }
-
-  return {
-    success: acceptedCount > 0,
-    message: acceptedCount > 0
-      ? `Joined ${acceptedCount} organization${acceptedCount > 1 ? 's' : ''}.`
-      : 'No new organizations to join.',
-  }
+  // User doesn't exist in auth — cannot add
+  return actionError('No account found with that email. The user must sign up first.')
 }
