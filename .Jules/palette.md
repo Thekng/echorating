@@ -1,0 +1,3 @@
+## 2026-07-20 - Custom Client-Side ConfirmDialog over Native Browser confirm()
+**Learning:** Native browser `confirm()` stops the main thread execution and is visually jarring for modern web applications. Replacing it with an accessible, client-side React portal modal (`ConfirmDialog`) using `useTransition` allows graceful async handling of server action operations (like permanent log deletion) while keeping focus trapping and screen reader aria-labels intact.
+**Action:** Always prefer the custom design system `ConfirmDialog` primitive for destructive client-side state actions to ensure screen reader compatibility, ARIA role enforcement, and smooth non-blocking execution.
