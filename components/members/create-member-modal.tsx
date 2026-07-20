@@ -62,7 +62,7 @@ export function CreateMemberModal({ departments, viewerRole, onSaved }: CreateMe
             <div className="mb-5">
               <h2 className="text-lg font-semibold">Add Member</h2>
               <p className="text-sm text-muted-foreground">
-                Add a user who already has an account.
+                Add a member by email. A new account will be created if needed.
               </p>
             </div>
 

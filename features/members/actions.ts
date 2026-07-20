@@ -621,70 +621,97 @@ export async function createMemberAction(
   }
 
   // Look up user by email via admin auth API
-  const { data: usersData, error: usersError } = await context.admin.auth.admin.listUsers()
+  const { data: usersData, error: usersError } = await context.admin.auth.admin.listUsers({
+    page: 1,
+    perPage: 1000,
+  })
+
+  let targetUserId: string | null = null
 
   if (usersError) {
-    return actionError('Failed to look up user.')
+    // listUsers failed — fall through to create the user below
+    targetUserId = null
+  } else {
+    const existingUser = usersData.users.find(
+      (u) => u.email?.toLowerCase() === parsed.data.email.toLowerCase(),
+    )
+    targetUserId = existingUser?.id ?? null
   }
 
-  const existingUser = usersData.users.find(
-    (u) => u.email?.toLowerCase() === parsed.data.email.toLowerCase(),
+  // If user doesn't exist, create their account
+  if (!targetUserId) {
+    const namePart = parsed.data.email.split('@')[0] ?? ''
+    const { data: newUserData, error: createUserError } = await context.admin.auth.admin.createUser({
+      email: parsed.data.email,
+      email_confirm: true,
+      user_metadata: { full_name: namePart },
+    })
+
+    if (createUserError) {
+      return actionError(`Failed to create account: ${createUserError.message}`)
+    }
+
+    targetUserId = newUserData.user.id
+  }
+
+  // Check not already a member
+  const { data: existingMember } = await context.admin
+    .from('organization_members')
+    .select('user_id')
+    .eq('user_id', targetUserId)
+    .eq('organization_id', context.organizationId)
+    .maybeSingle()
+
+  if (existingMember) {
+    return actionError('This user is already a member of this organization.')
+  }
+
+  // Ensure profile exists (trigger may have created it, but guard against race)
+  await context.admin.from('profiles').upsert(
+    {
+      id: targetUserId,
+      full_name: parsed.data.email.split('@')[0] ?? null,
+    },
+    { onConflict: 'id', ignoreDuplicates: true },
   )
 
-  if (existingUser) {
-    // Check not already a member
-    const { data: existingMember } = await context.admin
-      .from('organization_members')
-      .select('user_id')
-      .eq('user_id', existingUser.id)
-      .eq('organization_id', context.organizationId)
-      .maybeSingle()
+  // Insert into organization_members
+  const { error: insertError } = await context.admin.from('organization_members').insert({
+    organization_id: context.organizationId,
+    user_id: targetUserId,
+    role: parsed.data.role,
+    is_active: true,
+  })
 
-    if (existingMember) {
-      return actionError('This user is already a member of this organization.')
-    }
-
-    // Insert into organization_members
-    const { error: insertError } = await context.admin.from('organization_members').insert({
-      organization_id: context.organizationId,
-      user_id: existingUser.id,
-      role: parsed.data.role,
-      is_active: true,
-    })
-
-    if (insertError) {
-      return actionError(formatDatabaseError(insertError.message))
-    }
-
-    // Optionally assign to department
-    if (departmentId) {
-      await context.admin.from('department_members').upsert(
-        {
-          department_id: departmentId,
-          user_id: existingUser.id,
-          role: 'member',
-        },
-        { onConflict: 'department_id,user_id' },
-      )
-    }
-
-    await syncSessionClaims(existingUser.id, context.organizationId, parsed.data.role)
-
-    logAuditEvent({
-      organizationId: context.organizationId,
-      userId: context.userId,
-      action: 'member.created',
-      entityType: 'member',
-      entityId: existingUser.id,
-      metadata: { email: parsed.data.email, role: parsed.data.role },
-    })
-
-    revalidatePath(ROUTES.SETTINGS_MEMBERS)
-    return actionSuccess('Member added successfully.')
+  if (insertError) {
+    return actionError(formatDatabaseError(insertError.message))
   }
 
-  // User doesn't exist in auth — cannot add
-  return actionError('No account found with that email. The user must sign up first.')
+  // Optionally assign to department
+  if (departmentId) {
+    await context.admin.from('department_members').upsert(
+      {
+        department_id: departmentId,
+        user_id: targetUserId,
+        role: 'member',
+      },
+      { onConflict: 'department_id,user_id' },
+    )
+  }
+
+  await syncSessionClaims(targetUserId, context.organizationId, parsed.data.role)
+
+  logAuditEvent({
+    organizationId: context.organizationId,
+    userId: context.userId,
+    action: 'member.created',
+    entityType: 'member',
+    entityId: targetUserId,
+    metadata: { email: parsed.data.email, role: parsed.data.role },
+  })
+
+  revalidatePath(ROUTES.SETTINGS_MEMBERS)
+  return actionSuccess('Member added successfully.')
 }
 
 export async function acceptInviteAction(
