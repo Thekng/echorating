@@ -4,6 +4,8 @@ import {
   areMemberFiltersEqual,
   areMetricFiltersEqual,
   formatMemberDepartments,
+  type MetricFiltersState,
+  type MemberFiltersState,
 } from '../../features/settings/helpers.ts'
 
 test('areMetricFiltersEqual matches all filter fields', () => {
@@ -14,13 +16,13 @@ test('areMetricFiltersEqual matches all filter fields', () => {
         departmentId: 'all',
         mode: 'manual',
         status: 'active',
-      } as any,
+      } as unknown as MetricFiltersState,
       {
         q: 'sales',
         departmentId: 'all',
         mode: 'manual',
         status: 'active',
-      } as any,
+      } as unknown as MetricFiltersState,
     ),
     true,
   )
@@ -32,13 +34,13 @@ test('areMetricFiltersEqual matches all filter fields', () => {
         departmentId: 'all',
         mode: 'manual',
         status: 'active',
-      } as any,
+      } as unknown as MetricFiltersState,
       {
         q: 'sales',
         departmentId: 'dept_1',
         mode: 'manual',
         status: 'active',
-      } as any,
+      } as unknown as MetricFiltersState,
     ),
     false,
   )
@@ -51,12 +53,12 @@ test('areMemberFiltersEqual matches all filter fields', () => {
         q: 'ana',
         role: 'manager',
         status: 'all',
-      } as any,
+      } as unknown as MemberFiltersState,
       {
         q: 'ana',
         role: 'manager',
         status: 'all',
-      } as any,
+      } as unknown as MemberFiltersState,
     ),
     true,
   )
@@ -67,12 +69,12 @@ test('areMemberFiltersEqual matches all filter fields', () => {
         q: 'ana',
         role: 'manager',
         status: 'all',
-      } as any,
+      } as unknown as MemberFiltersState,
       {
         q: 'ana',
         role: 'member',
         status: 'all',
-      } as any,
+      } as unknown as MemberFiltersState,
     ),
     false,
   )
