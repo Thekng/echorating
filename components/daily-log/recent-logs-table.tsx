@@ -389,7 +389,7 @@ export function RecentLogsTable({
             const formData = new FormData()
             formData.append('entryId', logToDelete)
             startTransition(() => {
-              deleteDailyLogAction(formData)
+              return deleteDailyLogAction(formData)
                 .catch((err) => {
                   console.error('Failed to delete daily log:', err)
                 })
