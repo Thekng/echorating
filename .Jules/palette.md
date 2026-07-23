@@ -1,0 +1,3 @@
+## 2026-07-23 - Accessible ConfirmDialog with Radix Primitives
+**Learning:** Replacing blocking, non-accessible browser window.confirm with a custom Dialog requires careful focus-trapping, ARIA roles (specifically alertdialog for destructive actions), and smooth entry/exit transition animations. To meet strict file line constraints, leveraging Radix UI primitives enables robust accessibility compliance without bloating the codebase.
+**Action:** When creating modals or confirm dialogs, always import primitives from 'radix-ui' to provide proper ARIA attributes and focus management, and wrap destructive async triggers with React transitions for smooth UI state updates.
