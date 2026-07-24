@@ -1,0 +1,3 @@
+## 2026-07-24 - Custom Accessible Dialog Patterns
+**Learning:** Standard browser window.confirm blocks the main JavaScript execution thread, offering poor accessibility support and inconsistent UI styling. Replacing it with a custom Dialog utilizing Radix UI primitives and custom transitions under 50 lines provides keyboard trapping, focus management, screen-reader friendliness (ARIA 'alertdialog' role), and smooth animations ('fade-in-0', 'zoom-in-95') for high-quality, delightful user feedback.
+**Action:** Always wrap destructive or irreversible actions in an accessible custom ConfirmDialog that handles both conditional mounting and controlled open states, and utilize useTransition for asynchronous loading states.
