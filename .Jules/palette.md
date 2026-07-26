@@ -1,0 +1,3 @@
+## 2026-07-26 - Unified Accessible ConfirmDialog UX
+**Learning:** Standard browser-native blocking `window.confirm` dialogues block the main JavaScript execution thread, look completely unstyled, and lack focus-trapping or proper ARIA role-based announcement. Standardizing confirmations under a custom `ConfirmDialog` wrapping Radix UI's `AlertDialog` primitives ensures absolute compliance with screen readers, smooth animations (`animate-in fade-in-0 zoom-in-95`), and standard design-system button triggers.
+**Action:** Replace all generic `window.confirm` fallbacks in settings and action tables with the newly refactored Radix-powered `ConfirmDialog` component.
