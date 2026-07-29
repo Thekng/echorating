@@ -1,0 +1,3 @@
+## 2026-07-29 - State Desynchronization in Radix Dialogs
+**Learning:** When replacing native dialogs (like `window.confirm`) with headless, accessible primitives (such as Radix UI's `Dialog`), keyboard interactions (Escape key) and overlay clicks trigger dismiss events internally. If state-tracking variables (like `logToDelete`) are not linked to the dialog's state-change callback (`onOpenChange`), the modal visually dismisses but the tracking state remains active. This breaks subsequent triggers and desynchronizes UI state.
+**Action:** Always link controlled dialog state changes back to state setters via the `onOpenChange` callback to guarantee clean state resets on dismissal.
