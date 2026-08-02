@@ -1,0 +1,3 @@
+## 2026-08-02 - [Custom Dialog Async Flow]
+**Learning:** Replacing native 'window.confirm' with a Radix UI-based 'ConfirmDialog' improves visual hierarchy and screen reader accessibility (role="alertdialog"). To prevent race conditions and double-submission, wrap server actions inside React's 'useTransition' and handle pending lifecycles with a spinner and disabled buttons. In Next.js server actions, define the transition callbacks as synchronous while chaining promises (`.catch()` and `.finally()`) to ensure the local state is cleanly reset even on network failures.
+**Action:** When designing modals for destructive or asynchronous actions, always structure state-based triggers using 'useTransition' and a customizable confirm dialog with built-in loading feedback.
