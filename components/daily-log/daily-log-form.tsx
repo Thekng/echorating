@@ -87,6 +87,7 @@ function renderMetricInput(
   metric: DailyLogMetric,
   value: string,
   pending: boolean,
+  id: string,
   onChange: (nextValue: string) => void,
   onBlur?: () => void,
 ) {
@@ -97,6 +98,7 @@ function renderMetricInput(
 
     return (
       <select
+        id={id}
         name={`metric_${metric.id}`}
         value={value}
         onChange={(event) => onChange(event.currentTarget.value)}
@@ -120,6 +122,7 @@ function renderMetricInput(
       return (
         <div className="flex items-center gap-1.5">
           <input
+            id={id}
             name={`metric_${metric.id}`}
             type="number"
             step={settings.durationFormat === 'days' ? '0.01' : '1'}
@@ -138,6 +141,7 @@ function renderMetricInput(
 
     return (
       <DurationSelector
+        id={id}
         name={`metric_${metric.id}`}
         value={value}
         onChange={onChange}
@@ -151,6 +155,7 @@ function renderMetricInput(
     if (settings.textFormat === 'long_text') {
       return (
         <textarea
+          id={id}
           name={`metric_${metric.id}`}
           rows={3}
           value={value}
@@ -173,6 +178,7 @@ function renderMetricInput(
 
     return (
       <input
+        id={id}
         name={`metric_${metric.id}`}
         type={inputType}
         inputMode={settings.textFormat === 'phone' ? 'tel' : 'text'}
@@ -196,6 +202,7 @@ function renderMetricInput(
 
     return (
       <input
+        id={id}
         name={`metric_${metric.id}`}
         type={inputType}
         value={value}
@@ -222,6 +229,7 @@ function renderMetricInput(
         <>
           <input type="hidden" name={`metric_${metric.id}`} value={value} />
           <select
+            id={id}
             multiple
             value={selectedValues}
             onChange={(event) => {
@@ -243,7 +251,7 @@ function renderMetricInput(
 
     if (settings.selectionMode === 'radio') {
       return (
-        <div className="space-y-1">
+        <div role="radiogroup" aria-labelledby={id} className="space-y-1">
           <input type="hidden" name={`metric_${metric.id}`} value={value} />
           {options.map((option) => (
             <label key={option} className="flex items-center gap-2 text-sm">
@@ -264,6 +272,7 @@ function renderMetricInput(
 
     return (
       <select
+        id={id}
         name={`metric_${metric.id}`}
         value={value}
         onChange={(event) => onChange(event.currentTarget.value)}
@@ -283,6 +292,7 @@ function renderMetricInput(
   if (metric.data_type === 'file') {
     return (
       <input
+        id={id}
         name={`metric_${metric.id}`}
         type="url"
         value={value}
@@ -305,6 +315,7 @@ function renderMetricInput(
       <div className="flex items-center gap-1.5">
         <span className="shrink-0 text-sm text-muted-foreground">{symbol}</span>
         <input
+          id={id}
           name={`metric_${metric.id}`}
           type="number"
           inputMode="decimal"
@@ -324,6 +335,7 @@ function renderMetricInput(
     return (
       <div className="flex items-center gap-1.5">
         <input
+          id={id}
           name={`metric_${metric.id}`}
           type="number"
           inputMode="decimal"
@@ -342,6 +354,7 @@ function renderMetricInput(
 
   return (
     <input
+      id={id}
       name={`metric_${metric.id}`}
       type="number"
       inputMode="decimal"
@@ -582,6 +595,10 @@ export function DailyLogForm({
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               {metrics.map((metric) => {
                 const isFilled = values[metric.id] !== undefined && values[metric.id] !== ''
+                const inputId = `metric-input-${metric.id}`
+                const settings = normalizeMetricSettings(metric.data_type, metric.settings)
+                const isRadio = metric.data_type === 'selection' && settings.selectionMode === 'radio'
+
                 return (
                   <div
                     key={metric.id}
@@ -591,8 +608,14 @@ export function DailyLogForm({
                         : 'border-border bg-background'
                     }`}
                   >
-                    <label className="block text-xs font-medium text-muted-foreground">{metric.name}</label>
-                    {renderMetricInput(metric, values[metric.id] ?? '', disabledForm, (nextValue) => {
+                    <label
+                      id={isRadio ? inputId : undefined}
+                      htmlFor={isRadio ? undefined : inputId}
+                      className="block text-xs font-medium text-muted-foreground"
+                    >
+                      {metric.name}
+                    </label>
+                    {renderMetricInput(metric, values[metric.id] ?? '', disabledForm, inputId, (nextValue) => {
                       setValues((current) => ({
                         ...current,
                         [metric.id]: nextValue,
@@ -679,22 +702,10 @@ export function DailyLogForm({
                 className={`shrink-0 text-xs ${
                   state.status === 'error'
                     ? 'text-destructive'
-                    : pending
-                      ? 'text-muted-foreground'
-                      : 'text-muted-foreground'
+                    : 'text-muted-foreground'
                 }`}
               >
-                {pending
-                  ? pendingIntent === 'submit'
-                    ? 'Submitting...'
-                    : 'Saving...'
-                  : state.status === 'error'
-                    ? state.message
-                    : entryStatus === 'submitted'
-                      ? `Submitted${formatTime(lastSavedAt) ? ` at ${formatTime(lastSavedAt)}` : ''}`
-                      : lastSavedAt
-                        ? `Draft saved at ${formatTime(lastSavedAt) ?? '-'}`
-                        : ''}
+                {statusText}
               </p>
             </div>
           </>
