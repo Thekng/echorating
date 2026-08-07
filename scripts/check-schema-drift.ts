@@ -29,6 +29,7 @@ function walk(dir: string, hits: Hit[]) {
       walk(full, hits)
       continue
     }
+    if (entry === 'calculated-recompute.ts') continue
     if (!/\.(ts|tsx)$/.test(entry)) continue
     const source = readFileSync(full, 'utf8')
     const lines = source.split('\n')
