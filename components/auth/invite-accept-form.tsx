@@ -7,13 +7,12 @@ import { createClient } from '@/lib/supabase/client'
 import { acceptInviteAction } from '@/features/members/actions'
 
 type InviteAcceptFormProps = {
-  invitationId: string
   companyName: string
   role: 'manager' | 'member'
   isExistingUser: boolean
 }
 
-export function InviteAcceptForm({ invitationId, companyName, role, isExistingUser }: InviteAcceptFormProps) {
+export function InviteAcceptForm({ companyName, role, isExistingUser }: InviteAcceptFormProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [password, setPassword] = useState('')
@@ -42,8 +41,8 @@ export function InviteAcceptForm({ invitationId, companyName, role, isExistingUs
     setMessage('')
 
     startTransition(async () => {
+      const supabase = createClient()
       if (!isExistingUser) {
-        const supabase = createClient()
         const { error } = await supabase.auth.updateUser({
           password,
         })
@@ -55,18 +54,24 @@ export function InviteAcceptForm({ invitationId, companyName, role, isExistingUs
         }
       }
 
-      const acceptResult = await acceptInviteAction(invitationId)
+      const { data: userData, error: userError } = await supabase.auth.getUser()
+      if (userError || !userData.user) {
+        setStatus('error')
+        setMessage('Failed to retrieve user information.')
+        return
+      }
+
+      const acceptResult = await acceptInviteAction(userData.user.id, userData.user.email ?? '')
       if (!acceptResult.success) {
         setStatus('error')
         setMessage(acceptResult.message)
         return
       }
 
-      const supabase = createClient()
       const { data: memberships, error: membershipsError } = await supabase
         .from('organization_members')
         .select('organization_id')
-        .eq('user_id', (await supabase.auth.getUser()).data.user?.id ?? '')
+        .eq('user_id', userData.user.id)
 
       if (membershipsError) {
         setStatus('error')
