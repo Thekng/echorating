@@ -41,45 +41,55 @@ export function InviteAcceptForm({ invitationId, companyName, role, isExistingUs
     setStatus('idle')
     setMessage('')
 
-    startTransition(async () => {
-      if (!isExistingUser) {
-        const supabase = createClient()
-        const { error } = await supabase.auth.updateUser({
-          password,
-        })
+    startTransition(() => {
+      const supabase = createClient()
+      const process = async () => {
+        if (!isExistingUser) {
+          const { error } = await supabase.auth.updateUser({
+            password,
+          })
 
-        if (error) {
+          if (error) {
+            setStatus('error')
+            setMessage('Failed to set password. Please try again.')
+            return
+          }
+        }
+
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
           setStatus('error')
-          setMessage('Failed to set password. Please try again.')
+          setMessage('You must be logged in to accept an invitation.')
           return
         }
+
+        const acceptResult = await acceptInviteAction(user.id, user.email ?? '')
+        if (!acceptResult.success) {
+          setStatus('error')
+          setMessage(acceptResult.message)
+          return
+        }
+
+        const { data: memberships, error: membershipsError } = await supabase
+          .from('organization_members')
+          .select('organization_id')
+          .eq('user_id', user.id)
+
+        if (membershipsError) {
+          setStatus('error')
+          setMessage('Invitation accepted, but we could not load your organization memberships.')
+          return
+        }
+
+        if ((memberships?.length ?? 0) > 1) {
+          router.push('/select-organization')
+          return
+        }
+
+        router.push('/dashboard')
       }
 
-      const acceptResult = await acceptInviteAction(invitationId)
-      if (!acceptResult.success) {
-        setStatus('error')
-        setMessage(acceptResult.message)
-        return
-      }
-
-      const supabase = createClient()
-      const { data: memberships, error: membershipsError } = await supabase
-        .from('organization_members')
-        .select('organization_id')
-        .eq('user_id', (await supabase.auth.getUser()).data.user?.id ?? '')
-
-      if (membershipsError) {
-        setStatus('error')
-        setMessage('Invitation accepted, but we could not load your organization memberships.')
-        return
-      }
-
-      if ((memberships?.length ?? 0) > 1) {
-        router.push('/select-organization')
-        return
-      }
-
-      router.push('/dashboard')
+      void process()
     })
   }
 
