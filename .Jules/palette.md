@@ -1,0 +1,3 @@
+## 2025-05-14 - Accessible log deletion confirmation
+**Learning:** Replacing native `window.confirm` with a custom `ConfirmDialog` using Radix UI significantly improves accessibility by providing proper ARIA roles (`alertdialog`) and keyboard focus management (`autoFocus` on the primary action). Using `useTransition` allows for smooth loading states within the dialog, keeping the user informed during asynchronous operations.
+**Action:** Always prefer custom accessible dialogs over native window methods for destructive actions, and ensure `useTransition` is used to manage and display the loading state of the primary action.
