@@ -13,7 +13,7 @@ type InviteAcceptFormProps = {
   isExistingUser: boolean
 }
 
-export function InviteAcceptForm({ invitationId, companyName, role, isExistingUser }: InviteAcceptFormProps) {
+export function InviteAcceptForm({ companyName, role, isExistingUser }: Omit<InviteAcceptFormProps, 'invitationId'>) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [password, setPassword] = useState('')
@@ -42,8 +42,15 @@ export function InviteAcceptForm({ invitationId, companyName, role, isExistingUs
     setMessage('')
 
     startTransition(async () => {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user || !user.email) {
+        setStatus('error')
+        setMessage('Your session has expired. Please log in again.')
+        return
+      }
+
       if (!isExistingUser) {
-        const supabase = createClient()
         const { error } = await supabase.auth.updateUser({
           password,
         })
@@ -55,14 +62,13 @@ export function InviteAcceptForm({ invitationId, companyName, role, isExistingUs
         }
       }
 
-      const acceptResult = await acceptInviteAction(invitationId)
+      const acceptResult = await acceptInviteAction(user.id, user.email)
       if (!acceptResult.success) {
         setStatus('error')
         setMessage(acceptResult.message)
         return
       }
 
-      const supabase = createClient()
       const { data: memberships, error: membershipsError } = await supabase
         .from('organization_members')
         .select('organization_id')
