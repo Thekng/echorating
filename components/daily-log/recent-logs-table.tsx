@@ -2,8 +2,11 @@
 
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { useState, useTransition } from 'react'
 import { Trash2, Pencil, Download } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { deleteDailyLogAction } from '@/features/daily-log/actions'
 import type {
   DailyLogMetric,
@@ -126,6 +129,8 @@ export function RecentLogsTable({
 }: RecentLogsTableProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const [isDeleting, startDeleteTransition] = useTransition()
+  const [logToDelete, setLogToDelete] = useState<DailyLogRecentEntry | null>(null)
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
   const startItem = totalCount === 0 ? 0 : (currentPage - 1) * pageSize + 1
@@ -143,6 +148,17 @@ export function RecentLogsTable({
     }
 
     router.push(`/daily-log?${params.toString()}`)
+  }
+
+  function handleDeleteConfirm() {
+    if (!logToDelete) return
+
+    startDeleteTransition(async () => {
+      const formData = new FormData()
+      formData.set('entryId', logToDelete.id)
+      await deleteDailyLogAction(formData)
+      setLogToDelete(null)
+    })
   }
 
   if (logs.length === 0) {
@@ -300,34 +316,33 @@ export function RecentLogsTable({
               </td>
               <td className="px-3 py-2">
                 <div className="flex items-center justify-end gap-2">
-                  <Link
-                    href={`/daily-log?departmentId=${departmentId}&userId=${log.user_id}&date=${log.report_date}`}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-input hover:bg-muted/40"
+                  <Button
+                    asChild
+                    size="icon"
+                    variant="outline"
+                    className="size-8"
                     title="Edit"
                     aria-label="Edit"
                   >
-                    <Pencil className="size-3.5" />
-                  </Link>
+                    <Link
+                      href={`/daily-log?departmentId=${departmentId}&userId=${log.user_id}&date=${log.report_date}`}
+                    >
+                      <Pencil className="size-3.5" />
+                    </Link>
+                  </Button>
 
                   {canDelete ? (
-                    <form
-                      action={deleteDailyLogAction}
-                      onSubmit={(event) => {
-                        if (!window.confirm('Delete this log permanently?')) {
-                          event.preventDefault()
-                        }
-                      }}
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      className="size-8 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      title="Delete"
+                      aria-label="Delete"
+                      onClick={() => setLogToDelete(log)}
                     >
-                      <input type="hidden" name="entryId" value={log.id} />
-                      <button
-                        type="submit"
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-destructive/30 text-destructive hover:bg-destructive/10"
-                        title="Delete"
-                        aria-label="Delete"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
-                    </form>
+                      <Trash2 className="size-3.5" />
+                    </Button>
                   ) : null}
                 </div>
               </td>
@@ -380,6 +395,16 @@ export function RecentLogsTable({
           Next
         </button>
       </div>
+
+      <ConfirmDialog
+        open={!!logToDelete}
+        onOpenChange={(open) => !open && setLogToDelete(null)}
+        title="Delete Daily Log"
+        description={`Are you sure you want to delete the log for ${logToDelete ? formatDateShort(logToDelete.report_date) : ''}? This action cannot be undone.`}
+        confirmText="Delete"
+        isLoading={isDeleting}
+        onConfirm={handleDeleteConfirm}
+      />
     </div>
   )
 }
