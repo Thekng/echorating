@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatSecondsToDuration, parseDurationToSeconds } from '@/lib/daily-log/value-parser'
@@ -45,20 +45,18 @@ export function TimeInput({
   required = false,
 }: TimeInputProps) {
   const [isFocused, setIsFocused] = useState(false)
-  const [displayValue, setDisplayValue] = useState('')
+  const [displayValue, setDisplayValue] = useState(value || '')
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Initialize display value
-  useEffect(() => {
-    if (value) {
-      setDisplayValue(value)
-    } else {
-      setDisplayValue('')
-    }
-  }, [value])
+  // Sync internal state when external value changes
+  const [prevValue, setPrevValue] = useState(value)
+  if (value !== prevValue) {
+    setDisplayValue(value || '')
+    setPrevValue(value)
+  }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let input = e.target.value
+    const input = e.target.value
 
     // Allow clearing the field
     if (input === '') {
