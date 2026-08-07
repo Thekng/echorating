@@ -5,7 +5,7 @@ import { type FormEvent, useActionState, useCallback, useEffect, useMemo, useRef
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
-import { CheckCircle2, FileEdit, Circle } from 'lucide-react'
+import { CheckCircle2, FileEdit, Circle, RefreshCw } from 'lucide-react'
 import { saveDailyLogAction } from '@/features/daily-log/actions'
 import { DurationSelector } from '@/components/daily-log/duration-selector'
 import { booleanLabels, normalizeMetricSettings } from '@/lib/metrics/data-types'
@@ -87,6 +87,7 @@ function renderMetricInput(
   metric: DailyLogMetric,
   value: string,
   pending: boolean,
+  id: string,
   onChange: (nextValue: string) => void,
   onBlur?: () => void,
 ) {
@@ -97,6 +98,7 @@ function renderMetricInput(
 
     return (
       <select
+        id={id}
         name={`metric_${metric.id}`}
         value={value}
         onChange={(event) => onChange(event.currentTarget.value)}
@@ -120,6 +122,7 @@ function renderMetricInput(
       return (
         <div className="flex items-center gap-1.5">
           <input
+            id={id}
             name={`metric_${metric.id}`}
             type="number"
             step={settings.durationFormat === 'days' ? '0.01' : '1'}
@@ -138,6 +141,7 @@ function renderMetricInput(
 
     return (
       <DurationSelector
+        id={id}
         name={`metric_${metric.id}`}
         value={value}
         onChange={onChange}
@@ -151,6 +155,7 @@ function renderMetricInput(
     if (settings.textFormat === 'long_text') {
       return (
         <textarea
+          id={id}
           name={`metric_${metric.id}`}
           rows={3}
           value={value}
@@ -173,6 +178,7 @@ function renderMetricInput(
 
     return (
       <input
+        id={id}
         name={`metric_${metric.id}`}
         type={inputType}
         inputMode={settings.textFormat === 'phone' ? 'tel' : 'text'}
@@ -196,6 +202,7 @@ function renderMetricInput(
 
     return (
       <input
+        id={id}
         name={`metric_${metric.id}`}
         type={inputType}
         value={value}
@@ -222,6 +229,7 @@ function renderMetricInput(
         <>
           <input type="hidden" name={`metric_${metric.id}`} value={value} />
           <select
+            id={id}
             multiple
             value={selectedValues}
             onChange={(event) => {
@@ -243,7 +251,7 @@ function renderMetricInput(
 
     if (settings.selectionMode === 'radio') {
       return (
-        <div className="space-y-1">
+        <div id={id} role="radiogroup" aria-labelledby={`${id}-label`} className="space-y-1">
           <input type="hidden" name={`metric_${metric.id}`} value={value} />
           {options.map((option) => (
             <label key={option} className="flex items-center gap-2 text-sm">
@@ -264,6 +272,7 @@ function renderMetricInput(
 
     return (
       <select
+        id={id}
         name={`metric_${metric.id}`}
         value={value}
         onChange={(event) => onChange(event.currentTarget.value)}
@@ -283,6 +292,7 @@ function renderMetricInput(
   if (metric.data_type === 'file') {
     return (
       <input
+        id={id}
         name={`metric_${metric.id}`}
         type="url"
         value={value}
@@ -305,6 +315,7 @@ function renderMetricInput(
       <div className="flex items-center gap-1.5">
         <span className="shrink-0 text-sm text-muted-foreground">{symbol}</span>
         <input
+          id={id}
           name={`metric_${metric.id}`}
           type="number"
           inputMode="decimal"
@@ -324,6 +335,7 @@ function renderMetricInput(
     return (
       <div className="flex items-center gap-1.5">
         <input
+          id={id}
           name={`metric_${metric.id}`}
           type="number"
           inputMode="decimal"
@@ -342,6 +354,7 @@ function renderMetricInput(
 
   return (
     <input
+      id={id}
       name={`metric_${metric.id}`}
       type="number"
       inputMode="decimal"
@@ -468,6 +481,7 @@ export function DailyLogForm({
     userId,
   ])
 
+
   const statusText = (() => {
     const savedTime = formatTime(lastSavedAt)
 
@@ -582,6 +596,7 @@ export function DailyLogForm({
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               {metrics.map((metric) => {
                 const isFilled = values[metric.id] !== undefined && values[metric.id] !== ''
+                const metricId = `metric-${metric.id}`
                 return (
                   <div
                     key={metric.id}
@@ -591,8 +606,14 @@ export function DailyLogForm({
                         : 'border-border bg-background'
                     }`}
                   >
-                    <label className="block text-xs font-medium text-muted-foreground">{metric.name}</label>
-                    {renderMetricInput(metric, values[metric.id] ?? '', disabledForm, (nextValue) => {
+                    <label
+                      id={`${metricId}-label`}
+                      htmlFor={metricId}
+                      className="block text-xs font-medium text-muted-foreground"
+                    >
+                      {metric.name}
+                    </label>
+                    {renderMetricInput(metric, values[metric.id] ?? '', disabledForm, metricId, (nextValue) => {
                       setValues((current) => ({
                         ...current,
                         [metric.id]: nextValue,
@@ -659,8 +680,11 @@ export function DailyLogForm({
                   disabled={disabledForm || !dirty || hasFieldErrors}
                   data-submit-kind="manual-draft"
                   variant="outline"
-                  className="h-11 flex-1 text-sm font-semibold"
+                  className="h-11 flex-1 gap-2 text-sm font-semibold"
                 >
+                  {pending && pendingIntent === 'draft' ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : null}
                   Save Draft
                 </Button>
                 <Button
@@ -671,30 +695,23 @@ export function DailyLogForm({
                   data-submit-kind="submit"
                   className="h-11 flex-1 gap-2 text-sm font-semibold"
                 >
-                  <CheckCircle2 className="h-4 w-4" />
+                  {pending && pendingIntent === 'submit' ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4" />
+                  )}
                   Submit Daily Log
                 </Button>
               </div>
               <p
+                aria-live="polite"
                 className={`shrink-0 text-xs ${
                   state.status === 'error'
                     ? 'text-destructive'
-                    : pending
-                      ? 'text-muted-foreground'
-                      : 'text-muted-foreground'
+                    : 'text-muted-foreground'
                 }`}
               >
-                {pending
-                  ? pendingIntent === 'submit'
-                    ? 'Submitting...'
-                    : 'Saving...'
-                  : state.status === 'error'
-                    ? state.message
-                    : entryStatus === 'submitted'
-                      ? `Submitted${formatTime(lastSavedAt) ? ` at ${formatTime(lastSavedAt)}` : ''}`
-                      : lastSavedAt
-                        ? `Draft saved at ${formatTime(lastSavedAt) ?? '-'}`
-                        : ''}
+                {statusText}
               </p>
             </div>
           </>
