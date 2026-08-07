@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
 import { LayoutDashboard, ListChecks, Users, Trophy, BarChart3, Settings, UserCircle } from 'lucide-react'
 import { ROUTES } from '@/lib/constants/routes'
-import { type Role, hasPermission, isRole } from '@/lib/rbac/roles'
+import { type Role, hasPermission } from '@/lib/rbac/roles'
 
 export type AppNavItem = {
   href: string

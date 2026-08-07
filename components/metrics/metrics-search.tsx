@@ -22,7 +22,6 @@ interface MetricsSearchProps {
 export function MetricsSearch({ 
   metrics, 
   onSelect, 
-  onSearch,
   placeholder = 'Search metrics by name or code...'
 }: MetricsSearchProps) {
   const [query, setQuery] = useState('')
@@ -38,10 +37,6 @@ export function MetricsSearch({
     setIsOpen(false)
     onSelect?.(metric)
   }, [onSelect])
-
-  const handleSearch = useCallback(() => {
-    onSearch?.(query)
-  }, [query, onSearch])
 
   return (
     <div className="relative">
@@ -79,9 +74,9 @@ export function MetricsSearch({
               onClick={() => handleSelect(metric)}
               className="w-full px-4 py-3 text-left hover:bg-muted flex items-center gap-3 border-b last:border-b-0 transition-colors"
             >
-              <span className="text-lg">{getMetricIcon(metric.code)}</span>
+              <span className="text-lg text-foreground">{getMetricIcon(metric.code)}</span>
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm truncate">{metric.name}</p>
+                <p className="font-medium text-sm truncate text-foreground">{metric.name}</p>
                 <p className="text-xs text-muted-foreground truncate">{metric.code}</p>
               </div>
               {metric.unit && <span className="text-xs text-muted-foreground">{metric.unit}</span>}
