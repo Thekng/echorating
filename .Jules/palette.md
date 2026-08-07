@@ -1,0 +1,3 @@
+## 2026-07-19 - Standardized Accessible Confirmation Pattern
+**Learning:** Replaced the blocking and un-styled `window.confirm` with a custom accessible Radix UI `ConfirmDialog` supporting asynchronous state transitions. Utilizing transition-based hook orchestration keeps the screen reader alertdialog focused correctly and allows fluid loading indicators to notify users during background processes.
+**Action:** Always prefer Radix UI Dialog-based primitives styled consistently with the design system, ensuring an `alertdialog` role and focus management via `autoFocus` on critical buttons, keeping files under the 50-line surgical threshold.
