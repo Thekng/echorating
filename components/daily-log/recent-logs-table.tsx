@@ -130,7 +130,7 @@ export function RecentLogsTable({
   const searchParams = useSearchParams()
   const [logToDelete, setLogToDelete] = React.useState<string | null>(null)
   const [isDeleting, setIsDeleting] = React.useState(false)
-  const [_, startTransition] = React.useTransition()
+  const [, startTransition] = React.useTransition()
 
   const handleDeleteConfirm = () => {
     if (!logToDelete) return
