@@ -1,0 +1,3 @@
+## 2026-08-08 - Replacing Native Confirm with Accessible Radix Dialog
+**Learning:** Native `window.confirm` is thread-blocking and offers poor screen-reader support. Replacing it with a custom Radix UI Dialog styled with Tailwind CSS, ARIA 'alertdialog' role, and using React's `useTransition` for asynchronous pending/loading states significantly enhances UX polish and prevents double-submitting destructive actions.
+**Action:** When adding destructive actions (like deletion) in any table or list view, use `ConfirmDialog` wrapped with `useTransition` and a dedicated `isDeleting` state to manage async loading spinners and disabled button triggers.
