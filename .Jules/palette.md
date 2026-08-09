@@ -1,0 +1,3 @@
+## 2026-08-09 - Accessible & Performant Confirm Dialogs
+**Learning:** Standard browser `window.confirm` blocks the main JavaScript thread and doesn't support custom styling, brand colors, or keyboard-accessible transitions. Replacing it with a custom Radix UI-based `ConfirmDialog` implementing ARIA `alertdialog` and React `useTransition` ensures smooth, non-blocking execution while preserving consistent focus trap and key dismissals.
+**Action:** Always replace raw browser window.confirm blocks with a managed-state custom Radix UI ConfirmDialog, carefully wrapping the execution triggers within synchronous startTransition callbacks with chained promise handlers to ensure compatibility with React 18/19 transition lifecycles.

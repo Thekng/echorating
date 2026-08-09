@@ -1,117 +1,136 @@
-'use client'
+"use client";
 
-import Link from 'next/link'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { Trash2, Pencil, Download } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
-import { deleteDailyLogAction } from '@/features/daily-log/actions'
+import { useState, useTransition } from "react";
+import Link from "next/link";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Trash2, Pencil, Download } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { deleteDailyLogAction } from "@/features/daily-log/actions";
 import type {
   DailyLogMetric,
   DailyLogRecentEntry,
   DailyLogRecentMetricValue,
-} from '@/features/daily-log/types'
-import { formatDateShort } from '@/lib/utils'
-import { booleanLabels, normalizeMetricSettings } from '@/lib/metrics/data-types'
-import { formatMetricNumber } from '@/lib/metrics/format'
+} from "@/features/daily-log/types";
+import { formatDateShort } from "@/lib/utils";
+import {
+  booleanLabels,
+  normalizeMetricSettings,
+} from "@/lib/metrics/data-types";
+import { formatMetricNumber } from "@/lib/metrics/format";
 
 type RecentLogsTableProps = {
-  departmentId: string
-  logs: DailyLogRecentEntry[]
-  metrics: DailyLogMetric[]
-  canDelete: boolean
-  canExport?: boolean
-  currentPage: number
-  pageSize: number
-  totalCount: number
-}
+  departmentId: string;
+  logs: DailyLogRecentEntry[];
+  metrics: DailyLogMetric[];
+  canDelete: boolean;
+  canExport?: boolean;
+  currentPage: number;
+  pageSize: number;
+  totalCount: number;
+};
 
-const PAGE_SIZE_OPTIONS = [10, 30, 50] as const
+const PAGE_SIZE_OPTIONS = [10, 30, 50] as const;
 
 function isAverageMetric(metric: DailyLogMetric) {
   return (
-    metric.data_type === 'number' ||
-    metric.data_type === 'currency' ||
-    metric.data_type === 'percent' ||
-    metric.data_type === 'duration'
-  )
+    metric.data_type === "number" ||
+    metric.data_type === "currency" ||
+    metric.data_type === "percent" ||
+    metric.data_type === "duration"
+  );
 }
 
 function formatAverageValue(metric: DailyLogMetric, value: number | null) {
   if (value === null || value === undefined) {
-    return '-'
+    return "-";
   }
 
   return formatMetricNumber(value, {
     dataType: metric.data_type,
     unit: metric.unit,
     settings: metric.settings,
-  })
+  });
 }
 
 function getMetricAverage(logs: DailyLogRecentEntry[], metric: DailyLogMetric) {
   if (!isAverageMetric(metric)) {
-    return null
+    return null;
   }
 
   const values = logs
-    .map((log) => log.key_metric_values.find((item) => item.metric_id === metric.id)?.value_number ?? null)
-    .filter((value): value is number => value !== null && value !== undefined && Number.isFinite(value))
+    .map(
+      (log) =>
+        log.key_metric_values.find((item) => item.metric_id === metric.id)
+          ?.value_number ?? null,
+    )
+    .filter(
+      (value): value is number =>
+        value !== null && value !== undefined && Number.isFinite(value),
+    );
 
   if (values.length === 0) {
-    return null
+    return null;
   }
 
-  const total = values.reduce((sum, value) => sum + value, 0)
-  return total / values.length
+  const total = values.reduce((sum, value) => sum + value, 0);
+  return total / values.length;
 }
 
-function metricValue(values: DailyLogRecentMetricValue[], metric: DailyLogMetric) {
-  const value = values.find((item) => item.metric_id === metric.id)
+function metricValue(
+  values: DailyLogRecentMetricValue[],
+  metric: DailyLogMetric,
+) {
+  const value = values.find((item) => item.metric_id === metric.id);
   if (!value) {
-    return '-'
+    return "-";
   }
-  const settings = normalizeMetricSettings(metric.data_type, metric.settings)
+  const settings = normalizeMetricSettings(metric.data_type, metric.settings);
 
   // Non-numeric types: handle directly
-  if (metric.data_type === 'boolean') {
+  if (metric.data_type === "boolean") {
     if (value.value_boolean === null) {
-      return '-'
+      return "-";
     }
-    const labels = booleanLabels(settings)
-    return value.value_boolean ? labels.trueLabel : labels.falseLabel
+    const labels = booleanLabels(settings);
+    return value.value_boolean ? labels.trueLabel : labels.falseLabel;
   }
 
-  if (metric.data_type === 'text' || metric.data_type === 'datetime' || metric.data_type === 'file') {
-    return value.value_text || '-'
+  if (
+    metric.data_type === "text" ||
+    metric.data_type === "datetime" ||
+    metric.data_type === "file"
+  ) {
+    return value.value_text || "-";
   }
 
-  if (metric.data_type === 'selection') {
+  if (metric.data_type === "selection") {
     if (!value.value_text) {
-      return '-'
+      return "-";
     }
-    if (settings.selectionMode === 'multi') {
+    if (settings.selectionMode === "multi") {
       try {
-        const parsed = JSON.parse(value.value_text) as string[]
+        const parsed = JSON.parse(value.value_text) as string[];
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.join(', ')
+          return parsed.join(", ");
         }
       } catch {
         // ignore
       }
     }
-    return value.value_text
+    return value.value_text;
   }
 
   // Numeric types (number, currency, percent, duration): delegate to formatMetricNumber
   if (value.value_number === null || value.value_number === undefined) {
-    return '-'
+    return "-";
   }
 
   return formatMetricNumber(value.value_number, {
     dataType: metric.data_type,
     unit: metric.unit,
     settings: metric.settings,
-  })
+  });
 }
 
 export function RecentLogsTable({
@@ -124,25 +143,46 @@ export function RecentLogsTable({
   pageSize,
   totalCount,
 }: RecentLogsTableProps) {
-  const router = useRouter()
-  const searchParams = useSearchParams()
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [logToDelete, setLogToDelete] = useState<DailyLogRecentEntry | null>(
+    null,
+  );
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [, startTransition] = useTransition();
 
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
-  const startItem = totalCount === 0 ? 0 : (currentPage - 1) * pageSize + 1
-  const endItem = totalCount === 0 ? 0 : Math.min(currentPage * pageSize, totalCount)
+  const handleDeleteConfirm = () => {
+    if (!logToDelete) return;
+    setIsDeleting(true);
+    startTransition(() => {
+      const formData = new FormData();
+      formData.append("entryId", logToDelete.id);
+      deleteDailyLogAction(formData)
+        .catch((err) => console.error(err))
+        .finally(() => {
+          setIsDeleting(false);
+          setLogToDelete(null);
+        });
+    });
+  };
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const startItem = totalCount === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const endItem =
+    totalCount === 0 ? 0 : Math.min(currentPage * pageSize, totalCount);
 
   function updateTableParams(updates: Record<string, string | null>) {
-    const params = new URLSearchParams(searchParams.toString())
+    const params = new URLSearchParams(searchParams.toString());
 
     for (const [key, value] of Object.entries(updates)) {
       if (!value) {
-        params.delete(key)
+        params.delete(key);
       } else {
-        params.set(key, value)
+        params.set(key, value);
       }
     }
 
-    router.push(`/daily-log?${params.toString()}`)
+    router.push(`/daily-log?${params.toString()}`);
   }
 
   if (logs.length === 0) {
@@ -150,11 +190,16 @@ export function RecentLogsTable({
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground">
-            {totalCount > 0 ? 'No logs found for this page.' : 'No recent logs for this filter.'}
+            {totalCount > 0
+              ? "No logs found for this page."
+              : "No recent logs for this filter."}
           </p>
 
           <div className="flex items-center gap-2">
-            <label htmlFor="recent-logs-page-size" className="text-sm text-muted-foreground">
+            <label
+              htmlFor="recent-logs-page-size"
+              className="text-sm text-muted-foreground"
+            >
               Logs
             </label>
             <select
@@ -164,7 +209,7 @@ export function RecentLogsTable({
               onChange={(event) =>
                 updateTableParams({
                   logsPerPage: event.currentTarget.value,
-                  logsPage: '1',
+                  logsPage: "1",
                 })
               }
             >
@@ -178,7 +223,9 @@ export function RecentLogsTable({
         </div>
 
         <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-          {totalCount > 0 ? 'Try going back to the previous page.' : 'No recent logs for this filter.'}
+          {totalCount > 0
+            ? "Try going back to the previous page."
+            : "No recent logs for this filter."}
         </div>
 
         {totalCount > 0 ? (
@@ -213,7 +260,7 @@ export function RecentLogsTable({
           </div>
         ) : null}
       </div>
-    )
+    );
   }
 
   return (
@@ -234,7 +281,10 @@ export function RecentLogsTable({
               Export CSV
             </a>
           )}
-          <label htmlFor="recent-logs-page-size" className="text-sm text-muted-foreground">
+          <label
+            htmlFor="recent-logs-page-size"
+            className="text-sm text-muted-foreground"
+          >
             Logs
           </label>
           <select
@@ -244,7 +294,7 @@ export function RecentLogsTable({
             onChange={(event) =>
               updateTableParams({
                 logsPerPage: event.currentTarget.value,
-                logsPage: '1',
+                logsPage: "1",
               })
             }
           >
@@ -259,95 +309,90 @@ export function RecentLogsTable({
 
       <div className="overflow-x-auto rounded-lg border bg-card">
         <table className="min-w-[940px] w-full text-sm">
-        <thead className="border-b bg-muted/30">
-          <tr>
-            <th className="px-3 py-2 text-left font-medium">Date</th>
-            <th className="px-3 py-2 text-left font-medium">Agent</th>
-            {metrics.map((metric) => (
-              <th key={metric.id} className="px-3 py-2 text-left font-medium">
-                {metric.name}
-              </th>
-            ))}
-            <th className="px-3 py-2 text-left font-medium">Notes</th>
-            <th className="px-3 py-2 text-left font-medium">Status</th>
-            <th className="px-3 py-2 text-right font-medium">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {logs.map((log) => (
-            <tr key={log.id} className="border-b last:border-b-0">
-              <td className="px-3 py-2">{formatDateShort(log.report_date)}</td>
-              <td className="px-3 py-2">{log.user_name}</td>
+          <thead className="border-b bg-muted/30">
+            <tr>
+              <th className="px-3 py-2 text-left font-medium">Date</th>
+              <th className="px-3 py-2 text-left font-medium">Agent</th>
               {metrics.map((metric) => (
-                <td key={metric.id} className="px-3 py-2">
-                  {metricValue(log.key_metric_values, metric)}
-                </td>
+                <th key={metric.id} className="px-3 py-2 text-left font-medium">
+                  {metric.name}
+                </th>
               ))}
-              <td className="px-3 py-2 text-muted-foreground">
-                <span className="block max-w-[280px] truncate">{log.notes?.trim() || '-'}</span>
-              </td>
-              <td className="px-3 py-2">
-                <Badge
-                  variant="outline"
-                  className={
-                    log.status === 'submitted'
-                      ? 'border-emerald-200 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
-                      : 'border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-400'
-                  }
-                >
-                  {log.status}
-                </Badge>
-              </td>
-              <td className="px-3 py-2">
-                <div className="flex items-center justify-end gap-2">
-                  <Link
-                    href={`/daily-log?departmentId=${departmentId}&userId=${log.user_id}&date=${log.report_date}`}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-input hover:bg-muted/40"
-                    title="Edit"
-                    aria-label="Edit"
+              <th className="px-3 py-2 text-left font-medium">Notes</th>
+              <th className="px-3 py-2 text-left font-medium">Status</th>
+              <th className="px-3 py-2 text-right font-medium">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {logs.map((log) => (
+              <tr key={log.id} className="border-b last:border-b-0">
+                <td className="px-3 py-2">
+                  {formatDateShort(log.report_date)}
+                </td>
+                <td className="px-3 py-2">{log.user_name}</td>
+                {metrics.map((metric) => (
+                  <td key={metric.id} className="px-3 py-2">
+                    {metricValue(log.key_metric_values, metric)}
+                  </td>
+                ))}
+                <td className="px-3 py-2 text-muted-foreground">
+                  <span className="block max-w-[280px] truncate">
+                    {log.notes?.trim() || "-"}
+                  </span>
+                </td>
+                <td className="px-3 py-2">
+                  <Badge
+                    variant="outline"
+                    className={
+                      log.status === "submitted"
+                        ? "border-emerald-200 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400"
+                        : "border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
+                    }
                   >
-                    <Pencil className="size-3.5" />
-                  </Link>
-
-                  {canDelete ? (
-                    <form
-                      action={deleteDailyLogAction}
-                      onSubmit={(event) => {
-                        if (!window.confirm('Delete this log permanently?')) {
-                          event.preventDefault()
-                        }
-                      }}
+                    {log.status}
+                  </Badge>
+                </td>
+                <td className="px-3 py-2">
+                  <div className="flex items-center justify-end gap-2">
+                    <Link
+                      href={`/daily-log?departmentId=${departmentId}&userId=${log.user_id}&date=${log.report_date}`}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-input hover:bg-muted/40"
+                      title="Edit"
+                      aria-label="Edit"
                     >
-                      <input type="hidden" name="entryId" value={log.id} />
+                      <Pencil className="size-3.5" />
+                    </Link>
+
+                    {canDelete ? (
                       <button
-                        type="submit"
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-destructive/30 text-destructive hover:bg-destructive/10"
+                        type="button"
+                        onClick={() => setLogToDelete(log)}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-destructive/30 text-destructive hover:bg-destructive/10 cursor-pointer"
                         title="Delete"
                         aria-label="Delete"
                       >
                         <Trash2 className="size-3.5" />
                       </button>
-                    </form>
-                  ) : null}
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-        <tfoot className="border-t bg-muted/20">
-          <tr>
-            <td className="px-3 py-2 font-semibold">Avg</td>
-            <td className="px-3 py-2 text-muted-foreground">Visible logs</td>
-            {metrics.map((metric) => (
-              <td key={metric.id} className="px-3 py-2 font-medium">
-                {formatAverageValue(metric, getMetricAverage(logs, metric))}
-              </td>
+                    ) : null}
+                  </div>
+                </td>
+              </tr>
             ))}
-            <td className="px-3 py-2">-</td>
-            <td className="px-3 py-2">-</td>
-            <td className="px-3 py-2 text-right">-</td>
-          </tr>
-        </tfoot>
+          </tbody>
+          <tfoot className="border-t bg-muted/20">
+            <tr>
+              <td className="px-3 py-2 font-semibold">Avg</td>
+              <td className="px-3 py-2 text-muted-foreground">Visible logs</td>
+              {metrics.map((metric) => (
+                <td key={metric.id} className="px-3 py-2 font-medium">
+                  {formatAverageValue(metric, getMetricAverage(logs, metric))}
+                </td>
+              ))}
+              <td className="px-3 py-2">-</td>
+              <td className="px-3 py-2">-</td>
+              <td className="px-3 py-2 text-right">-</td>
+            </tr>
+          </tfoot>
         </table>
       </div>
 
@@ -380,6 +425,21 @@ export function RecentLogsTable({
           Next
         </button>
       </div>
+
+      {logToDelete && (
+        <ConfirmDialog
+          title="Delete log permanently?"
+          description={`Are you sure you want to delete the daily log for ${logToDelete.user_name} on ${formatDateShort(logToDelete.report_date)}? This action cannot be undone.`}
+          confirmText="Delete"
+          variant="destructive"
+          isLoading={isDeleting}
+          onConfirm={handleDeleteConfirm}
+          onCancel={() => setLogToDelete(null)}
+          onOpenChange={(open) => {
+            if (!open) setLogToDelete(null);
+          }}
+        />
+      )}
     </div>
-  )
+  );
 }
