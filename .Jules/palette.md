@@ -1,0 +1,3 @@
+## 2026-08-10 - Custom Accessible ConfirmDialog Pattern
+**Learning:** Standard browser 'window.confirm' block dialogs can block the main JavaScript execution thread, feel visually inconsistent with modern design systems (Tailwind CSS v4 + Radix UI), and lack descriptive ARIA states (like 'alertdialog'). Implementing a custom, fully accessible Dialog using Radix UI primitives with smooth transitions, explicit ARIA role mappings, and dedicated React transition states provides a far superior, non-blocking, and delightful user experience.
+**Action:** Always replace raw window.confirm calls with an elegant ConfirmDialog supporting alertdialog, isPending/isDeleting states, and proper Escape/clickaway dismissal handlers (like onOpenChange) to maintain clean component states.
