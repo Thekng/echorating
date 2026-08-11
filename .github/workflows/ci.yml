@@ -48,7 +48,7 @@ jobs:
           cache: npm
       - uses: supabase/setup-cli@v1
         with:
-          version: 1.192.1
+          version: latest
       - run: npm ci
       - name: Install psql client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
