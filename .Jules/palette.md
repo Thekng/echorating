@@ -1,0 +1,3 @@
+## 2026-08-12 - Reusable Accessible Confirm Dialog UX Pattern
+**Learning:** Replacing native browser 'window.confirm' blockages with an accessible custom alertdialog (utilizing Radix UI primitives and React transitions) avoids main-thread blocking, provides consistent visual feedback, and ensures screen reader users receive proper context via focus management and ARIA roles.
+**Action:** When handling destructive actions like deletions, track the target item in state and wrap the execution in a custom transition block to show an active loading state on the button and close the modal gracefully.
