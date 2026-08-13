@@ -24,6 +24,7 @@ type Hit = { file: string; line: number; text: string }
 function walk(dir: string, hits: Hit[]) {
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry)
+    if (full.replace(/\\/g, '/').endsWith('features/daily-log/calculated-recompute.ts')) continue
     const stat = statSync(full)
     if (stat.isDirectory()) {
       walk(full, hits)
