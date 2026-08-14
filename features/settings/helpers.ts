@@ -1,12 +1,14 @@
 export type MetricFiltersState = {
   q: string
   departmentId: string
+  mode?: string
   status: 'all' | 'active' | 'inactive'
 }
 
 export type MemberFiltersState = {
   q: string
   role: 'all' | 'owner' | 'admin' | 'manager' | 'member'
+  status?: string
 }
 
 export function areMetricFiltersEqual(a: MetricFiltersState, b: MetricFiltersState) {
