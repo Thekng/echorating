@@ -50,10 +50,12 @@ export function MetricsSearch({
         <input
           type="text"
           placeholder={placeholder}
+          aria-label={placeholder}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value)
             setIsOpen(true)
+            handleSearch()
           }}
           onFocus={() => setIsOpen(true)}
           className="h-10 w-full pl-10 pr-10 rounded-md border border-input bg-background text-sm"
@@ -64,6 +66,7 @@ export function MetricsSearch({
               setQuery('')
               setIsOpen(false)
             }}
+            aria-label="Clear search query"
             className="absolute right-3 p-1 hover:bg-muted rounded"
           >
             <X className="h-4 w-4" />
