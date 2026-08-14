@@ -22,7 +22,6 @@ interface MetricsSearchProps {
 export function MetricsSearch({ 
   metrics, 
   onSelect, 
-  onSearch,
   placeholder = 'Search metrics by name or code...'
 }: MetricsSearchProps) {
   const [query, setQuery] = useState('')
@@ -39,10 +38,6 @@ export function MetricsSearch({
     onSelect?.(metric)
   }, [onSelect])
 
-  const handleSearch = useCallback(() => {
-    onSearch?.(query)
-  }, [query, onSearch])
-
   return (
     <div className="relative">
       <div className="relative flex items-center">
@@ -50,6 +45,7 @@ export function MetricsSearch({
         <input
           type="text"
           placeholder={placeholder}
+          aria-label={placeholder}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value)
@@ -64,6 +60,7 @@ export function MetricsSearch({
               setQuery('')
               setIsOpen(false)
             }}
+            aria-label="Clear search query"
             className="absolute right-3 p-1 hover:bg-muted rounded"
           >
             <X className="h-4 w-4" />
