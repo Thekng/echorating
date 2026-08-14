@@ -22,6 +22,7 @@ interface MetricsSearchProps {
 export function MetricsSearch({ 
   metrics, 
   onSelect, 
+  onSearch,
   placeholder = 'Search metrics by name or code...'
 }: MetricsSearchProps) {
   const [query, setQuery] = useState('')
@@ -38,6 +39,10 @@ export function MetricsSearch({
     onSelect?.(metric)
   }, [onSelect])
 
+  const handleSearch = useCallback(() => {
+    onSearch?.(query)
+  }, [query, onSearch])
+
   return (
     <div className="relative">
       <div className="relative flex items-center">
@@ -50,6 +55,7 @@ export function MetricsSearch({
           onChange={(e) => {
             setQuery(e.target.value)
             setIsOpen(true)
+            handleSearch()
           }}
           onFocus={() => setIsOpen(true)}
           className="h-10 w-full pl-10 pr-10 rounded-md border border-input bg-background text-sm"
