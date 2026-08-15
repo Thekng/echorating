@@ -1,0 +1,3 @@
+## 2026-08-15 - TimeInput Accessibility & Derived State Pattern
+**Learning:** In React input components (like `TimeInput`), connecting `<label htmlFor>` to `<input id>` using `useId` and adding `aria-invalid`/`aria-describedby` for error messaging drastically improves screen reader navigation. Furthermore, synchronizing controlled props to local state via inline rendering conditionals (`if (prop !== prevProp)`) rather than `useEffect` avoids cascading render warnings (`react-hooks/set-state-in-effect`) and keeps the UX snappy.
+**Action:** Always link labels and inputs using `useId`, attach ARIA attributes to icon-only action buttons (+1m, clear), and prefer derived state during render when syncing controlled props to internal display state.

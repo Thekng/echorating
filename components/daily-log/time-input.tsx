@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useId } from 'react'
 import { Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatSecondsToDuration, parseDurationToSeconds } from '@/lib/daily-log/value-parser'
@@ -14,6 +14,7 @@ type TimeInputProps = {
   label?: string
   placeholder?: string
   required?: boolean
+  id?: string
 }
 
 /**
@@ -43,22 +44,24 @@ export function TimeInput({
   label,
   placeholder = 'HH:MM:SS',
   required = false,
+  id,
 }: TimeInputProps) {
+  const generatedId = useId()
+  const inputId = id || generatedId
+  const errorId = `${inputId}-error`
   const [isFocused, setIsFocused] = useState(false)
-  const [displayValue, setDisplayValue] = useState('')
+  const [prevValue, setPrevValue] = useState(value)
+  const [displayValue, setDisplayValue] = useState(value || '')
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Initialize display value
-  useEffect(() => {
-    if (value) {
-      setDisplayValue(value)
-    } else {
-      setDisplayValue('')
-    }
-  }, [value])
+  // Sync display value when prop changes
+  if (value !== prevValue) {
+    setPrevValue(value)
+    setDisplayValue(value || '')
+  }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let input = e.target.value
+    const input = e.target.value
 
     // Allow clearing the field
     if (input === '') {
@@ -157,7 +160,7 @@ export function TimeInput({
   return (
     <div className="space-y-2">
       {label && (
-        <label className="block text-sm font-medium">
+        <label htmlFor={inputId} className="block text-sm font-medium">
           {label}
           {required && <span className="text-red-500 ml-1">*</span>}
         </label>
@@ -173,6 +176,7 @@ export function TimeInput({
 
         <input
           ref={inputRef}
+          id={inputId}
           type="text"
           value={displayValue}
           onChange={handleChange}
@@ -183,6 +187,8 @@ export function TimeInput({
           disabled={disabled}
           placeholder={placeholder}
           autoComplete="off"
+          aria-invalid={!!error}
+          aria-describedby={error ? errorId : undefined}
           className="flex-1 bg-transparent py-2 outline-none text-sm font-mono placeholder:text-muted-foreground"
           maxLength={8}
         />
@@ -194,6 +200,7 @@ export function TimeInput({
               type="button"
               onClick={() => handleIncrement(1)}
               title="Add 1 minute"
+              aria-label="Add 1 minute"
               className="text-xs font-medium px-1.5 py-0.5 rounded hover:bg-muted"
             >
               +1m
@@ -202,6 +209,7 @@ export function TimeInput({
               type="button"
               onClick={() => handleIncrement(-1)}
               title="Subtract 1 minute"
+              aria-label="Subtract 1 minute"
               className="text-xs font-medium px-1.5 py-0.5 rounded hover:bg-muted"
             >
               -1m
@@ -220,6 +228,7 @@ export function TimeInput({
             }}
             className="text-muted-foreground hover:text-foreground"
             title="Clear"
+            aria-label="Clear time input"
           >
             ✕
           </button>
@@ -227,7 +236,7 @@ export function TimeInput({
       </div>
 
       {error && (
-        <p className="text-xs text-destructive">{error}</p>
+        <p id={errorId} className="text-xs text-destructive">{error}</p>
       )}
 
       <p className="text-xs text-muted-foreground">
