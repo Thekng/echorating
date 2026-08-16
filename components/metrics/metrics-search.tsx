@@ -49,6 +49,10 @@ export function MetricsSearch({
         <Search className="absolute left-3 h-4 w-4 text-muted-foreground" />
         <input
           type="text"
+          role="combobox"
+          aria-expanded={isOpen && filtered.length > 0}
+          aria-haspopup="listbox"
+          aria-controls="metrics-search-listbox"
           placeholder={placeholder}
           value={query}
           onChange={(e) => {
@@ -60,6 +64,8 @@ export function MetricsSearch({
         />
         {query && (
           <button
+            type="button"
+            aria-label="Clear search"
             onClick={() => {
               setQuery('')
               setIsOpen(false)
@@ -72,10 +78,17 @@ export function MetricsSearch({
       </div>
 
       {isOpen && filtered.length > 0 && (
-        <div className="absolute top-full left-0 right-0 mt-2 rounded-md border bg-popover shadow-md z-50 max-h-64 overflow-y-auto">
+        <div
+          id="metrics-search-listbox"
+          role="listbox"
+          className="absolute top-full left-0 right-0 mt-2 rounded-md border bg-popover shadow-md z-50 max-h-64 overflow-y-auto"
+        >
           {filtered.map((metric) => (
             <button
               key={metric.metric_id}
+              role="option"
+              aria-selected={false}
+              type="button"
               onClick={() => handleSelect(metric)}
               className="w-full px-4 py-3 text-left hover:bg-muted flex items-center gap-3 border-b last:border-b-0 transition-colors"
             >
