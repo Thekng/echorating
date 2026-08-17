@@ -60,11 +60,14 @@ export function MetricsSearch({
         />
         {query && (
           <button
+            type="button"
+            aria-label="Clear search"
+            title="Clear search"
             onClick={() => {
               setQuery('')
               setIsOpen(false)
             }}
-            className="absolute right-3 p-1 hover:bg-muted rounded"
+            className="absolute right-3 p-1 hover:bg-muted rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <X className="h-4 w-4" />
           </button>
