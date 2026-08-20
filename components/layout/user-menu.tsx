@@ -35,6 +35,7 @@ export function UserMenu({ userName, userEmail, companyName }: UserMenuProps) {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
+          aria-label="User menu"
           className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Avatar size="sm">
@@ -58,10 +59,12 @@ export function UserMenu({ userName, userEmail, companyName }: UserMenuProps) {
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <form action={signOutAction}>
-          <button type="submit" className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent cursor-pointer">
-            <LogOut className="size-4" />
-            Log out
-          </button>
+          <DropdownMenuItem asChild>
+            <button type="submit" className="flex w-full items-center gap-2 cursor-pointer">
+              <LogOut className="size-4" />
+              Log out
+            </button>
+          </DropdownMenuItem>
         </form>
       </DropdownMenuContent>
     </DropdownMenu>
