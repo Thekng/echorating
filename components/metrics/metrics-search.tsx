@@ -36,12 +36,15 @@ export function MetricsSearch({
   const handleSelect = useCallback((metric: Metric) => {
     setQuery('')
     setIsOpen(false)
+    onSearch?.('')
     onSelect?.(metric)
-  }, [onSelect])
+  }, [onSelect, onSearch])
 
-  const handleSearch = useCallback(() => {
-    onSearch?.(query)
-  }, [query, onSearch])
+  const updateQuery = (val: string) => {
+    setQuery(val)
+    setIsOpen(true)
+    onSearch?.(val)
+  }
 
   return (
     <div className="relative">
@@ -49,22 +52,26 @@ export function MetricsSearch({
         <Search className="absolute left-3 h-4 w-4 text-muted-foreground" />
         <input
           type="text"
+          role="combobox"
           placeholder={placeholder}
+          aria-label={placeholder}
+          aria-expanded={isOpen}
+          aria-controls="metrics-search-listbox"
           value={query}
-          onChange={(e) => {
-            setQuery(e.target.value)
-            setIsOpen(true)
-          }}
+          onChange={(e) => updateQuery(e.target.value)}
           onFocus={() => setIsOpen(true)}
-          className="h-10 w-full pl-10 pr-10 rounded-md border border-input bg-background text-sm"
+          className="h-10 w-full pl-10 pr-10 rounded-md border border-input bg-background text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
         {query && (
           <button
+            type="button"
+            aria-label="Clear search"
+            title="Clear search"
             onClick={() => {
-              setQuery('')
+              updateQuery('')
               setIsOpen(false)
             }}
-            className="absolute right-3 p-1 hover:bg-muted rounded"
+            className="absolute right-3 p-1 hover:bg-muted rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <X className="h-4 w-4" />
           </button>
@@ -72,12 +79,15 @@ export function MetricsSearch({
       </div>
 
       {isOpen && filtered.length > 0 && (
-        <div className="absolute top-full left-0 right-0 mt-2 rounded-md border bg-popover shadow-md z-50 max-h-64 overflow-y-auto">
+        <div id="metrics-search-listbox" role="listbox" aria-label="Metric search results" className="absolute top-full left-0 right-0 mt-2 rounded-md border bg-popover shadow-md z-50 max-h-64 overflow-y-auto">
           {filtered.map((metric) => (
             <button
               key={metric.metric_id}
+              type="button"
+              role="option"
+              aria-selected={false}
               onClick={() => handleSelect(metric)}
-              className="w-full px-4 py-3 text-left hover:bg-muted flex items-center gap-3 border-b last:border-b-0 transition-colors"
+              className="w-full px-4 py-3 text-left hover:bg-muted flex items-center gap-3 border-b last:border-b-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <span className="text-lg">{getMetricIcon(metric.code)}</span>
               <div className="flex-1 min-w-0">
