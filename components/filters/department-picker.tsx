@@ -60,6 +60,9 @@ export function DepartmentPicker({
         onClick={() => setOpen(!open)}
         disabled={disabled || departments.length === 0}
         onBlur={onBlur}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        aria-label="Select department"
         className={cn(
           'h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm flex items-center justify-between',
           'hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
@@ -78,14 +81,22 @@ export function DepartmentPicker({
             <input
               ref={inputRef}
               type="text"
+              role="combobox"
+              aria-expanded={open}
+              aria-controls="department-picker-list"
+              aria-autocomplete="list"
+              aria-label="Search departments"
               placeholder="Search departments..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setOpen(false)
+              }}
               className="h-8 w-full rounded px-2 text-sm border border-input bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               autoComplete="off"
             />
           </div>
-          <div className="max-h-48 overflow-y-auto border-t border-input">
+          <div id="department-picker-list" role="listbox" aria-label="Departments" className="max-h-48 overflow-y-auto border-t border-input">
             {filtered.length === 0 ? (
               <div className="px-3 py-2 text-sm text-muted-foreground">No departments found</div>
             ) : (
@@ -93,6 +104,8 @@ export function DepartmentPicker({
                 <button
                   key={dept.department_id}
                   type="button"
+                  role="option"
+                  aria-selected={value === dept.department_id}
                   onClick={() => {
                     onChange?.(dept.department_id)
                     setOpen(false)
