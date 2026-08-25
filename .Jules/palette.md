@@ -1,0 +1,3 @@
+## 2026-08-25 - Search Combobox Accessibility & Cross-Node Test Compatibility
+**Learning:** Adding explicit `role="combobox"`, `aria-expanded`, `aria-controls`, and `listbox`/`option` semantics to search inputs with dropdown result lists ensures screen reader announcements for search suggestions. When running TypeScript unit tests in GitHub Actions CI across varying Node versions (Node 20 vs Node 24), using `tsx` (`npx tsx --test`) avoids Node flag compatibility issues (`--experimental-strip-types`).
+**Action:** Always add combobox ARIA roles to interactive search inputs with dropdowns and use `tsx` in `package.json` test scripts for Node cross-version compatibility.
