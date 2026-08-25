@@ -12,13 +12,13 @@
     "db:reset": "supabase db reset --local --no-seed",
     "db:lint": "supabase db lint --local --fail-on error",
     "db:list": "supabase migration list",
-    "audit:tenant-integrity": "npx tsx scripts/audit-tenant-integrity.ts",
-    "migrate:formulas:notion-v1": "npx tsx scripts/migrate-formulas-to-notion-v1.ts",
-    "backfill:calculated-metrics": "npx tsx scripts/backfill-calculated-metrics.ts",
-    "check:schema-drift": "npx tsx scripts/check-schema-drift.ts",
+    "audit:tenant-integrity": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/audit-tenant-integrity.ts",
+    "migrate:formulas:notion-v1": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/migrate-formulas-to-notion-v1.ts",
+    "backfill:calculated-metrics": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/backfill-calculated-metrics.ts",
+    "check:schema-drift": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/check-schema-drift.ts",
     "typecheck": "tsc --noEmit",
-    "test:unit": "npx tsx --test tests/unit/*.test.ts",
-    "test:e2e": "npx tsx --test tests/e2e/*.test.ts"
+    "test:unit": "node --experimental-strip-types --experimental-specifier-resolution=node --test tests/unit/*.test.ts",
+    "test:e2e": "node --experimental-strip-types --experimental-specifier-resolution=node --test tests/e2e/*.test.ts"
   },
   "dependencies": {
     "@radix-ui/react-slot": "latest",
@@ -50,7 +50,6 @@
     "shadcn": "latest",
     "tailwindcss": "^4",
     "tailwindcss-animate": "^1.0.7",
-    "tsx": "^4.23.12",
     "typescript": "^5"
   }
 }
