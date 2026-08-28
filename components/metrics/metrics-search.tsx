@@ -86,9 +86,11 @@ export function MetricsSearch({
           placeholder={placeholder}
           value={query}
           onChange={(e) => {
-            setQuery(e.target.value)
+            const nextQuery = e.target.value
+            setQuery(nextQuery)
             setIsOpen(true)
             setSelectedIndex(-1)
+            onSearch?.(nextQuery)
           }}
           onFocus={() => setIsOpen(true)}
           onKeyDown={handleKeyDown}
@@ -102,6 +104,7 @@ export function MetricsSearch({
               setQuery('')
               setIsOpen(false)
               setSelectedIndex(-1)
+              onSearch?.('')
             }}
             className="absolute right-3 p-1 hover:bg-muted rounded"
           >
