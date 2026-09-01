@@ -49,6 +49,10 @@ export function MetricsSearch({
         <Search className="absolute left-3 h-4 w-4 text-muted-foreground" />
         <input
           type="text"
+          role="combobox"
+          aria-expanded={isOpen}
+          aria-autocomplete="list"
+          aria-label="Search metrics"
           placeholder={placeholder}
           value={query}
           onChange={(e) => {
@@ -60,6 +64,8 @@ export function MetricsSearch({
         />
         {query && (
           <button
+            type="button"
+            aria-label="Clear search"
             onClick={() => {
               setQuery('')
               setIsOpen(false)
