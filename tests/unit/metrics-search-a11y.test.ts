@@ -20,7 +20,15 @@ test('MetricsSearch includes accessibility ARIA attributes', () => {
     'MetricsSearch input should specify aria-expanded'
   )
   assert.ok(
-    content.includes('aria-label="Search metrics"'),
-    'MetricsSearch input should specify aria-label="Search metrics"'
+    content.includes("aria-controls={isOpen && filtered.length > 0 ? 'metrics-search-list' : undefined}"),
+    'MetricsSearch input should specify conditional aria-controls'
+  )
+  assert.ok(
+    content.includes('role="listbox"'),
+    'MetricsSearch dropdown container should specify role="listbox"'
+  )
+  assert.ok(
+    content.includes('role="option"'),
+    'MetricsSearch dropdown items should specify role="option"'
   )
 })

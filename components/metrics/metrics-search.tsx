@@ -52,6 +52,7 @@ export function MetricsSearch({
           role="combobox"
           aria-expanded={isOpen}
           aria-autocomplete="list"
+          aria-controls={isOpen && filtered.length > 0 ? 'metrics-search-list' : undefined}
           aria-label="Search metrics"
           placeholder={placeholder}
           value={query}
@@ -78,10 +79,12 @@ export function MetricsSearch({
       </div>
 
       {isOpen && filtered.length > 0 && (
-        <div className="absolute top-full left-0 right-0 mt-2 rounded-md border bg-popover shadow-md z-50 max-h-64 overflow-y-auto">
+        <div id="metrics-search-list" role="listbox" className="absolute top-full left-0 right-0 mt-2 rounded-md border bg-popover shadow-md z-50 max-h-64 overflow-y-auto">
           {filtered.map((metric) => (
             <button
               key={metric.metric_id}
+              role="option"
+              aria-selected={false}
               onClick={() => handleSelect(metric)}
               className="w-full px-4 py-3 text-left hover:bg-muted flex items-center gap-3 border-b last:border-b-0 transition-colors"
             >
