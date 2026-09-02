@@ -49,6 +49,7 @@ export function MetricsSearch({
         <Search className="absolute left-3 h-4 w-4 text-muted-foreground" />
         <input
           type="text"
+          aria-label="Search metrics"
           placeholder={placeholder}
           value={query}
           onChange={(e) => {
@@ -56,15 +57,17 @@ export function MetricsSearch({
             setIsOpen(true)
           }}
           onFocus={() => setIsOpen(true)}
-          className="h-10 w-full pl-10 pr-10 rounded-md border border-input bg-background text-sm"
+          className="h-10 w-full pl-10 pr-10 rounded-md border border-input bg-background text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
         {query && (
           <button
+            type="button"
             onClick={() => {
               setQuery('')
               setIsOpen(false)
             }}
-            className="absolute right-3 p-1 hover:bg-muted rounded"
+            aria-label="Clear search"
+            className="absolute right-3 p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <X className="h-4 w-4" />
           </button>
@@ -76,8 +79,9 @@ export function MetricsSearch({
           {filtered.map((metric) => (
             <button
               key={metric.metric_id}
+              type="button"
               onClick={() => handleSelect(metric)}
-              className="w-full px-4 py-3 text-left hover:bg-muted flex items-center gap-3 border-b last:border-b-0 transition-colors"
+              className="w-full px-4 py-3 text-left hover:bg-muted flex items-center gap-3 border-b last:border-b-0 transition-colors focus-visible:outline-none focus-visible:bg-muted"
             >
               <span className="text-lg">{getMetricIcon(metric.code)}</span>
               <div className="flex-1 min-w-0">
@@ -92,7 +96,7 @@ export function MetricsSearch({
 
       {isOpen && query && filtered.length === 0 && (
         <div className="absolute top-full left-0 right-0 mt-2 rounded-md border bg-popover shadow-md z-50 p-4">
-          <p className="text-sm text-muted-foreground">No metrics found</p>
+          <p className="text-sm text-muted-foreground" role="status">No metrics found</p>
         </div>
       )}
     </div>
