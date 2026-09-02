@@ -39,10 +39,6 @@ export function MetricsSearch({
     onSelect?.(metric)
   }, [onSelect])
 
-  const handleSearch = useCallback(() => {
-    onSearch?.(query)
-  }, [query, onSearch])
-
   return (
     <div className="relative">
       <div className="relative flex items-center">
@@ -53,8 +49,10 @@ export function MetricsSearch({
           placeholder={placeholder}
           value={query}
           onChange={(e) => {
-            setQuery(e.target.value)
+            const val = e.target.value
+            setQuery(val)
             setIsOpen(true)
+            onSearch?.(val)
           }}
           onFocus={() => setIsOpen(true)}
           className="h-10 w-full pl-10 pr-10 rounded-md border border-input bg-background text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -65,6 +63,7 @@ export function MetricsSearch({
             onClick={() => {
               setQuery('')
               setIsOpen(false)
+              onSearch?.('')
             }}
             aria-label="Clear search"
             className="absolute right-3 p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
