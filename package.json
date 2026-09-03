@@ -15,7 +15,7 @@
     "audit:tenant-integrity": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/audit-tenant-integrity.ts",
     "migrate:formulas:notion-v1": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/migrate-formulas-to-notion-v1.ts",
     "backfill:calculated-metrics": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/backfill-calculated-metrics.ts",
-    "check:schema-drift": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/check-schema-drift.ts",
+    "check:schema-drift": "npx tsx scripts/check-schema-drift.ts",
     "typecheck": "tsc --noEmit",
     "test:unit": "npx tsx --test tests/unit/*.test.ts",
     "test:e2e": "npx tsx --test tests/e2e/*.test.ts"
