@@ -1,0 +1,3 @@
+## 2026-09-03 - Radix AlertDialog for Destructive Table Actions
+**Learning:** Browser native `window.confirm()` blocks the main JS execution thread and breaks custom UI accessibility and visual themes. Replacing `window.confirm()` in table action forms with an accessible Radix UI `Dialog` using `role="alertdialog"`, `useTransition()`, and explicit entry context (e.g., user name and date) provides smooth, non-blocking feedback for destructive actions without layout shifts.
+**Action:** When handling destructive deletions in tables or lists, use `ConfirmDialog` with `role="alertdialog"`, loading spinner states, and `useTransition` to track async pending actions smoothly.
