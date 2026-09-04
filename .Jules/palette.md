@@ -1,0 +1,3 @@
+## 2026-09-04 - Retain Input Focus on Helper Button Clicks in Time Inputs
+**Learning:** In text inputs with embedded quick-action buttons (like +1m/-1m or clear buttons in `TimeInput`), standard clicks trigger `onBlur` on the input element, causing inline controls or temporary state to close or lose focus prematurely. Adding `onMouseDown={(e) => e.preventDefault()}` on these buttons preserves focus on the input while maintaining button interactivity.
+**Action:** Use `onMouseDown={(e) => e.preventDefault()}` on internal action buttons within input components to avoid unwanted blur events and keep focus on the target input.
