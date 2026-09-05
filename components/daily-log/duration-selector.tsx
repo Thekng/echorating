@@ -4,6 +4,7 @@ const HOURS = Array.from({ length: 100 }, (_, index) => String(index).padStart(2
 const MINUTES_SECONDS = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, '0'))
 
 type DurationSelectorProps = {
+  id?: string
   name: string
   value: string
   onChange: (nextValue: string) => void
@@ -41,6 +42,7 @@ function parseValue(value: string) {
 }
 
 export function DurationSelector({
+  id,
   name,
   value,
   onChange,
@@ -70,6 +72,7 @@ export function DurationSelector({
       <input type="hidden" name={name} value={value} />
 
       <select
+        id={id}
         value={parts.hh}
         onChange={(event) => setPart('hh', event.currentTarget.value)}
         disabled={disabled}

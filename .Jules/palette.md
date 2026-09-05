@@ -1,0 +1,3 @@
+## 2026-09-05 - Daily Log Form Accessible Label & Input ID Associations
+**Learning:** Dynamically generated metric form fields require unique, deterministic IDs (e.g., `metric-${metric.id}` and `metric-label-${metric.id}`) to allow screen readers to associate labels with inputs via `htmlFor`. For radio group selections, `htmlFor` should be omitted on the outer label and `role="radiogroup"` with `aria-labelledby` should be placed on the container instead.
+**Action:** Always verify dynamic loops rendering form controls to ensure unique label-input ID pairing, and use `role="radiogroup"` on radio button container wrappers.
