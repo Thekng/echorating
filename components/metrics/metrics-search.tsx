@@ -60,6 +60,9 @@ export function MetricsSearch({
         />
         {query && (
           <button
+            type="button"
+            aria-label="Clear search"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => {
               setQuery('')
               setIsOpen(false)
