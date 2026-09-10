@@ -1,0 +1,3 @@
+## 2026-09-10 - Accessible Alert Dialog Pattern for Destructive Actions
+**Learning:** Browser native `window.confirm` blocks main thread execution and lacks accessibility primitives (such as `role="alertdialog"`, focus traps, and screen reader announcements). Replacing `window.confirm` with a custom Radix UI `Dialog` modal (`role="alertdialog"`) combined with React `useTransition` allows smooth loading states and clean accessible focus management.
+**Action:** When replacing delete confirmations across tables or forms, import `ConfirmDialog` from `components/shared/confirm-dialog.tsx`, pass `isLoading` from `useTransition`, and add explicit `aria-label` / `title` attributes on delete trigger buttons.
