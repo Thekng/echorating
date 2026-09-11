@@ -39,9 +39,9 @@ export function MetricsSearch({
     onSelect?.(metric)
   }, [onSelect])
 
-  const handleSearch = useCallback(() => {
-    onSearch?.(query)
-  }, [query, onSearch])
+  const handleSearch = useCallback((q: string) => {
+    onSearch?.(q)
+  }, [onSearch])
 
   return (
     <div className="relative">
@@ -49,22 +49,30 @@ export function MetricsSearch({
         <Search className="absolute left-3 h-4 w-4 text-muted-foreground" />
         <input
           type="text"
+          aria-label="Search metrics"
           placeholder={placeholder}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value)
             setIsOpen(true)
+            handleSearch(e.target.value)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleSearch(query)
           }}
           onFocus={() => setIsOpen(true)}
           className="h-10 w-full pl-10 pr-10 rounded-md border border-input bg-background text-sm"
         />
         {query && (
           <button
+            type="button"
+            aria-label="Clear search"
             onClick={() => {
               setQuery('')
               setIsOpen(false)
+              handleSearch('')
             }}
-            className="absolute right-3 p-1 hover:bg-muted rounded"
+            className="absolute right-3 p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground"
           >
             <X className="h-4 w-4" />
           </button>
