@@ -169,7 +169,7 @@ export function TimeInput({
         disabled && 'opacity-50 cursor-not-allowed',
         isFocused && !error && 'ring-1 ring-ring border-ring'
       )}>
-        <Clock className="size-4 text-muted-foreground flex-shrink-0" />
+        <Clock className="size-4 text-muted-foreground flex-shrink-0" aria-hidden="true" />
 
         <input
           ref={inputRef}
@@ -192,7 +192,9 @@ export function TimeInput({
           <div className="flex gap-1 border-l pl-2">
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => handleIncrement(1)}
+              aria-label="Add 1 minute"
               title="Add 1 minute"
               className="text-xs font-medium px-1.5 py-0.5 rounded hover:bg-muted"
             >
@@ -200,7 +202,9 @@ export function TimeInput({
             </button>
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => handleIncrement(-1)}
+              aria-label="Subtract 1 minute"
               title="Subtract 1 minute"
               className="text-xs font-medium px-1.5 py-0.5 rounded hover:bg-muted"
             >
@@ -213,13 +217,15 @@ export function TimeInput({
         {displayValue && !disabled && (
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => {
               setDisplayValue('')
               onChange(null)
               inputRef.current?.focus()
             }}
             className="text-muted-foreground hover:text-foreground"
-            title="Clear"
+            aria-label="Clear time input"
+            title="Clear time input"
           >
             ✕
           </button>
