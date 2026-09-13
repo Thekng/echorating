@@ -45,20 +45,17 @@ export function TimeInput({
   required = false,
 }: TimeInputProps) {
   const [isFocused, setIsFocused] = useState(false)
-  const [displayValue, setDisplayValue] = useState('')
+  const [prevValue, setPrevValue] = useState<string | null | undefined>(value)
+  const [displayValue, setDisplayValue] = useState(value || '')
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Initialize display value
-  useEffect(() => {
-    if (value) {
-      setDisplayValue(value)
-    } else {
-      setDisplayValue('')
-    }
-  }, [value])
+  if (value !== prevValue) {
+    setPrevValue(value)
+    setDisplayValue(value || '')
+  }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let input = e.target.value
+    const input = e.target.value
 
     // Allow clearing the field
     if (input === '') {
