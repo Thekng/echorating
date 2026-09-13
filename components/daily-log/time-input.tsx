@@ -45,20 +45,17 @@ export function TimeInput({
   required = false,
 }: TimeInputProps) {
   const [isFocused, setIsFocused] = useState(false)
-  const [displayValue, setDisplayValue] = useState('')
+  const [prevValue, setPrevValue] = useState<string | null | undefined>(value)
+  const [displayValue, setDisplayValue] = useState(value || '')
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Initialize display value
-  useEffect(() => {
-    if (value) {
-      setDisplayValue(value)
-    } else {
-      setDisplayValue('')
-    }
-  }, [value])
+  if (value !== prevValue) {
+    setPrevValue(value)
+    setDisplayValue(value || '')
+  }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let input = e.target.value
+    const input = e.target.value
 
     // Allow clearing the field
     if (input === '') {
@@ -169,7 +166,7 @@ export function TimeInput({
         disabled && 'opacity-50 cursor-not-allowed',
         isFocused && !error && 'ring-1 ring-ring border-ring'
       )}>
-        <Clock className="size-4 text-muted-foreground flex-shrink-0" />
+        <Clock className="size-4 text-muted-foreground flex-shrink-0" aria-hidden="true" />
 
         <input
           ref={inputRef}
@@ -192,7 +189,9 @@ export function TimeInput({
           <div className="flex gap-1 border-l pl-2">
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => handleIncrement(1)}
+              aria-label="Add 1 minute"
               title="Add 1 minute"
               className="text-xs font-medium px-1.5 py-0.5 rounded hover:bg-muted"
             >
@@ -200,7 +199,9 @@ export function TimeInput({
             </button>
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => handleIncrement(-1)}
+              aria-label="Subtract 1 minute"
               title="Subtract 1 minute"
               className="text-xs font-medium px-1.5 py-0.5 rounded hover:bg-muted"
             >
@@ -213,13 +214,15 @@ export function TimeInput({
         {displayValue && !disabled && (
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => {
               setDisplayValue('')
               onChange(null)
               inputRef.current?.focus()
             }}
             className="text-muted-foreground hover:text-foreground"
-            title="Clear"
+            aria-label="Clear time input"
+            title="Clear time input"
           >
             ✕
           </button>
