@@ -19,5 +19,6 @@ test('MetricsSearch includes accessibility attributes, roles, and ARIA labels', 
   assert.equal(content.includes('aria-expanded={isOpen}'), true)
   assert.equal(content.includes('role="listbox"'), true)
   assert.equal(content.includes('role="option"'), true)
+  assert.equal(content.includes('aria-selected={false}'), true)
   assert.equal(content.includes('onMouseDown={(e) => e.preventDefault()}'), true)
 })
