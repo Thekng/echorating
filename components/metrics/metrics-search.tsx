@@ -39,32 +39,36 @@ export function MetricsSearch({
     onSelect?.(metric)
   }, [onSelect])
 
-  const handleSearch = useCallback(() => {
-    onSearch?.(query)
-  }, [query, onSearch])
-
   return (
     <div className="relative">
       <div className="relative flex items-center">
         <Search className="absolute left-3 h-4 w-4 text-muted-foreground" />
         <input
           type="text"
+          role="combobox"
+          aria-expanded={isOpen}
+          aria-controls={isOpen && filtered.length > 0 ? 'metrics-search-listbox' : undefined}
+          aria-label="Search metrics"
           placeholder={placeholder}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value)
             setIsOpen(true)
+            onSearch?.(e.target.value)
           }}
           onFocus={() => setIsOpen(true)}
           className="h-10 w-full pl-10 pr-10 rounded-md border border-input bg-background text-sm"
         />
         {query && (
           <button
+            type="button"
+            aria-label="Clear search"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => {
               setQuery('')
               setIsOpen(false)
             }}
-            className="absolute right-3 p-1 hover:bg-muted rounded"
+            className="absolute right-3 p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground"
           >
             <X className="h-4 w-4" />
           </button>
@@ -72,10 +76,16 @@ export function MetricsSearch({
       </div>
 
       {isOpen && filtered.length > 0 && (
-        <div className="absolute top-full left-0 right-0 mt-2 rounded-md border bg-popover shadow-md z-50 max-h-64 overflow-y-auto">
+        <div
+          id="metrics-search-listbox"
+          role="listbox"
+          className="absolute top-full left-0 right-0 mt-2 rounded-md border bg-popover shadow-md z-50 max-h-64 overflow-y-auto"
+        >
           {filtered.map((metric) => (
             <button
               key={metric.metric_id}
+              role="option"
+              aria-selected={false}
               onClick={() => handleSelect(metric)}
               className="w-full px-4 py-3 text-left hover:bg-muted flex items-center gap-3 border-b last:border-b-0 transition-colors"
             >
