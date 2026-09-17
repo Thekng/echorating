@@ -39,6 +39,10 @@ export function MetricsSearch({
     onSelect?.(metric)
   }, [onSelect])
 
+  const handleSearch = useCallback(() => {
+    onSearch?.(query)
+  }, [query, onSearch])
+
   return (
     <div className="relative">
       <div className="relative flex items-center">
@@ -52,10 +56,8 @@ export function MetricsSearch({
           placeholder={placeholder}
           value={query}
           onChange={(e) => {
-            const nextVal = e.target.value
-            setQuery(nextVal)
+            setQuery(e.target.value)
             setIsOpen(true)
-            onSearch?.(nextVal)
           }}
           onFocus={() => setIsOpen(true)}
           className="h-10 w-full pl-10 pr-10 rounded-md border border-input bg-background text-sm"
