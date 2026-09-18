@@ -39,32 +39,35 @@ export function MetricsSearch({
     onSelect?.(metric)
   }, [onSelect])
 
-  const handleSearch = useCallback(() => {
-    onSearch?.(query)
-  }, [query, onSearch])
-
   return (
     <div className="relative">
       <div className="relative flex items-center">
         <Search className="absolute left-3 h-4 w-4 text-muted-foreground" />
         <input
           type="text"
+          aria-label={placeholder}
           placeholder={placeholder}
           value={query}
           onChange={(e) => {
-            setQuery(e.target.value)
+            const val = e.target.value
+            setQuery(val)
             setIsOpen(true)
+            onSearch?.(val)
           }}
           onFocus={() => setIsOpen(true)}
-          className="h-10 w-full pl-10 pr-10 rounded-md border border-input bg-background text-sm"
+          onKeyDown={(e) => e.key === 'Escape' && setIsOpen(false)}
+          className="h-10 w-full pl-10 pr-10 rounded-md border border-input bg-background text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
         {query && (
           <button
+            type="button"
+            aria-label="Clear search input"
             onClick={() => {
               setQuery('')
               setIsOpen(false)
+              onSearch?.('')
             }}
-            className="absolute right-3 p-1 hover:bg-muted rounded"
+            className="absolute right-3 p-1 hover:bg-muted rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <X className="h-4 w-4" />
           </button>
