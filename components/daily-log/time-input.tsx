@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatSecondsToDuration, parseDurationToSeconds } from '@/lib/daily-log/value-parser'
