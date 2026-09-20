@@ -60,7 +60,7 @@ export function TimeInput({
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let input = e.target.value
+    const input = e.target.value
 
     // Allow clearing the field
     if (input === '') {
