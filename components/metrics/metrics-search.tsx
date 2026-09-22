@@ -39,16 +39,13 @@ export function MetricsSearch({
     onSelect?.(metric)
   }, [onSelect])
 
-  const handleSearch = useCallback(() => {
-    onSearch?.(query)
-  }, [query, onSearch])
-
   return (
     <div className="relative">
       <div className="relative flex items-center">
         <Search className="absolute left-3 h-4 w-4 text-muted-foreground" />
         <input
           type="text"
+          aria-label="Search metrics"
           placeholder={placeholder}
           value={query}
           onChange={(e) => {
@@ -56,10 +53,19 @@ export function MetricsSearch({
             setIsOpen(true)
           }}
           onFocus={() => setIsOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              setIsOpen(false)
+            } else if (e.key === 'Enter') {
+              onSearch?.(query)
+            }
+          }}
           className="h-10 w-full pl-10 pr-10 rounded-md border border-input bg-background text-sm"
         />
         {query && (
           <button
+            type="button"
+            aria-label="Clear search"
             onClick={() => {
               setQuery('')
               setIsOpen(false)
@@ -76,6 +82,7 @@ export function MetricsSearch({
           {filtered.map((metric) => (
             <button
               key={metric.metric_id}
+              type="button"
               onClick={() => handleSelect(metric)}
               className="w-full px-4 py-3 text-left hover:bg-muted flex items-center gap-3 border-b last:border-b-0 transition-colors"
             >
