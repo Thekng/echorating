@@ -706,17 +706,7 @@ export function DailyLogForm({
                       : 'text-muted-foreground'
                 }`}
               >
-                {pending
-                  ? pendingIntent === 'submit'
-                    ? 'Submitting...'
-                    : 'Saving...'
-                  : state.status === 'error'
-                    ? state.message
-                    : entryStatus === 'submitted'
-                      ? `Submitted${formatTime(lastSavedAt) ? ` at ${formatTime(lastSavedAt)}` : ''}`
-                      : lastSavedAt
-                        ? `Draft saved at ${formatTime(lastSavedAt) ?? '-'}`
-                        : ''}
+                {statusText}
               </p>
             </div>
           </>
