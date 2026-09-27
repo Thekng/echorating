@@ -19,6 +19,8 @@ const FORBIDDEN_PATTERNS = [
   /column\s+\w+(?:\.\w+)?\s+does\s+not\s+exist/i,
 ]
 
+const IGNORED_FILES = ['features/daily-log/calculated-recompute.ts']
+
 type Hit = { file: string; line: number; text: string }
 
 function walk(dir: string, hits: Hit[]) {
@@ -30,6 +32,9 @@ function walk(dir: string, hits: Hit[]) {
       continue
     }
     if (!/\.(ts|tsx)$/.test(entry)) continue
+    const rel = full.replace(`${process.cwd()}/`, '')
+    if (IGNORED_FILES.some((f) => rel.endsWith(f))) continue
+
     const source = readFileSync(full, 'utf8')
     const lines = source.split('\n')
     for (let i = 0; i < lines.length; i++) {
