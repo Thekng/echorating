@@ -1,0 +1,3 @@
+## 2026-09-27 - Explicit Label Association & ARIA Live Toasts in Dynamic Daily Log Forms
+**Learning:** In dynamically generated forms rendering varied metric types (`input`, `select`, `textarea`), explicitly scoping input IDs (`metric-input-${metric.id}`) and setting `htmlFor` on labels enables screen readers to accurately identify form control names. Concurrently, declaring `role="status"` and `aria-live="polite"` on toast notification containers ensures asynchronous status changes (like draft saves and submissions) are announced immediately to assistive technology.
+**Action:** When creating dynamic form controls or notification containers, always generate deterministic element IDs for label associations and wrap status alerts in polite ARIA live regions.
