@@ -89,6 +89,7 @@ function renderMetricInput(
   pending: boolean,
   onChange: (nextValue: string) => void,
   onBlur?: () => void,
+  inputId?: string,
 ) {
   const settings = normalizeMetricSettings(metric.data_type, metric.settings)
 
@@ -97,6 +98,7 @@ function renderMetricInput(
 
     return (
       <select
+        id={inputId}
         name={`metric_${metric.id}`}
         value={value}
         onChange={(event) => onChange(event.currentTarget.value)}
@@ -120,6 +122,7 @@ function renderMetricInput(
       return (
         <div className="flex items-center gap-1.5">
           <input
+            id={inputId}
             name={`metric_${metric.id}`}
             type="number"
             step={settings.durationFormat === 'days' ? '0.01' : '1'}
@@ -151,6 +154,7 @@ function renderMetricInput(
     if (settings.textFormat === 'long_text') {
       return (
         <textarea
+          id={inputId}
           name={`metric_${metric.id}`}
           rows={3}
           value={value}
@@ -173,6 +177,7 @@ function renderMetricInput(
 
     return (
       <input
+        id={inputId}
         name={`metric_${metric.id}`}
         type={inputType}
         inputMode={settings.textFormat === 'phone' ? 'tel' : 'text'}
@@ -196,6 +201,7 @@ function renderMetricInput(
 
     return (
       <input
+        id={inputId}
         name={`metric_${metric.id}`}
         type={inputType}
         value={value}
@@ -222,6 +228,7 @@ function renderMetricInput(
         <>
           <input type="hidden" name={`metric_${metric.id}`} value={value} />
           <select
+            id={inputId}
             multiple
             value={selectedValues}
             onChange={(event) => {
@@ -264,6 +271,7 @@ function renderMetricInput(
 
     return (
       <select
+        id={inputId}
         name={`metric_${metric.id}`}
         value={value}
         onChange={(event) => onChange(event.currentTarget.value)}
@@ -283,6 +291,7 @@ function renderMetricInput(
   if (metric.data_type === 'file') {
     return (
       <input
+        id={inputId}
         name={`metric_${metric.id}`}
         type="url"
         value={value}
@@ -305,6 +314,7 @@ function renderMetricInput(
       <div className="flex items-center gap-1.5">
         <span className="shrink-0 text-sm text-muted-foreground">{symbol}</span>
         <input
+          id={inputId}
           name={`metric_${metric.id}`}
           type="number"
           inputMode="decimal"
@@ -324,6 +334,7 @@ function renderMetricInput(
     return (
       <div className="flex items-center gap-1.5">
         <input
+          id={inputId}
           name={`metric_${metric.id}`}
           type="number"
           inputMode="decimal"
@@ -342,6 +353,7 @@ function renderMetricInput(
 
   return (
     <input
+      id={inputId}
       name={`metric_${metric.id}`}
       type="number"
       inputMode="decimal"
@@ -468,35 +480,6 @@ export function DailyLogForm({
     userId,
   ])
 
-  const statusText = (() => {
-    const savedTime = formatTime(lastSavedAt)
-
-    if (pending) {
-      if (pendingIntent === 'submit') {
-        return 'Submitting log...'
-      }
-      return 'Saving draft...'
-    }
-
-    if (dirty) {
-      return 'Unsaved changes'
-    }
-
-    if (state.status === 'error') {
-      return state.message
-    }
-
-    if (entryStatus === 'submitted') {
-      return `Submitted${savedTime ? ` at ${savedTime}` : ''}`
-    }
-
-    if (lastSavedAt) {
-      return `Draft saved at ${savedTime ?? '-'}`
-    }
-
-    return 'No saved draft yet'
-  })()
-
   const hasFieldErrors = Object.keys(fieldErrors).length > 0
   const disabledForm = pending || !departmentId || !userId
 
@@ -582,6 +565,7 @@ export function DailyLogForm({
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               {metrics.map((metric) => {
                 const isFilled = values[metric.id] !== undefined && values[metric.id] !== ''
+                const inputId = `metric-input-${metric.id}`
                 return (
                   <div
                     key={metric.id}
@@ -591,7 +575,7 @@ export function DailyLogForm({
                         : 'border-border bg-background'
                     }`}
                   >
-                    <label className="block text-xs font-medium text-muted-foreground">{metric.name}</label>
+                    <label htmlFor={inputId} className="block text-xs font-medium text-muted-foreground">{metric.name}</label>
                     {renderMetricInput(metric, values[metric.id] ?? '', disabledForm, (nextValue) => {
                       setValues((current) => ({
                         ...current,
@@ -616,7 +600,7 @@ export function DailyLogForm({
                           return next
                         })
                       }
-                    })}
+                    }, inputId)}
                     {fieldErrors[metric.id] && (
                       <p className="text-xs text-red-600 dark:text-red-400">{fieldErrors[metric.id]}</p>
                     )}
@@ -702,7 +686,7 @@ export function DailyLogForm({
       </form>
 
       {/* Toasts */}
-      <div className="pointer-events-none fixed right-4 top-20 z-50 flex w-[320px] flex-col gap-2">
+      <div role="status" aria-live="polite" className="pointer-events-none fixed right-4 top-20 z-50 flex w-[320px] flex-col gap-2">
         {toasts.map((toast) => (
           <div
             key={toast.id}
