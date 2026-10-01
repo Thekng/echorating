@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatSecondsToDuration, parseDurationToSeconds } from '@/lib/daily-log/value-parser'
@@ -55,7 +55,7 @@ export function TimeInput({
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let input = e.target.value
+    const input = e.target.value
 
     // Allow clearing the field
     if (input === '') {
