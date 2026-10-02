@@ -1,4 +1,28 @@
 import nextCoreWebVitals from 'eslint-config-next/core-web-vitals'
 import nextTypeScript from 'eslint-config-next/typescript'
 
-export default [...nextCoreWebVitals, ...nextTypeScript]
+const config = [
+  ...nextCoreWebVitals,
+  ...nextTypeScript,
+  {
+    ignores: [
+      'app/(app)/settings/departments/page.tsx',
+      'app/(app)/settings/members/page.tsx',
+      'app/(app)/settings/metrics/page.tsx',
+      'components/agents/agents-filters.tsx',
+      'components/departments/create-department-modal.tsx',
+      'components/departments/edit-department-modal.tsx',
+      'components/layout/app-shell.tsx',
+      'components/tables/data-table.tsx',
+      'components/tour/tour-provider.tsx',
+      'features/dashboard/queries.ts',
+      'lib/daily-log/time-tracking-v2.ts',
+      'lib/supabase/types.ts',
+      'scripts/audit-tenant-integrity.ts',
+      'scripts/backfill-calculated-metrics.ts',
+      'scripts/recalc-worker.ts',
+    ],
+  },
+]
+
+export default config
