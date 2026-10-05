@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useId } from 'react'
 import { Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatSecondsToDuration, parseDurationToSeconds } from '@/lib/daily-log/value-parser'
 
 type TimeInputProps = {
+  id?: string
   value?: string | null
   onChange: (value: string | null) => void
   onBlur?: () => void
@@ -35,6 +36,7 @@ type TimeInputProps = {
  * />
  */
 export function TimeInput({
+  id,
   value,
   onChange,
   onBlur,
@@ -44,21 +46,20 @@ export function TimeInput({
   placeholder = 'HH:MM:SS',
   required = false,
 }: TimeInputProps) {
+  const reactId = useId()
+  const inputId = id || reactId
   const [isFocused, setIsFocused] = useState(false)
-  const [displayValue, setDisplayValue] = useState('')
+  const [displayValue, setDisplayValue] = useState(value || '')
+  const [prevValue, setPrevValue] = useState(value)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Initialize display value
-  useEffect(() => {
-    if (value) {
-      setDisplayValue(value)
-    } else {
-      setDisplayValue('')
-    }
-  }, [value])
+  if (value !== prevValue) {
+    setPrevValue(value)
+    setDisplayValue(value || '')
+  }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let input = e.target.value
+    const input = e.target.value
 
     // Allow clearing the field
     if (input === '') {
@@ -157,7 +158,7 @@ export function TimeInput({
   return (
     <div className="space-y-2">
       {label && (
-        <label className="block text-sm font-medium">
+        <label htmlFor={inputId} className="block text-sm font-medium">
           {label}
           {required && <span className="text-red-500 ml-1">*</span>}
         </label>
@@ -172,6 +173,7 @@ export function TimeInput({
         <Clock className="size-4 text-muted-foreground flex-shrink-0" />
 
         <input
+          id={inputId}
           ref={inputRef}
           type="text"
           value={displayValue}
@@ -192,16 +194,20 @@ export function TimeInput({
           <div className="flex gap-1 border-l pl-2">
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => handleIncrement(1)}
               title="Add 1 minute"
+              aria-label="Add 1 minute"
               className="text-xs font-medium px-1.5 py-0.5 rounded hover:bg-muted"
             >
               +1m
             </button>
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => handleIncrement(-1)}
               title="Subtract 1 minute"
+              aria-label="Subtract 1 minute"
               className="text-xs font-medium px-1.5 py-0.5 rounded hover:bg-muted"
             >
               -1m
@@ -213,6 +219,7 @@ export function TimeInput({
         {displayValue && !disabled && (
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => {
               setDisplayValue('')
               onChange(null)
@@ -220,6 +227,7 @@ export function TimeInput({
             }}
             className="text-muted-foreground hover:text-foreground"
             title="Clear"
+            aria-label="Clear time input"
           >
             ✕
           </button>

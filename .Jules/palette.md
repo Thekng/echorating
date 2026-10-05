@@ -1,0 +1,3 @@
+## 2026-10-05 - TimeInput Accessibility & Focus Preservation Pattern
+**Learning:** In input components with quick-adjustment or helper buttons (such as +1m / -1m / clear buttons), adding `onMouseDown={(e) => e.preventDefault()}` on the buttons prevents focus from being stolen away from the text input when clicked. Furthermore, generating unique element IDs with React's `useId()` and linking label elements via `htmlFor` ensures complete screen-reader compatibility without requiring mandatory parent `id` props.
+**Action:** Always include `htmlFor`/`id` association, descriptive `aria-label`s on icon/short-text helper buttons, and `onMouseDown={(e) => e.preventDefault()}` on inline action controls in text inputs.
