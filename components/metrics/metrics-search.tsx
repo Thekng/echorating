@@ -50,6 +50,7 @@ export function MetricsSearch({
         <input
           type="text"
           placeholder={placeholder}
+          aria-label={placeholder}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value)
@@ -60,6 +61,8 @@ export function MetricsSearch({
         />
         {query && (
           <button
+            type="button"
+            aria-label="Clear search"
             onClick={() => {
               setQuery('')
               setIsOpen(false)
