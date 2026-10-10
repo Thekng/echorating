@@ -43,6 +43,12 @@ export function MetricsSearch({
     onSearch?.(query)
   }, [query, onSearch])
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleSearch()
+    }
+  }
+
   return (
     <div className="relative">
       <div className="relative flex items-center">
@@ -50,20 +56,25 @@ export function MetricsSearch({
         <input
           type="text"
           placeholder={placeholder}
+          aria-label={placeholder}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value)
             setIsOpen(true)
           }}
+          onKeyDown={handleKeyDown}
           onFocus={() => setIsOpen(true)}
           className="h-10 w-full pl-10 pr-10 rounded-md border border-input bg-background text-sm"
         />
         {query && (
           <button
+            type="button"
             onClick={() => {
               setQuery('')
               setIsOpen(false)
             }}
+            aria-label="Clear search query"
+            title="Clear search"
             className="absolute right-3 p-1 hover:bg-muted rounded"
           >
             <X className="h-4 w-4" />
@@ -75,6 +86,7 @@ export function MetricsSearch({
         <div className="absolute top-full left-0 right-0 mt-2 rounded-md border bg-popover shadow-md z-50 max-h-64 overflow-y-auto">
           {filtered.map((metric) => (
             <button
+              type="button"
               key={metric.metric_id}
               onClick={() => handleSelect(metric)}
               className="w-full px-4 py-3 text-left hover:bg-muted flex items-center gap-3 border-b last:border-b-0 transition-colors"
