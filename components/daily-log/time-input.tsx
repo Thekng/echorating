@@ -183,6 +183,7 @@ export function TimeInput({
           disabled={disabled}
           placeholder={placeholder}
           autoComplete="off"
+          aria-label={label || 'Time input'}
           className="flex-1 bg-transparent py-2 outline-none text-sm font-mono placeholder:text-muted-foreground"
           maxLength={8}
         />
@@ -193,7 +194,9 @@ export function TimeInput({
             <button
               type="button"
               onClick={() => handleIncrement(1)}
+              onMouseDown={(e) => e.preventDefault()}
               title="Add 1 minute"
+              aria-label="Add 1 minute"
               className="text-xs font-medium px-1.5 py-0.5 rounded hover:bg-muted"
             >
               +1m
@@ -201,7 +204,9 @@ export function TimeInput({
             <button
               type="button"
               onClick={() => handleIncrement(-1)}
+              onMouseDown={(e) => e.preventDefault()}
               title="Subtract 1 minute"
+              aria-label="Subtract 1 minute"
               className="text-xs font-medium px-1.5 py-0.5 rounded hover:bg-muted"
             >
               -1m
@@ -220,6 +225,7 @@ export function TimeInput({
             }}
             className="text-muted-foreground hover:text-foreground"
             title="Clear"
+            aria-label="Clear time input"
           >
             ✕
           </button>
