@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatSecondsToDuration, parseDurationToSeconds } from '@/lib/daily-log/value-parser'
@@ -46,19 +46,17 @@ export function TimeInput({
 }: TimeInputProps) {
   const [isFocused, setIsFocused] = useState(false)
   const [displayValue, setDisplayValue] = useState('')
+  const [prevPropValue, setPrevPropValue] = useState<string | null | undefined>(value)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Initialize display value
-  useEffect(() => {
-    if (value) {
-      setDisplayValue(value)
-    } else {
-      setDisplayValue('')
-    }
-  }, [value])
+  // Derive state from prop value during render
+  if (value !== prevPropValue) {
+    setPrevPropValue(value)
+    setDisplayValue(value || '')
+  }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let input = e.target.value
+    const input = e.target.value
 
     // Allow clearing the field
     if (input === '') {
@@ -183,6 +181,7 @@ export function TimeInput({
           disabled={disabled}
           placeholder={placeholder}
           autoComplete="off"
+          aria-label={label || 'Time input'}
           className="flex-1 bg-transparent py-2 outline-none text-sm font-mono placeholder:text-muted-foreground"
           maxLength={8}
         />
@@ -193,7 +192,9 @@ export function TimeInput({
             <button
               type="button"
               onClick={() => handleIncrement(1)}
+              onMouseDown={(e) => e.preventDefault()}
               title="Add 1 minute"
+              aria-label="Add 1 minute"
               className="text-xs font-medium px-1.5 py-0.5 rounded hover:bg-muted"
             >
               +1m
@@ -201,7 +202,9 @@ export function TimeInput({
             <button
               type="button"
               onClick={() => handleIncrement(-1)}
+              onMouseDown={(e) => e.preventDefault()}
               title="Subtract 1 minute"
+              aria-label="Subtract 1 minute"
               className="text-xs font-medium px-1.5 py-0.5 rounded hover:bg-muted"
             >
               -1m
@@ -220,6 +223,7 @@ export function TimeInput({
             }}
             className="text-muted-foreground hover:text-foreground"
             title="Clear"
+            aria-label="Clear time input"
           >
             ✕
           </button>
