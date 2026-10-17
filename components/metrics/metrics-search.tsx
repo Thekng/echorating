@@ -54,8 +54,6 @@ export function MetricsSearch({
           value={query}
           onChange={(e) => { setQuery(e.target.value); setIsOpen(true); }}
           onFocus={() => setIsOpen(true)}
-          aria-expanded={isOpen}
-          aria-controls={isOpen ? 'metrics-search-results' : undefined}
           className="h-10 w-full pl-10 pr-10 rounded-md border border-input bg-background text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         />
         {query && (
@@ -72,7 +70,7 @@ export function MetricsSearch({
       </div>
 
       {isOpen && filtered.length > 0 && (
-        <div id="metrics-search-results" className="absolute top-full left-0 right-0 mt-2 rounded-md border bg-popover shadow-md z-50 max-h-64 overflow-y-auto">
+        <div className="absolute top-full left-0 right-0 mt-2 rounded-md border bg-popover shadow-md z-50 max-h-64 overflow-y-auto">
           {filtered.map((metric) => (
             <button
               key={metric.metric_id}
