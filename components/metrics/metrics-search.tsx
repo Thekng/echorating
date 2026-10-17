@@ -49,22 +49,20 @@ export function MetricsSearch({
         <Search className="absolute left-3 h-4 w-4 text-muted-foreground" />
         <input
           type="text"
+          aria-label="Search metrics"
           placeholder={placeholder}
           value={query}
-          onChange={(e) => {
-            setQuery(e.target.value)
-            setIsOpen(true)
-          }}
+          onChange={(e) => { setQuery(e.target.value); setIsOpen(true); }}
           onFocus={() => setIsOpen(true)}
-          className="h-10 w-full pl-10 pr-10 rounded-md border border-input bg-background text-sm"
+          className="h-10 w-full pl-10 pr-10 rounded-md border border-input bg-background text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         />
         {query && (
           <button
-            onClick={() => {
-              setQuery('')
-              setIsOpen(false)
-            }}
-            className="absolute right-3 p-1 hover:bg-muted rounded"
+            type="button"
+            aria-label="Clear search"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => { setQuery(''); setIsOpen(false); }}
+            className="absolute right-3 p-1 text-muted-foreground hover:text-foreground hover:bg-muted rounded focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           >
             <X className="h-4 w-4" />
           </button>
@@ -76,8 +74,9 @@ export function MetricsSearch({
           {filtered.map((metric) => (
             <button
               key={metric.metric_id}
+              type="button"
               onClick={() => handleSelect(metric)}
-              className="w-full px-4 py-3 text-left hover:bg-muted flex items-center gap-3 border-b last:border-b-0 transition-colors"
+              className="w-full px-4 py-3 text-left hover:bg-muted flex items-center gap-3 border-b last:border-b-0 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
             >
               <span className="text-lg">{getMetricIcon(metric.code)}</span>
               <div className="flex-1 min-w-0">
