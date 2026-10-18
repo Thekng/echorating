@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { Search, X } from 'lucide-react'
 import { getMetricIcon } from '@/lib/utils/metric-helpers'
 
@@ -27,6 +27,17 @@ export function MetricsSearch({
 }: MetricsSearchProps) {
   const [query, setQuery] = useState('')
   const [isOpen, setIsOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   const filtered = metrics.filter(m =>
     m.name.toLowerCase().includes(query.toLowerCase()) ||
@@ -39,32 +50,35 @@ export function MetricsSearch({
     onSelect?.(metric)
   }, [onSelect])
 
-  const handleSearch = useCallback(() => {
-    onSearch?.(query)
-  }, [query, onSearch])
-
   return (
-    <div className="relative">
+    <div ref={containerRef} className="relative">
       <div className="relative flex items-center">
-        <Search className="absolute left-3 h-4 w-4 text-muted-foreground" />
+        <Search className="absolute left-3 h-4 w-4 text-muted-foreground pointer-events-none" aria-hidden="true" />
         <input
           type="text"
           placeholder={placeholder}
+          aria-label="Search metrics"
           value={query}
           onChange={(e) => {
-            setQuery(e.target.value)
+            const val = e.target.value
+            setQuery(val)
             setIsOpen(true)
+            onSearch?.(val)
           }}
           onFocus={() => setIsOpen(true)}
-          className="h-10 w-full pl-10 pr-10 rounded-md border border-input bg-background text-sm"
+          className="h-10 w-full pl-10 pr-10 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         />
         {query && (
           <button
+            type="button"
+            aria-label="Clear search"
             onClick={() => {
               setQuery('')
               setIsOpen(false)
+              onSearch?.('')
             }}
-            className="absolute right-3 p-1 hover:bg-muted rounded"
+            onMouseDown={(e) => e.preventDefault()}
+            className="absolute right-3 p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground"
           >
             <X className="h-4 w-4" />
           </button>
@@ -72,14 +86,21 @@ export function MetricsSearch({
       </div>
 
       {isOpen && filtered.length > 0 && (
-        <div className="absolute top-full left-0 right-0 mt-2 rounded-md border bg-popover shadow-md z-50 max-h-64 overflow-y-auto">
+        <div
+          role="listbox"
+          aria-label="Metric search results"
+          className="absolute top-full left-0 right-0 mt-2 rounded-md border bg-popover shadow-md z-50 max-h-64 overflow-y-auto"
+        >
           {filtered.map((metric) => (
             <button
               key={metric.metric_id}
+              type="button"
+              role="option"
+              aria-selected={false}
               onClick={() => handleSelect(metric)}
-              className="w-full px-4 py-3 text-left hover:bg-muted flex items-center gap-3 border-b last:border-b-0 transition-colors"
+              className="w-full px-4 py-3 text-left hover:bg-muted flex items-center gap-3 border-b last:border-b-0 transition-colors focus:bg-muted focus:outline-none"
             >
-              <span className="text-lg">{getMetricIcon(metric.code)}</span>
+              <span className="text-lg" aria-hidden="true">{getMetricIcon(metric.code)}</span>
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-sm truncate">{metric.name}</p>
                 <p className="text-xs text-muted-foreground truncate">{metric.code}</p>
@@ -91,7 +112,7 @@ export function MetricsSearch({
       )}
 
       {isOpen && query && filtered.length === 0 && (
-        <div className="absolute top-full left-0 right-0 mt-2 rounded-md border bg-popover shadow-md z-50 p-4">
+        <div role="status" aria-live="polite" className="absolute top-full left-0 right-0 mt-2 rounded-md border bg-popover shadow-md z-50 p-4">
           <p className="text-sm text-muted-foreground">No metrics found</p>
         </div>
       )}
