@@ -64,6 +64,7 @@ export function MetricsSearch({
               setQuery('')
               setIsOpen(false)
             }}
+            aria-label="Clear search"
             className="absolute right-3 p-1 hover:bg-muted rounded"
           >
             <X className="h-4 w-4" />
@@ -72,11 +73,13 @@ export function MetricsSearch({
       </div>
 
       {isOpen && filtered.length > 0 && (
-        <div className="absolute top-full left-0 right-0 mt-2 rounded-md border bg-popover shadow-md z-50 max-h-64 overflow-y-auto">
+        <div role="listbox" className="absolute top-full left-0 right-0 mt-2 rounded-md border bg-popover shadow-md z-50 max-h-64 overflow-y-auto">
           {filtered.map((metric) => (
             <button
               key={metric.metric_id}
               onClick={() => handleSelect(metric)}
+              role="option"
+              aria-selected={false}
               className="w-full px-4 py-3 text-left hover:bg-muted flex items-center gap-3 border-b last:border-b-0 transition-colors"
             >
               <span className="text-lg">{getMetricIcon(metric.code)}</span>
