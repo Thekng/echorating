@@ -70,7 +70,7 @@ export function MetricsSearch({
         <Search className="absolute left-3 h-4 w-4 text-muted-foreground" />
         <input
           type="text"
-          aria-label={placeholder}
+          aria-label={placeholder || 'Search metrics by name or code...'}
           placeholder={placeholder}
           value={query}
           onChange={(e) => {
