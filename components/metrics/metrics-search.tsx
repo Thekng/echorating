@@ -39,10 +39,6 @@ export function MetricsSearch({
     onSelect?.(metric)
   }, [onSelect])
 
-  const handleSearch = useCallback(() => {
-    onSearch?.(query)
-  }, [query, onSearch])
-
   return (
     <div className="relative">
       <div className="relative flex items-center">
@@ -50,19 +46,25 @@ export function MetricsSearch({
         <input
           type="text"
           placeholder={placeholder}
+          aria-label="Search metrics"
           value={query}
           onChange={(e) => {
-            setQuery(e.target.value)
+            const val = e.target.value
+            setQuery(val)
             setIsOpen(true)
+            onSearch?.(val)
           }}
           onFocus={() => setIsOpen(true)}
           className="h-10 w-full pl-10 pr-10 rounded-md border border-input bg-background text-sm"
         />
         {query && (
           <button
+            type="button"
+            aria-label="Clear search query"
             onClick={() => {
               setQuery('')
               setIsOpen(false)
+              onSearch?.('')
             }}
             className="absolute right-3 p-1 hover:bg-muted rounded"
           >
@@ -72,12 +74,19 @@ export function MetricsSearch({
       </div>
 
       {isOpen && filtered.length > 0 && (
-        <div className="absolute top-full left-0 right-0 mt-2 rounded-md border bg-popover shadow-md z-50 max-h-64 overflow-y-auto">
+        <div
+          role="listbox"
+          aria-label="Metrics search results"
+          className="absolute top-full left-0 right-0 mt-2 rounded-md border bg-popover shadow-md z-50 max-h-64 overflow-y-auto"
+        >
           {filtered.map((metric) => (
             <button
               key={metric.metric_id}
+              type="button"
+              role="option"
+              aria-selected={false}
               onClick={() => handleSelect(metric)}
-              className="w-full px-4 py-3 text-left hover:bg-muted flex items-center gap-3 border-b last:border-b-0 transition-colors"
+              className="w-full px-4 py-3 text-left hover:bg-muted flex items-center gap-3 border-b last:border-b-0 transition-colors cursor-pointer"
             >
               <span className="text-lg">{getMetricIcon(metric.code)}</span>
               <div className="flex-1 min-w-0">
@@ -91,7 +100,11 @@ export function MetricsSearch({
       )}
 
       {isOpen && query && filtered.length === 0 && (
-        <div className="absolute top-full left-0 right-0 mt-2 rounded-md border bg-popover shadow-md z-50 p-4">
+        <div
+          role="status"
+          aria-live="polite"
+          className="absolute top-full left-0 right-0 mt-2 rounded-md border bg-popover shadow-md z-50 p-4"
+        >
           <p className="text-sm text-muted-foreground">No metrics found</p>
         </div>
       )}
