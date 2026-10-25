@@ -678,7 +678,7 @@ export async function getDashboardData(filters?: {
   }
 
   let kpis: DashboardKpi[] = []
-  let trend: DashboardTrendPoint[] = []
+  const trend: DashboardTrendPoint[] = []
   let series: DashboardSeries[] = []
   let primaryMetricLabel: string | null = null
   let targetByMetricId = new Map<string, number>()
