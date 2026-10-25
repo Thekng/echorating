@@ -390,7 +390,6 @@ export function DailyLogForm({
   const [lastSavedSnapshot, setLastSavedSnapshot] = useState(savedSnapshot)
 
   useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect */
     setValues(initialValues)
     setFieldErrors({})
     setNotes(initialNotes)
@@ -400,7 +399,6 @@ export function DailyLogForm({
     setLastSavedSnapshot(savedSnapshot)
     setPendingIntent(null)
     setLastSubmitKind(null)
-    /* eslint-enable react-hooks/set-state-in-effect */
   }, [date, existingEntry?.id, existingEntry?.status, existingEntry?.updated_at, initialValues, initialNotes, savedSnapshot])
 
   const currentSnapshot = useMemo(
@@ -430,12 +428,10 @@ export function DailyLogForm({
     lastHandledStateRef.current = key
 
     if (state.status === 'success') {
-      /* eslint-disable react-hooks/set-state-in-effect */
       setLastSavedSnapshot(currentSnapshot)
       setLastSavedAt(state.savedAt)
       setEntryStatus(state.entryStatus)
       setPendingIntent(null)
-      /* eslint-enable react-hooks/set-state-in-effect */
       pushToast('success', state.message)
 
       if (logDate !== date) {
@@ -467,35 +463,6 @@ export function DailyLogForm({
     state.status,
     userId,
   ])
-
-  const statusText = (() => {
-    const savedTime = formatTime(lastSavedAt)
-
-    if (pending) {
-      if (pendingIntent === 'submit') {
-        return 'Submitting log...'
-      }
-      return 'Saving draft...'
-    }
-
-    if (dirty) {
-      return 'Unsaved changes'
-    }
-
-    if (state.status === 'error') {
-      return state.message
-    }
-
-    if (entryStatus === 'submitted') {
-      return `Submitted${savedTime ? ` at ${savedTime}` : ''}`
-    }
-
-    if (lastSavedAt) {
-      return `Draft saved at ${savedTime ?? '-'}`
-    }
-
-    return 'No saved draft yet'
-  })()
 
   const hasFieldErrors = Object.keys(fieldErrors).length > 0
   const disabledForm = pending || !departmentId || !userId
