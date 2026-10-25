@@ -2,7 +2,8 @@
 -- plain postgres:17 CI container. Production uses real Supabase; CI only needs
 -- enough of the auth schema to satisfy references in supabase/migrations/.
 
-create extension if not exists pgcrypto;
+create schema if not exists extensions;
+create extension if not exists pgcrypto schema extensions;
 
 create schema if not exists auth;
 
