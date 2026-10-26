@@ -39,43 +39,58 @@ export function MetricsSearch({
     onSelect?.(metric)
   }, [onSelect])
 
-  const handleSearch = useCallback(() => {
-    onSearch?.(query)
-  }, [query, onSearch])
-
   return (
     <div className="relative">
       <div className="relative flex items-center">
-        <Search className="absolute left-3 h-4 w-4 text-muted-foreground" />
+        <Search className="absolute left-3 h-4 w-4 text-muted-foreground" aria-hidden="true" />
         <input
           type="text"
+          aria-label={placeholder}
           placeholder={placeholder}
           value={query}
           onChange={(e) => {
-            setQuery(e.target.value)
+            const nextQuery = e.target.value
+            setQuery(nextQuery)
             setIsOpen(true)
+            onSearch?.(nextQuery)
           }}
           onFocus={() => setIsOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              setIsOpen(false)
+            }
+          }}
           className="h-10 w-full pl-10 pr-10 rounded-md border border-input bg-background text-sm"
         />
         {query && (
           <button
+            type="button"
+            aria-label="Clear search"
             onClick={() => {
               setQuery('')
               setIsOpen(false)
+              onSearch?.('')
             }}
-            className="absolute right-3 p-1 hover:bg-muted rounded"
+            className="absolute right-3 p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground"
           >
-            <X className="h-4 w-4" />
+            <X className="h-4 w-4" aria-hidden="true" />
           </button>
         )}
       </div>
 
       {isOpen && filtered.length > 0 && (
-        <div className="absolute top-full left-0 right-0 mt-2 rounded-md border bg-popover shadow-md z-50 max-h-64 overflow-y-auto">
+        <div
+          id="metrics-search-listbox"
+          role="listbox"
+          aria-label="Search results"
+          className="absolute top-full left-0 right-0 mt-2 rounded-md border bg-popover shadow-md z-50 max-h-64 overflow-y-auto"
+        >
           {filtered.map((metric) => (
             <button
               key={metric.metric_id}
+              type="button"
+              role="option"
+              aria-selected={false}
               onClick={() => handleSelect(metric)}
               className="w-full px-4 py-3 text-left hover:bg-muted flex items-center gap-3 border-b last:border-b-0 transition-colors"
             >
@@ -91,7 +106,11 @@ export function MetricsSearch({
       )}
 
       {isOpen && query && filtered.length === 0 && (
-        <div className="absolute top-full left-0 right-0 mt-2 rounded-md border bg-popover shadow-md z-50 p-4">
+        <div
+          role="status"
+          aria-live="polite"
+          className="absolute top-full left-0 right-0 mt-2 rounded-md border bg-popover shadow-md z-50 p-4"
+        >
           <p className="text-sm text-muted-foreground">No metrics found</p>
         </div>
       )}
